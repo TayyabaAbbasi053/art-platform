@@ -7,7 +7,7 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
     exit;
 }
 
-// ── NEW: JSON endpoint for fetching messages ─────────────────
+// ── JSON endpoint for fetching messages ─────────────────
 if (isset($_GET['action']) && $_GET['action'] === 'get_messages') {
     header('Content-Type: application/json');
     $commissionId = (int)($_GET['commission_id'] ?? 0);
@@ -24,18 +24,55 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_messages') {
     exit;
 }
 
+// ── JSON endpoint for fetching artists with style filter ─────────────────
+if (isset($_GET['action']) && $_GET['action'] === 'get_artists') {
+    header('Content-Type: application/json');
+    $styleFilter = $_GET['style'] ?? '';
+    
+    $sql = "
+        SELECT u.id, u.name, u.profile_picture, 
+               ap.city, ap.art_style, ap.accepts_commissions,
+               (SELECT COUNT(*) FROM artworks WHERE artist_id = u.id AND status = 'approved') AS artwork_count
+        FROM users u
+        LEFT JOIN artist_profiles ap ON ap.user_id = u.id
+        WHERE u.role = 'artist' AND u.status = 'active'
+    ";
+    
+    if (!empty($styleFilter)) {
+        $sql .= " AND ap.art_style LIKE '%" . $conn->real_escape_string($styleFilter) . "%'";
+    }
+    
+    $sql .= " ORDER BY u.name ASC";
+    
+    $artistRes = $conn->query($sql);
+    $artists = [];
+    while ($row = $artistRes->fetch_assoc()) {
+        $artists[] = $row;
+    }
+    
+    // Also get unique art styles for filter dropdown
+    $styleRes = $conn->query("SELECT DISTINCT art_style FROM artist_profiles WHERE art_style IS NOT NULL AND art_style != '' ORDER BY art_style ASC");
+    $artStyles = [];
+    while ($row = $styleRes->fetch_assoc()) {
+        $artStyles[] = $row['art_style'];
+    }
+    
+    echo json_encode(['artists' => $artists, 'artStyles' => $artStyles]);
+    exit;
+}
+
 $adminName = $_SESSION['name'] ?? 'Admin';
 $toast = '';
 
 // ── Contact info filter function ─────────────────────────
 function containsContactInfo(string $text): bool {
     $patterns = [
-        '/\b[\w.+-]+@[\w-]+\.[a-z]{2,}\b/i',           // email
-        '/(\+92|0)?[-\s]?[0-9]{3}[-\s]?[0-9]{7,8}/',   // Pakistani phone
+        '/\b[\w.+-]+@[\w-]+\.[a-z]{2,}\b/i',
+        '/(\+92|0)?[-\s]?[0-9]{3}[-\s]?[0-9]{7,8}/',
         '/\b(instagram|insta|ig|whatsapp|wa|facebook|fb|twitter|tiktok|snapchat)\s*[:\-@]?\s*\w+/i',
-        '/@[a-zA-Z0-9._]{2,30}/',                        // @username
+        '/@[a-zA-Z0-9._]{2,30}/',
         '/\b(iban|account\s*no|bank|easypaisa|jazzcash|sadapay|nayapay)\b/i',
-        '/\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b/', // card/IBAN numbers
+        '/\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b/',
     ];
     foreach ($patterns as $p) {
         if (preg_match($p, $text)) return true;
@@ -61,7 +98,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'assig
     $artistId = (int)($_POST['artist_id'] ?? 0);
     if ($id && $artistId) {
         $conn->query("UPDATE commission_requests SET artist_id = $artistId, status = 'assigned' WHERE id = $id");
-        $toast = 'Artist assigned.';
+        $toast = 'Artist assigned successfully.';
     } elseif ($id && !$artistId) {
         $conn->query("UPDATE commission_requests SET artist_id = NULL WHERE id = $id");
         $toast = 'Artist unassigned.';
@@ -174,7 +211,7 @@ if ($params) {
 }
 $totalPages = max(1, ceil($totalResults / $perPage));
 
-// Fetch - FIXED: Removed categories join, using artwork_type directly
+// Fetch
 $dataSQL = "
     SELECT cr.*,
            u.name AS artist_name, u.id AS artist_id
@@ -219,10 +256,10 @@ function buildQS($overrides = []) {
 }
 
 function formatBudget($min, $max) {
-    if ($min && $max) return 'PKR ' . number_format($min) . ' – ' . number_format($max);
+    if ($min && $max) return 'PKR ' . number_format($min) . ' - ' . number_format($max);
     if ($min) return 'PKR ' . number_format($min) . '+';
     if ($max) return 'Up to PKR ' . number_format($max);
-    return '—';
+    return '-';
 }
 
 function getArtworkTypeLabel($type) {
@@ -237,13 +274,22 @@ function getArtworkTypeLabel($type) {
     ];
     return $labels[$type] ?? ucfirst(str_replace('_', ' ', $type));
 }
+
+function getProfileImageUrl($imagePath) {
+    if (empty($imagePath)) return null;
+    $imagePath = ltrim($imagePath, './');
+    if (strpos($imagePath, 'uploads/') === 0) {
+        return '../../' . $imagePath;
+    }
+    return '../../uploads/profiles/' . $imagePath;
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Commissions — Art Bazaar Admin</title>
+<title>Commissions - Art Bazaar Admin</title>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -366,7 +412,7 @@ tr:hover td { background: var(--grey1); }
 .page-btn.active { background: var(--black); color: #fff; border-color: var(--black); }
 .page-btn.disabled { opacity: .35; pointer-events: none; }
 
-/* ── Modal Styles (enlarged for chat) ── */
+/* Modal Styles */
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 200; display: flex; align-items: center; justify-content: center; opacity: 0; pointer-events: none; transition: opacity .2s; }
 .modal-overlay.open { opacity: 1; pointer-events: auto; }
 .modal { background: var(--white); border-radius: 16px; width: 700px; max-width: 92vw; box-shadow: 0 24px 60px rgba(0,0,0,.15); transform: translateY(12px); transition: transform .2s; max-height: 90vh; overflow-y: auto; }
@@ -378,7 +424,44 @@ tr:hover td { background: var(--grey1); }
 .modal-body { padding: 20px 28px 28px; }
 .modal-foot { padding: 0 28px 24px; display: flex; gap: 10px; justify-content: flex-end; }
 
-/* ── Chat Styles ── */
+/* Artist Selection Modal Styles */
+.artist-selector-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 300; display: flex; align-items: center; justify-content: center; opacity: 0; pointer-events: none; transition: opacity .2s; }
+.artist-selector-overlay.open { opacity: 1; pointer-events: auto; }
+.artist-selector-modal { background: var(--white); border-radius: 20px; width: 800px; max-width: 95vw; max-height: 85vh; overflow-y: auto; box-shadow: 0 24px 60px rgba(0,0,0,.2); }
+.artist-selector-header { padding: 20px 24px 16px; border-bottom: 1px solid var(--grey2); display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; background: var(--white); z-index: 1; }
+.artist-selector-header h3 { font-family: 'Playfair Display', serif; font-size: 18px; font-weight: 400; color: var(--black); }
+.artist-selector-header .sub { font-size: 11px; color: var(--grey4); margin-top: 2px; }
+.artist-selector-close { background: none; border: none; font-size: 20px; color: var(--grey4); cursor: pointer; }
+.artist-selector-close:hover { color: var(--black); }
+
+/* Filter bar inside modal */
+.artist-filter-bar { padding: 12px 20px; border-bottom: 1px solid var(--grey2); display: flex; gap: 10px; flex-wrap: wrap; align-items: center; background: var(--white); }
+.artist-filter-bar input { flex: 1; padding: 8px 12px; border: 1.5px solid var(--grey2); border-radius: 20px; font-size: 12px; font-family: 'DM Sans', sans-serif; outline: none; min-width: 150px; }
+.artist-filter-bar input:focus { border-color: var(--black); }
+.artist-filter-bar select { padding: 8px 12px; border: 1.5px solid var(--grey2); border-radius: 20px; font-size: 12px; font-family: 'DM Sans', sans-serif; background: var(--white); cursor: pointer; outline: none; min-width: 140px; }
+.artist-filter-bar select:focus { border-color: var(--black); }
+.filter-clear { background: var(--grey1); border: 1px solid var(--grey2); padding: 6px 12px; border-radius: 20px; font-size: 11px; cursor: pointer; color: var(--grey5); }
+.filter-clear:hover { border-color: var(--terracotta); color: var(--terracotta); }
+
+.artist-grid-modal { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; padding: 20px; }
+.artist-card-modal { background: var(--grey1); border-radius: 12px; overflow: hidden; border: 2px solid transparent; transition: all .2s; position: relative; }
+.artist-card-modal:hover { transform: translateY(-2px); border-color: var(--terracotta); box-shadow: 0 4px 12px rgba(0,0,0,.1); }
+.artist-card-modal.selected { border-color: var(--green); background: #E8F5EE; }
+.artist-avatar-modal { width: 100%; height: 120px; object-fit: cover; background: var(--grey2); cursor: pointer; }
+.artist-avatar-placeholder-modal { width: 100%; height: 120px; background: var(--terracotta); display: flex; align-items: center; justify-content: center; font-size: 36px; color: white; font-weight: 500; cursor: pointer; }
+.artist-info-modal { padding: 10px 12px; }
+.artist-name-modal { font-size: 14px; font-weight: 600; color: var(--black); margin-bottom: 2px; }
+.artist-city-modal { font-size: 10px; color: var(--grey4); }
+.artist-style-modal { font-size: 10px; color: var(--grey5); background: var(--white); display: inline-block; padding: 2px 8px; border-radius: 12px; margin-top: 6px; }
+.artist-stats-modal { display: flex; gap: 10px; margin-top: 8px; font-size: 10px; color: var(--grey4); }
+.artist-stats-modal span { display: inline-flex; align-items: center; gap: 4px; }
+.selected-badge-modal { position: absolute; top: 8px; right: 8px; background: var(--green); color: white; padding: 2px 8px; border-radius: 15px; font-size: 9px; font-weight: 600; }
+.assign-button-modal { width: 100%; padding: 8px; background: var(--blue); color: white; border: none; font-size: 11px; font-weight: 500; cursor: pointer; transition: background .15s; margin-top: 8px; border-radius: 6px; font-family: 'DM Sans', sans-serif; }
+.assign-button-modal:hover { background: #0770c2; }
+.view-profile-link { text-decoration: none; display: block; }
+.no-results { text-align: center; padding: 40px; color: var(--grey4); }
+
+/* Chat Styles */
 .chat-section { margin-top: 24px; padding-top: 20px; border-top: 2px solid var(--grey2); }
 .chat-title { font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--grey4); font-weight: 500; margin-bottom: 12px; }
 .chat-messages { background: var(--grey1); border-radius: 12px; height: 300px; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
@@ -424,9 +507,10 @@ tr:hover td { background: var(--grey1); }
 .notes-area:focus { border-color: var(--black); }
 .assign-row { display: flex; align-items: center; gap: 10px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--grey2); }
 .assign-row label { font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--grey4); font-weight: 500; white-space: nowrap; }
-.assign-row select { flex: 1; padding: 8px 14px; border: 1.5px solid var(--grey2); border-radius: 9px; font-size: 12px; font-family: 'DM Sans', sans-serif; color: var(--black); outline: none; background: var(--white); }
-.assign-row select:focus { border-color: var(--black); }
-.assign-row .btn { flex-shrink: 0; }
+.assign-btn { background: var(--blue); color: white; border: none; padding: 8px 16px; border-radius: 8px; font-size: 11px; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.assign-btn:hover { background: #0770c2; }
+.current-artist-badge { display: inline-flex; align-items: center; gap: 6px; background: #E8F5EE; padding: 6px 12px; border-radius: 20px; font-size: 12px; }
+.current-artist-badge img { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; }
 
 .dash-footer { padding: 20px 32px; border-top: 1px solid var(--grey2); font-size: 11px; color: var(--grey4); margin-top: 12px; }
 
@@ -441,12 +525,17 @@ tr:hover td { background: var(--grey1); }
     .filters input { width: 100%; }
     .detail-grid { grid-template-columns: 1fr; }
     .message { max-width: 95%; }
+    .artist-grid-modal { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+    .artist-filter-bar { flex-wrap: wrap; }
 }
 @media (max-width: 600px) {
     .tabs { gap: 2px; }
     .tab { padding: 6px 10px; font-size: 10.5px; }
     .tab-label { display: none; }
     .filters { flex-direction: column; align-items: stretch; }
+    .artist-grid-modal { grid-template-columns: 1fr; }
+    .artist-filter-bar { flex-direction: column; }
+    .artist-filter-bar select, .artist-filter-bar input { width: 100%; }
 }
 </style>
 </head>
@@ -518,7 +607,7 @@ tr:hover td { background: var(--grey1); }
         <select id="sortSelect">
             <option value="newest" <?= ($_GET['sort'] ?? '') === 'newest' || !isset($_GET['sort']) ? 'selected' : '' ?>>Newest first</option>
             <option value="oldest" <?= ($_GET['sort'] ?? '') === 'oldest' ? 'selected' : '' ?>>Oldest first</option>
-            <option value="name" <?= ($_GET['sort'] ?? '') === 'name' ? 'selected' : '' ?>>Buyer name A–Z</option>
+            <option value="name" <?= ($_GET['sort'] ?? '') === 'name' ? 'selected' : '' ?>>Buyer name A-Z</option>
             <option value="deadline" <?= ($_GET['sort'] ?? '') === 'deadline' ? 'selected' : '' ?>>Deadline soonest</option>
         </select>
         <?php if ($statusFilter || $search || $artistFilter): ?>
@@ -585,7 +674,7 @@ tr:hover td { background: var(--grey1); }
                             <?= date('d M Y', strtotime($cr['deadline'])) ?>
                             <?php if ($isOverdue): ?> (overdue)<?php endif; ?>
                         <?php else: ?>
-                            <span style="color:var(--grey4)">—</span>
+                            <span style="color:var(--grey4)">-</span>
                         <?php endif; ?>
                     </td>
                     <td class="td-artist">
@@ -595,7 +684,7 @@ tr:hover td { background: var(--grey1); }
                             <span class="unassigned">Unassigned</span>
                         <?php endif; ?>
                     </td>
-                    <td class="td-notes hide-mobile" title="<?= htmlspecialchars($cr['admin_notes'] ?? '') ?>"><?= $cr['admin_notes'] ? htmlspecialchars($cr['admin_notes']) : '—' ?></td>
+                    <td class="td-notes hide-mobile" title="<?= htmlspecialchars($cr['admin_notes'] ?? '') ?>"><?= $cr['admin_notes'] ? htmlspecialchars($cr['admin_notes']) : '-' ?></td>
                     <td class="td-date"><?= date('d M Y', strtotime($cr['created_at'])) ?></td>
                     <td><span class="pill <?= $cr['status'] ?>"><?= str_replace('_',' ',ucfirst($cr['status'])) ?></span></td>
                     <td>
@@ -650,7 +739,7 @@ tr:hover td { background: var(--grey1); }
 <div class="modal-overlay" id="detailModal">
     <div class="modal">
         <div class="modal-head">
-            <h3>Commission Details &amp; Chat</h3>
+            <h3>Commission Details & Chat</h3>
             <button class="modal-close" onclick="closeDetail()">&times;</button>
         </div>
         <div class="modal-body" id="detailContent">
@@ -659,11 +748,36 @@ tr:hover td { background: var(--grey1); }
     </div>
 </div>
 
+<!-- ══════════════ ARTIST SELECTOR MODAL ══════════════ -->
+<div class="artist-selector-overlay" id="artistSelectorModal">
+    <div class="artist-selector-modal">
+        <div class="artist-selector-header">
+            <div>
+                <h3>Select an Artist</h3>
+                <div class="sub">Choose an artist to assign to this commission</div>
+            </div>
+            <button class="artist-selector-close" onclick="closeArtistSelector()">&times;</button>
+        </div>
+        <div class="artist-filter-bar">
+            <input type="text" id="artistSearchInput" placeholder="Search by name or city..." onkeyup="filterArtists()">
+            <select id="styleFilterSelect" onchange="filterArtists()">
+                <option value="">All Art Styles</option>
+            </select>
+            <button class="filter-clear" onclick="clearFilters()">Clear Filters</button>
+        </div>
+        <div class="artist-grid-modal" id="artistGrid">
+            <div style="text-align:center;padding:40px;">Loading artists...</div>
+        </div>
+    </div>
+</div>
+
 <script>
 const commissionData = <?= json_encode($commissions, JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
-const artistList = <?= json_encode($artistOptions, JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
 let currentCommissionId = null;
 let messageRefreshInterval = null;
+let allArtists = [];
+let allArtStyles = [];
+let selectedArtistIdForAssignment = null;
 
 function getArtworkTypeLabel(type) {
     const labels = {
@@ -678,18 +792,20 @@ function getArtworkTypeLabel(type) {
     return labels[type] || (type ? type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()) : 'Not specified');
 }
 
+function getProfileImageUrl(imagePath) {
+    if (!imagePath) return null;
+    if (imagePath.startsWith('uploads/')) return '../../' + imagePath;
+    if (imagePath.startsWith('http')) return imagePath;
+    return '../../uploads/profiles/' + imagePath;
+}
+
 function openDetail(id) {
     currentCommissionId = id;
     const cr = commissionData.find(i => i.id == id);
     if (!cr) return;
 
-    let artistOptions = '<option value="">— Select artist —</option>\n';
-    artistList.forEach(a => {
-        artistOptions += `<option value="${a.id}" ${cr.artist_id == a.id ? 'selected' : ''}>${esc(a.name)}</option>\n`;
-    });
-
     const artworkTypeLabel = getArtworkTypeLabel(cr.artwork_type);
-    const budgetText = cr.budget_min || cr.budget_max ? 'PKR ' + Number(cr.budget_min || 0).toLocaleString() + (cr.budget_max ? ' – ' + Number(cr.budget_max).toLocaleString() : '+') : 'Not specified';
+    const budgetText = cr.budget_min || cr.budget_max ? 'PKR ' + Number(cr.budget_min || 0).toLocaleString() + (cr.budget_max ? ' - ' + Number(cr.budget_max).toLocaleString() : '+') : 'Not specified';
 
     const content = document.getElementById('detailContent');
     content.innerHTML = `
@@ -725,18 +841,20 @@ function openDetail(id) {
             </form>
         </div>
         <div class="assign-row">
-            <label>Assign Artist</label>
-            <form method="POST" style="display:flex;gap:10px;flex:1;">
-                <input type="hidden" name="action" value="assign_artist">
-                <input type="hidden" name="id" value="${cr.id}">
-                <select name="artist_id">${artistOptions}</select>
-                <button type="submit" class="btn btn-primary btn-sm">Assign</button>
-            </form>
+            <label>Assigned Artist</label>
+            <div style="flex:1;">
+                <button type="button" class="assign-btn" onclick="openArtistSelector(${cr.id})">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                    ${cr.artist_name ? 'Change Artist' : 'Assign Artist'}
+                </button>
+                ${cr.artist_name ? `<button type="button" class="assign-btn" style="background:var(--terracotta);margin-left:8px;" onclick="unassignArtist(${cr.id})">Unassign</button>` : ''}
+                ${cr.artist_name ? `<span class="current-artist-badge" style="margin-left:12px;">Current: ${esc(cr.artist_name)}</span>` : ''}
+            </div>
         </div>
         
-        <!-- ── CHAT SECTION ── -->
+        <!-- CHAT SECTION -->
         <div class="chat-section">
-            <div class="chat-title">💬 Conversation Thread</div>
+            <div class="chat-title">Conversation Thread</div>
             <div class="chat-messages" id="chatMessages-${cr.id}">
                 <div style="text-align:center;padding:20px;color:var(--grey4);">Loading messages...</div>
             </div>
@@ -745,7 +863,7 @@ function openDetail(id) {
                 <button onclick="sendMessage(${cr.id})">Send</button>
             </div>
             <div class="chat-warning">
-                ⚠️ Contact information (phone, email, Instagram, bank details) is automatically blocked.
+                Contact information (phone, email, Instagram, bank details) is automatically blocked.
             </div>
         </div>
     `;
@@ -753,7 +871,6 @@ function openDetail(id) {
     document.getElementById('detailModal').classList.add('open');
     loadMessages(cr.id);
     
-    // Clear existing interval and start new one for auto-refresh
     if (messageRefreshInterval) clearInterval(messageRefreshInterval);
     messageRefreshInterval = setInterval(() => {
         if (currentCommissionId && document.getElementById('detailModal').classList.contains('open')) {
@@ -763,6 +880,164 @@ function openDetail(id) {
             messageRefreshInterval = null;
         }
     }, 5000);
+}
+
+function openArtistSelector(commissionId) {
+    currentCommissionId = commissionId;
+    const cr = commissionData.find(i => i.id == commissionId);
+    selectedArtistIdForAssignment = cr.artist_id || null;
+    
+    if (allArtists.length === 0) {
+        fetch('commissions.php?action=get_artists')
+            .then(res => res.json())
+            .then(data => {
+                allArtists = data.artists;
+                allArtStyles = data.artStyles || [];
+                populateStyleFilter();
+                renderArtistGrid();
+            })
+            .catch(err => console.error('Failed to load artists:', err));
+    } else {
+        renderArtistGrid();
+    }
+    
+    document.getElementById('artistSelectorModal').classList.add('open');
+}
+
+function populateStyleFilter() {
+    const select = document.getElementById('styleFilterSelect');
+    select.innerHTML = '<option value="">All Art Styles</option>';
+    allArtStyles.forEach(style => {
+        select.innerHTML += `<option value="${esc(style)}">${esc(style)}</option>`;
+    });
+}
+
+function renderArtistGrid() {
+    const searchTerm = document.getElementById('artistSearchInput')?.value.toLowerCase() || '';
+    const styleFilter = document.getElementById('styleFilterSelect')?.value || '';
+    
+    let filtered = allArtists.filter(artist => 
+        artist.name.toLowerCase().includes(searchTerm) ||
+        (artist.city && artist.city.toLowerCase().includes(searchTerm))
+    );
+    
+    if (styleFilter) {
+        filtered = filtered.filter(artist => 
+            artist.art_style && artist.art_style.toLowerCase() === styleFilter.toLowerCase()
+        );
+    }
+    
+    const grid = document.getElementById('artistGrid');
+    if (filtered.length === 0) {
+        grid.innerHTML = '<div class="no-results">No artists found matching your criteria.</div>';
+        return;
+    }
+    
+    grid.innerHTML = filtered.map(artist => {
+        const profilePic = getProfileImageUrl(artist.profile_picture);
+        const isSelected = selectedArtistIdForAssignment == artist.id;
+        const artworkCount = artist.artwork_count || 0;
+        
+        return `
+            <div class="artist-card-modal ${isSelected ? 'selected' : ''}">
+                <a href="artist-view.php?id=${artist.id}" target="_blank" class="view-profile-link">
+                    ${profilePic ? 
+                        `<img class="artist-avatar-modal" src="${profilePic}" alt="${esc(artist.name)}">` : 
+                        `<div class="artist-avatar-placeholder-modal">${artist.name.charAt(0).toUpperCase()}</div>`
+                    }
+                </a>
+                <div class="artist-info-modal">
+                    <a href="artist-view.php?id=${artist.id}" target="_blank" style="text-decoration:none;color:inherit;">
+                        <div class="artist-name-modal">${esc(artist.name)}</div>
+                    </a>
+                    <div class="artist-city-modal">${artist.city ? esc(artist.city) : 'Location not set'}</div>
+                    ${artist.art_style ? `<div class="artist-style-modal">${esc(artist.art_style)}</div>` : ''}
+                    <div class="artist-stats-modal">
+                        <span>Artworks: ${artworkCount}</span>
+                        <span>${artist.accepts_commissions ? 'Accepts commissions' : 'Commissions off'}</span>
+                    </div>
+                    <button class="assign-button-modal" onclick="selectArtist(${artist.id})">Assign Artist</button>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function filterArtists() {
+    renderArtistGrid();
+}
+
+function clearFilters() {
+    document.getElementById('artistSearchInput').value = '';
+    document.getElementById('styleFilterSelect').value = '';
+    renderArtistGrid();
+}
+
+function selectArtist(artistId) {
+    selectedArtistIdForAssignment = artistId;
+    
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.style.display = 'none';
+    
+    const actionInput = document.createElement('input');
+    actionInput.type = 'hidden';
+    actionInput.name = 'action';
+    actionInput.value = 'assign_artist';
+    
+    const idInput = document.createElement('input');
+    idInput.type = 'hidden';
+    idInput.name = 'id';
+    idInput.value = currentCommissionId;
+    
+    const artistIdInput = document.createElement('input');
+    artistIdInput.type = 'hidden';
+    artistIdInput.name = 'artist_id';
+    artistIdInput.value = artistId;
+    
+    form.appendChild(actionInput);
+    form.appendChild(idInput);
+    form.appendChild(artistIdInput);
+    document.body.appendChild(form);
+    form.submit();
+    
+    closeArtistSelector();
+}
+
+function unassignArtist(commissionId) {
+    if (confirm('Remove artist from this commission?')) {
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.style.display = 'none';
+        
+        const actionInput = document.createElement('input');
+        actionInput.type = 'hidden';
+        actionInput.name = 'action';
+        actionInput.value = 'assign_artist';
+        
+        const idInput = document.createElement('input');
+        idInput.type = 'hidden';
+        idInput.name = 'id';
+        idInput.value = commissionId;
+        
+        const artistIdInput = document.createElement('input');
+        artistIdInput.type = 'hidden';
+        artistIdInput.name = 'artist_id';
+        artistIdInput.value = '';
+        
+        form.appendChild(actionInput);
+        form.appendChild(idInput);
+        form.appendChild(artistIdInput);
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+
+function closeArtistSelector() {
+    document.getElementById('artistSelectorModal').classList.remove('open');
+    document.getElementById('artistSearchInput').value = '';
+    document.getElementById('styleFilterSelect').value = '';
+    selectedArtistIdForAssignment = null;
 }
 
 function loadMessages(commissionId) {
@@ -845,7 +1120,8 @@ function closeDetail() {
 }
 
 document.getElementById('detailModal').addEventListener('click', function(e) { if (e.target === this) closeDetail(); });
-document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeDetail(); });
+document.getElementById('artistSelectorModal').addEventListener('click', function(e) { if (e.target === this) closeArtistSelector(); });
+document.addEventListener('keydown', function(e) { if (e.key === 'Escape') { closeDetail(); closeArtistSelector(); } });
 
 function esc(str) { if (!str) return ''; const d = document.createElement('div'); d.textContent = str; return d.innerHTML; }
 function ucf(str) { return str ? str.charAt(0).toUpperCase() + str.slice(1) : ''; }
