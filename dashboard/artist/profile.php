@@ -1,4 +1,4 @@
-  <?php
+<?php
 session_start();
 require_once __DIR__ . '/../../config/db.php';
 
@@ -8,18 +8,18 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'artist') {
     exit;
 }
 
- $artistId   = (int) $_SESSION['user_id'];
- $artistName = $_SESSION['name'] ?? 'Artist';
- $successMsg = '';
- $errorMsg   = '';
+$artistId   = (int) $_SESSION['user_id'];
+$artistName = $_SESSION['name'] ?? 'Artist';
+$successMsg = '';
+$errorMsg   = '';
 
 // ── Fetch current data ──────────────────────────────────
- $user = $conn->query("SELECT name, email, phone, profile_picture FROM users WHERE id = $artistId")->fetch_assoc();
+$user = $conn->query("SELECT name, email, phone, profile_picture FROM users WHERE id = $artistId")->fetch_assoc();
 
 // Ensure artist_profiles row exists
- $conn->query("INSERT IGNORE INTO artist_profiles (user_id) VALUES ($artistId)");
+$conn->query("INSERT IGNORE INTO artist_profiles (user_id) VALUES ($artistId)");
 
- $profile = $conn->query("
+$profile = $conn->query("
     SELECT bio, city, instagram_url, contact_email, contact_phone, art_style, accepts_commissions
     FROM artist_profiles WHERE user_id = $artistId
 ")->fetch_assoc();
@@ -116,11 +116,11 @@ elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // ── Avatar URL for display ──────────────────────────────
- $avatarUrl = $user['profile_picture'] ? '../../' . $user['profile_picture'] : null;
+$avatarUrl = $user['profile_picture'] ? '../../' . $user['profile_picture'] : null;
 
 // ── Fetch categories for reference (not used here but keeps sidebar badge queries consistent) ──
- $pendingCount = (int) ($conn->query("SELECT COUNT(*) FROM artworks WHERE artist_id = $artistId AND status = 'pending'")->fetch_row()[0] ?? 0);
- $newCommCount = (int) ($conn->query("SELECT COUNT(*) FROM commission_requests WHERE artist_id = $artistId AND status = 'new'")->fetch_row()[0] ?? 0);
+$pendingCount = (int) ($conn->query("SELECT COUNT(*) FROM artworks WHERE artist_id = $artistId AND status = 'pending'")->fetch_row()[0] ?? 0);
+$newCommCount = (int) ($conn->query("SELECT COUNT(*) FROM commission_requests WHERE artist_id = $artistId AND status = 'new'")->fetch_row()[0] ?? 0);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -132,17 +132,18 @@ elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <style>
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 :root {
-    --black: #0a0a0a;
-    --grey1: #f7f7f7;
-    --grey2: #efefef;
-    --grey3: #d8d8d8;
-    --grey4: #999;
-    --grey5: #555;
-    --white: #ffffff;
-    --red: #d63031;
-    --green: #00b894;
-    --amber: #e17055;
-    --sidebar: 220px;
+    --black: #1E1B18;
+    --grey1: #F7F1E8;
+    --grey2: #E6DDD0;
+    --grey3: #D6CDBF;
+    --grey4: #8A7D72;
+    --grey5: #3D332A;
+    --white: #FFFDF8;
+    --red: #C96B4B;
+    --green: #6BA58D;
+    --amber: #E48A4A;
+    --terracotta: #C96B4B;
+    --sidebar: 240px;
     --top: 60px;
 }
 html, body { height: 100%; background: var(--grey1); color: var(--black); font-family: 'DM Sans', sans-serif; }
@@ -151,13 +152,14 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
 .sidebar {
     position: fixed; top: 0; left: 0;
     width: var(--sidebar); height: 100vh;
-    background: var(--white); border-right: 1px solid var(--grey2);
+    background: #EFE3D2;
+    border-right: 1px solid var(--grey2);
     display: flex; flex-direction: column; z-index: 100; overflow-y: auto;
 }
 .sidebar-brand { padding: 22px 24px 18px; border-bottom: 1px solid var(--grey2); }
 .sidebar-brand .logo-tag { font-size: 10px; letter-spacing: 3px; text-transform: uppercase; color: var(--grey4); }
 .sidebar-brand .logo-name { font-family: 'Playfair Display', serif; font-size: 20px; color: var(--black); font-weight: 400; margin-top: 2px; }
-.sidebar-brand .logo-badge { display: inline-block; margin-top: 6px; background: var(--black); color: var(--white); font-size: 8px; letter-spacing: 2px; text-transform: uppercase; padding: 2px 7px; border-radius: 20px; }
+.sidebar-brand .logo-badge { display: inline-block; margin-top: 6px; background: var(--terracotta); color: var(--white); font-size: 8px; letter-spacing: 2px; text-transform: uppercase; padding: 2px 7px; border-radius: 20px; }
 .sidebar-section { padding: 18px 16px 6px; font-size: 9px; letter-spacing: 2.5px; text-transform: uppercase; color: var(--grey4); font-weight: 500; }
 .nav-item {
     display: flex; align-items: center; gap: 10px;
@@ -165,11 +167,11 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
     text-decoration: none; font-weight: 400;
     border-left: 2px solid transparent; transition: all .15s;
 }
-.nav-item:hover { color: var(--black); background: var(--grey1); border-left-color: var(--grey3); }
-.nav-item.active { color: var(--black); background: var(--grey1); border-left-color: var(--black); font-weight: 500; }
+.nav-item:hover { color: var(--black); background: rgba(255,255,255,0.3); border-left-color: var(--grey3); }
+.nav-item.active { color: var(--black); background: rgba(255,255,255,0.4); border-left-color: var(--terracotta); font-weight: 500; }
 .nav-item .icon { width: 16px; height: 16px; flex-shrink: 0; opacity: .55; }
 .nav-item.active .icon, .nav-item:hover .icon { opacity: 1; }
-.badge { margin-left: auto; background: var(--red); color: #fff; font-size: 9px; font-weight: 600; padding: 1px 6px; border-radius: 20px; min-width: 18px; text-align: center; }
+.badge { margin-left: auto; background: var(--terracotta); color: #fff; font-size: 9px; font-weight: 600; padding: 1px 6px; border-radius: 20px; min-width: 18px; text-align: center; }
 .badge.amber { background: var(--amber); }
 .sidebar-bottom { margin-top: auto; padding: 16px; border-top: 1px solid var(--grey2); }
 .signout-btn {
@@ -177,7 +179,7 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
     font-size: 12px; color: var(--grey5); text-decoration: none; border-radius: 8px;
     transition: all .15s; width: 100%; background: none; border: none; cursor: pointer; font-family: 'DM Sans', sans-serif;
 }
-.signout-btn:hover { background: #fff0f0; color: var(--red); }
+.signout-btn:hover { background: #FFF0EC; color: var(--terracotta); }
 
 /* ── Topbar ──────────────────────────────────────────── */
 .topbar {
@@ -186,7 +188,7 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
     display: flex; align-items: center; justify-content: space-between;
     padding: 0 32px; z-index: 99;
 }
-.topbar-left h1 { font-family: 'Playfair Display', serif; font-size: 20px; font-weight: 400; }
+.topbar-left h1 { font-family: 'Playfair Display', serif; font-size: 20px; font-weight: 400; color: var(--black); }
 .topbar-right { display: flex; align-items: center; gap: 20px; }
 .artist-chip {
     display: flex; align-items: center; gap: 8px;
@@ -194,12 +196,13 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
     padding: 5px 12px 5px 5px; border-radius: 30px;
 }
 .artist-chip .avatar {
-    width: 26px; height: 26px; border-radius: 50%; background: var(--black);
+    width: 26px; height: 26px; border-radius: 50%; background: var(--terracotta);
     display: flex; align-items: center; justify-content: center;
     font-size: 11px; color: #fff; font-weight: 600; overflow: hidden;
 }
 .artist-chip .avatar img { width: 100%; height: 100%; object-fit: cover; }
-.artist-chip .name { font-size: 12px; font-weight: 500; }
+.artist-chip .name { font-size: 12px; font-weight: 500; color: var(--black); }
+.artist-chip .arrow { font-size: 12px; color: var(--grey4); margin-left: 4px; }
 
 /* ── Main ────────────────────────────────────────────── */
 .main { margin-left: var(--sidebar); padding-top: var(--top); min-height: 100vh; }
@@ -208,8 +211,8 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
 
 /* ── Messages ────────────────────────────────────────── */
 .msg { padding: 12px 18px; border-radius: 10px; font-size: 12.5px; margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
-.msg.success { background: #e6fff3; color: #00875a; border: 1px solid #b2f0d5; }
-.msg.error { background: #fff0f0; color: #c0392b; border: 1px solid #f5c6c6; }
+.msg.success { background: #E8F5EE; color: #6BA58D; border: 1px solid #C8E0D5; }
+.msg.error { background: #FDEAEA; color: #D46A6A; border: 1px solid #F5C6C6; }
 
 /* ── Profile Card ────────────────────────────────────── */
 .profile-card { background: var(--white); border: 1px solid var(--grey2); border-radius: 16px; overflow: hidden; margin-bottom: 24px; }
@@ -217,7 +220,7 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
     padding: 24px 28px 20px; border-bottom: 1px solid var(--grey2);
     display: flex; align-items: center; justify-content: space-between;
 }
-.profile-card-header h2 { font-family: 'Playfair Display', serif; font-size: 18px; font-weight: 400; }
+.profile-card-header h2 { font-family: 'Playfair Display', serif; font-size: 18px; font-weight: 400; color: var(--black); }
 .profile-card-header .hint { font-size: 11px; color: var(--grey4); }
 .profile-card-body { padding: 28px; }
 
@@ -239,11 +242,11 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
 }
 .avatar-preview:hover .overlay { opacity: 1; }
 .avatar-info { flex: 1; }
-.avatar-info .avatar-label { font-size: 13px; font-weight: 500; margin-bottom: 4px; }
+.avatar-info .avatar-label { font-size: 13px; font-weight: 500; margin-bottom: 4px; color: var(--black); }
 .avatar-info .avatar-hint { font-size: 11px; color: var(--grey4); line-height: 1.5; }
-.avatar-info .avatar-hint span { color: var(--red); font-weight: 500; }
+.avatar-info .avatar-hint span { color: var(--terracotta); font-weight: 500; }
 .avatar-remove {
-    margin-top: 8px; font-size: 11px; color: var(--red); background: none;
+    margin-top: 8px; font-size: 11px; color: var(--terracotta); background: none;
     border: none; cursor: pointer; font-family: 'DM Sans', sans-serif;
     text-decoration: underline; display: none;
 }
@@ -276,7 +279,7 @@ textarea.field-input { resize: vertical; min-height: 110px; line-height: 1.6; }
     display: flex; align-items: center; justify-content: space-between;
     padding: 22px 28px;
 }
-.toggle-title { font-size: 13px; font-weight: 500; margin-bottom: 3px; }
+.toggle-title { font-size: 13px; font-weight: 500; margin-bottom: 3px; color: var(--black); }
 .toggle-desc { font-size: 11px; color: var(--grey4); }
 .toggle-switch { position: relative; width: 44px; height: 24px; flex-shrink: 0; }
 .toggle-switch input { opacity: 0; width: 0; height: 0; }
@@ -299,7 +302,7 @@ textarea.field-input { resize: vertical; min-height: 110px; line-height: 1.6; }
     text-decoration: none; display: inline-flex; align-items: center; gap: 6px; transition: all .15s;
 }
 .btn-primary { background: var(--black); color: #fff; }
-.btn-primary:hover { background: #222; }
+.btn-primary:hover { background: #333; }
 .btn-ghost { background: transparent; color: var(--grey5); border: 1px solid var(--grey3); }
 .btn-ghost:hover { border-color: var(--black); color: var(--black); }
 
@@ -381,6 +384,7 @@ textarea.field-input { resize: vertical; min-height: 110px; line-height: 1.6; }
                 <?php endif; ?>
             </div>
             <span class="name"><?= htmlspecialchars($artistName) ?></span>
+            <span class="arrow">∨</span>
         </div>
     </div>
 </header>

@@ -78,19 +78,20 @@ $today = date('l, d F Y');
 /* ── Reset & Base ─────────────────────────────────────── */
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 :root {
-    --black:   #0a0a0a;
-    --grey1:   #f7f7f7;
-    --grey2:   #efefef;
-    --grey3:   #d8d8d8;
-    --grey4:   #999;
-    --grey5:   #555;
-    --white:   #ffffff;
-    --accent:  #0a0a0a;
-    --red:     #d63031;
-    --green:   #00b894;
-    --amber:   #e17055;
+    --black:   #1E1B18;
+    --grey1:   #F7F1E8;
+    --grey2:   #E6DDD0;
+    --grey3:   #D6CDBF;
+    --grey4:   #8A7D72;
+    --grey5:   #3D332A;
+    --white:   #FFFDF8;
+    --accent:  #1E1B18;
+    --red:     #C96B4B;
+    --green:   #6BA58D;
+    --amber:   #E48A4A;
     --blue:    #0984e3;
-    --sidebar: 220px;
+    --terracotta: #C96B4B;
+    --sidebar: 240px;
     --top:     60px;
 }
 html, body { height: 100%; background: var(--grey1); color: var(--black); font-family: 'DM Sans', sans-serif; }
@@ -99,7 +100,7 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
 .sidebar {
     position: fixed; top: 0; left: 0;
     width: var(--sidebar); height: 100vh;
-    background: var(--white);
+    background: #EFE3D2;
     border-right: 1px solid var(--grey2);
     display: flex; flex-direction: column;
     z-index: 100;
@@ -116,7 +117,7 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
     font-family: 'Playfair Display', serif; font-size: 20px; color: var(--black); font-weight: 400; margin-top: 2px;
 }
 .sidebar-brand .logo-badge {
-    display: inline-block; margin-top: 6px; background: var(--black); color: var(--white);
+    display: inline-block; margin-top: 6px; background: var(--terracotta); color: var(--white);
     font-size: 8px; letter-spacing: 2px; text-transform: uppercase; padding: 2px 7px; border-radius: 20px;
 }
 .sidebar-section {
@@ -130,12 +131,12 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
     border-left: 2px solid transparent;
     transition: all .15s; position: relative;
 }
-.nav-item:hover { color: var(--black); background: var(--grey1); border-left-color: var(--grey3); }
-.nav-item.active { color: var(--black); background: var(--grey1); border-left-color: var(--black); font-weight: 500; }
+.nav-item:hover { color: var(--black); background: rgba(255,255,255,0.3); border-left-color: var(--grey3); }
+.nav-item.active { color: var(--black); background: rgba(255,255,255,0.4); border-left-color: var(--terracotta); font-weight: 500; }
 .nav-item .icon { width: 16px; height: 16px; flex-shrink: 0; opacity: .55; }
 .nav-item.active .icon, .nav-item:hover .icon { opacity: 1; }
 .badge {
-    margin-left: auto; background: var(--red); color: #fff;
+    margin-left: auto; background: var(--terracotta); color: #fff;
     font-size: 9px; font-weight: 600; padding: 1px 6px; border-radius: 20px; min-width: 18px; text-align: center;
 }
 .badge.amber { background: var(--amber); }
@@ -147,7 +148,7 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
     font-size: 12px; color: var(--grey5); text-decoration: none; border-radius: 8px;
     transition: all .15s; width: 100%; background: none; border: none; cursor: pointer; font-family: 'DM Sans', sans-serif;
 }
-.signout-btn:hover { background: #fff0f0; color: var(--red); }
+.signout-btn:hover { background: #FFF0EC; color: var(--terracotta); }
 
 /* ── Topbar ──────────────────────────────────────────── */
 .topbar {
@@ -165,11 +166,12 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
     padding: 5px 12px 5px 5px; border-radius: 30px;
 }
 .artist-chip .avatar {
-    width: 26px; height: 26px; border-radius: 50%; background: var(--black);
+    width: 26px; height: 26px; border-radius: 50%; background: var(--terracotta);
     display: flex; align-items: center; justify-content: center;
     font-size: 11px; color: #fff; font-weight: 600;
 }
 .artist-chip .name { font-size: 12px; color: var(--black); font-weight: 500; }
+.artist-chip .arrow { font-size: 12px; color: var(--grey4); margin-left: 4px; }
 
 /* ── Main ────────────────────────────────────────────── */
 .main { margin-left: var(--sidebar); padding-top: var(--top); min-height: 100vh; }
@@ -183,21 +185,23 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
 
 /* ── Alert strip ─────────────────────────────────────── */
 .alert-strip {
-    background: var(--black); color: #fff;
+    background: #FCEEE2; color: var(--black);
+    border: 1px solid var(--grey2);
     border-radius: 12px; padding: 14px 20px;
     display: flex; align-items: center; justify-content: space-between;
     margin-bottom: 28px; gap: 12px;
 }
-.alert-strip .alert-text { font-size: 12.5px; line-height: 1.5; }
-.alert-strip .alert-text strong { font-weight: 600; }
+.alert-strip .alert-text { font-size: 12.5px; line-height: 1.5; color: var(--grey5); }
+.alert-strip .alert-text strong { font-weight: 600; color: var(--black); }
 .alert-strip .alert-actions { display: flex; gap: 8px; flex-shrink: 0; }
 .alert-btn {
     padding: 7px 14px; border-radius: 8px; font-size: 11px; font-weight: 500;
     text-decoration: none; font-family: 'DM Sans', sans-serif; cursor: pointer; border: none;
     transition: opacity .15s; white-space: nowrap;
 }
-.alert-btn.primary { background: #fff; color: var(--black); }
-.alert-btn.ghost { background: rgba(255,255,255,.12); color: #fff; }
+.alert-btn.primary { background: var(--terracotta); color: #fff; }
+.alert-btn.ghost { background: transparent; color: var(--grey5); border: 1px solid var(--grey3); }
+.alert-btn.ghost:hover { border-color: var(--terracotta); color: var(--terracotta); }
 .alert-btn:hover { opacity: .85; }
 
 /* ── Stat cards ──────────────────────────────────────── */
@@ -215,10 +219,40 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
     position: absolute; right: 18px; top: 18px; width: 32px; height: 32px;
     border-radius: 8px; display: flex; align-items: center; justify-content: center;
 }
-.stat-card.artworks .corner-icon  { background: #f0f4ff; }
-.stat-card.sold .corner-icon      { background: #f0e8ff; }
-.stat-card.pending .corner-icon   { background: #fff8e6; }
-.stat-card.commissions .corner-icon { background: #f0fff6; }
+.stat-card .corner-icon::before {
+    content: '';
+    position: absolute;
+    inset: -8px;
+    border-radius: 50%;
+    background: radial-gradient(circle, var(--glow-color) 0%, transparent 70%);
+    opacity: 0.35;
+    z-index: -1;
+    filter: blur(6px);
+}
+.stat-card .corner-icon svg {
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.08));
+    z-index: 2;
+}
+.stat-card.artworks .corner-icon {
+    background: #EEF2F8;
+    --glow-color: rgba(59, 125, 216, 0.2);
+}
+.stat-card.artworks .corner-icon svg { stroke: #3B7DD8; }
+.stat-card.pending .corner-icon {
+    background: #FFF4E6;
+    --glow-color: rgba(228, 138, 74, 0.22);
+}
+.stat-card.pending .corner-icon svg { stroke: #E48A4A; }
+.stat-card.sold .corner-icon {
+    background: #EEE8FF;
+    --glow-color: rgba(107, 91, 230, 0.2);
+}
+.stat-card.sold .corner-icon svg { stroke: #6B5CE6; }
+.stat-card.commissions .corner-icon {
+    background: #EEF7F3;
+    --glow-color: rgba(107, 165, 141, 0.22);
+}
+.stat-card.commissions .corner-icon svg { stroke: #6BA58D; }
 
 /* ── Quick actions ───────────────────────────────────── */
 .quick-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 28px; }
@@ -227,11 +261,14 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
     padding: 18px 16px; text-decoration: none; display: flex; flex-direction: column; align-items: flex-start;
     gap: 10px; transition: all .2s;
 }
-.quick-card:hover { border-color: var(--black); box-shadow: 0 4px 16px rgba(0,0,0,.07); }
+.quick-card:hover { border-color: var(--terracotta); box-shadow: 0 4px 16px rgba(0,0,0,.07); }
 .quick-card .q-icon {
-    width: 36px; height: 36px; border-radius: 10px; background: var(--grey1);
-    display: flex; align-items: center; justify-content: center; border: 1px solid var(--grey2);
+    width: 36px; height: 36px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
 }
+.quick-card.upload-artwork .q-icon { background: #EEF2F8; }
+.quick-card.my-artworks .q-icon { background: #EEF5F0; }
+.quick-card.commissions .q-icon { background: #EEF7F3; }
 .quick-card .q-label { font-size: 12px; font-weight: 500; color: var(--black); line-height: 1.3; }
 .quick-card .q-desc { font-size: 10.5px; color: var(--grey4); }
 .pending-badge {
@@ -264,17 +301,17 @@ tr:hover td { background: var(--grey1); color: var(--black); }
     display: inline-block; font-size: 9px; letter-spacing: .5px; text-transform: uppercase;
     font-weight: 600; padding: 3px 9px; border-radius: 20px;
 }
-.pill.pending     { background: #fff8e6; color: #b07800; }
-.pill.approved    { background: #e6fff3; color: #00875a; }
-.pill.rejected    { background: #fff0f0; color: #c0392b; }
-.pill.sold        { background: #eef2ff; color: #3730a3; }
-.pill.hidden      { background: #f4f4f4; color: #888; }
-.pill.new         { background: #fff0e8; color: #c0392b; font-weight: 700; }
-.pill.contacted   { background: #e8f4ff; color: #1565c0; }
-.pill.assigned    { background: #f0e8ff; color: #5e35b1; }
-.pill.in_progress { background: #fff8e6; color: #b07800; }
-.pill.completed   { background: #e6fff3; color: #00875a; }
-.pill.cancelled   { background: #f4f4f4; color: #888; }
+.pill.pending     { background: #FFF4E6; color: #E48A4A; }
+.pill.approved    { background: #E8F5EE; color: #6BA58D; }
+.pill.rejected    { background: #FDEAEA; color: #D46A6A; }
+.pill.sold        { background: #EEE8FF; color: #6B5CE6; }
+.pill.hidden      { background: #F4F4F4; color: #888; }
+.pill.new         { background: #FFF0EC; color: #C96B4B; font-weight: 700; }
+.pill.contacted   { background: #E8F4FF; color: #1565c0; }
+.pill.assigned    { background: #FFF4E6; color: #E48A4A; }
+.pill.in_progress { background: #EEF2F8; color: #3B7DD8; }
+.pill.completed   { background: #EEE8FF; color: #6B5CE6; }
+.pill.cancelled   { background: #F4F4F4; color: #888; }
 
 /* ── Empty state ─────────────────────────────────────── */
 .empty { text-align: center; padding: 32px; color: var(--grey4); font-size: 12px; }
@@ -362,6 +399,7 @@ tr:hover td { background: var(--grey1); color: var(--black); }
         <div class="artist-chip">
             <div class="avatar"><?= strtoupper(substr($artistName, 0, 1)) ?></div>
             <span class="name"><?= htmlspecialchars($artistName) ?></span>
+            <span class="arrow">∨</span>
         </div>
     </div>
 </header>
@@ -384,12 +422,12 @@ tr:hover td { background: var(--grey1); color: var(--black); }
 
     <!-- Rejected artworks alert -->
     <?php if ($stats['rejected_artworks'] > 0): ?>
-    <div class="alert-strip" style="background: var(--red)">
-        <div class="alert-text">
+    <div class="alert-strip" style="background: #FDEAEA; border-color: #F5C6C6;">
+        <div class="alert-text" style="color: #D46A6A;">
             You have <strong><?= $stats['rejected_artworks'] ?> artwork<?= $stats['rejected_artworks'] > 1 ? 's' : '' ?></strong> that were rejected. Review them and resubmit if needed.
         </div>
         <div class="alert-actions">
-            <a href="my-artworks.php?status=rejected" class="alert-btn primary">View Rejected</a>
+            <a href="my-artworks.php?status=rejected" class="alert-btn primary" style="background: #D46A6A;">View Rejected</a>
         </div>
     </div>
     <?php endif; ?>
@@ -401,18 +439,18 @@ tr:hover td { background: var(--grey1); color: var(--black); }
     <div class="stats-grid">
         <div class="stat-card artworks">
             <div class="corner-icon">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3b7dd8" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9l4-4 4 4 4-4 4 4"/><circle cx="8.5" cy="14.5" r="1.5"/></svg>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9l4-4 4 4 4-4 4 4"/><circle cx="8.5" cy="14.5" r="1.5"/></svg>
             </div>
             <div class="label">Total Artworks</div>
             <div class="value"><?= $stats['total_artworks'] ?></div>
             <div class="sub">
                 <span style="color:var(--green)"><?= $stats['approved_artworks'] ?></span> approved
-                &middot; <span style="color:#5e35b1"><?= $stats['sold_artworks'] ?></span> sold
+                &middot; <span style="color:#6B5CE6"><?= $stats['sold_artworks'] ?></span> sold
             </div>
         </div>
         <div class="stat-card pending">
             <div class="corner-icon">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#b07800" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
             </div>
             <div class="label">Pending Review</div>
             <div class="value"><?= $stats['pending_artworks'] ?></div>
@@ -420,7 +458,7 @@ tr:hover td { background: var(--grey1); color: var(--black); }
         </div>
         <div class="stat-card sold">
             <div class="corner-icon">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5e35b1" stroke-width="1.8"><path d="M20 7H4a2 2 0 00-2 2v6a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 7H4a2 2 0 00-2 2v6a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>
             </div>
             <div class="label">Sold Artworks</div>
             <div class="value"><?= $stats['sold_artworks'] ?></div>
@@ -428,12 +466,12 @@ tr:hover td { background: var(--grey1); color: var(--black); }
         </div>
         <div class="stat-card commissions">
             <div class="corner-icon">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00b894" stroke-width="1.8"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
             </div>
             <div class="label">Commission Requests</div>
             <div class="value"><?= $stats['total_commissions'] ?></div>
             <div class="sub">
-                <span style="color:var(--red)"><?= $stats['new_commissions'] ?></span> new
+                <span style="color:var(--terracotta)"><?= $stats['new_commissions'] ?></span> new
             </div>
         </div>
     </div>
@@ -443,7 +481,7 @@ tr:hover td { background: var(--grey1); color: var(--black); }
         <span class="section-title">Quick Actions</span>
     </div>
     <div class="quick-grid">
-        <a href="upload-artwork.php" class="quick-card">
+        <a href="upload-artwork.php" class="quick-card upload-artwork">
             <div class="q-icon">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="1.8"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
             </div>
@@ -452,7 +490,7 @@ tr:hover td { background: var(--grey1); color: var(--black); }
                 <div class="q-desc">Add a new piece to your portfolio</div>
             </div>
         </a>
-        <a href="my-artworks.php" class="quick-card">
+        <a href="my-artworks.php" class="quick-card my-artworks">
             <div class="q-icon">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9l4-4 4 4 4-4 4 4"/><circle cx="8.5" cy="14.5" r="1.5"/></svg>
             </div>
@@ -461,7 +499,7 @@ tr:hover td { background: var(--grey1); color: var(--black); }
                 <div class="q-desc">View and manage your submissions</div>
             </div>
         </a>
-        <a href="commissions.php" class="quick-card">
+        <a href="commissions.php" class="quick-card commissions">
             <div class="q-icon">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="1.8"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
             </div>
@@ -543,7 +581,7 @@ tr:hover td { background: var(--grey1); color: var(--black); }
                     </tr>
                 <?php endforeach; ?>
                 </tbody>
-            </table>
+            </tr>
             <?php endif; ?>
         </div>
 

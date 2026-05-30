@@ -8,14 +8,14 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'artist') {
     exit;
 }
 
- $artistId   = (int) $_SESSION['user_id'];
- $artistName = $_SESSION['name'] ?? 'Artist';
- $successMsg = '';
- $errorMsg   = '';
+$artistId   = (int) $_SESSION['user_id'];
+$artistName = $_SESSION['name'] ?? 'Artist';
+$successMsg = '';
+$errorMsg   = '';
 
 // ── Fetch Artwork & Verify Ownership ─────────────────
- $artworkId = (int) ($_GET['id'] ?? 0);
- $artwork = $conn->query("
+$artworkId = (int) ($_GET['id'] ?? 0);
+$artwork = $conn->query("
     SELECT a.*, c.id as cat_id
     FROM artworks a
     JOIN categories c ON a.category_id = c.id
@@ -28,10 +28,10 @@ if (!$artwork) {
 }
 
 // ── Fetch Categories ─────────────────────────────────
- $categories = $conn->query("SELECT id, name FROM categories ORDER BY name ASC")->fetch_all(MYSQLI_ASSOC);
+$categories = $conn->query("SELECT id, name FROM categories ORDER BY name ASC")->fetch_all(MYSQLI_ASSOC);
 
 // ── Fetch Current Images ─────────────────────────────
- $images = $conn->query("
+$images = $conn->query("
     SELECT id, image_path, is_cover, sort_order
     FROM artwork_images 
     WHERE artwork_id = $artworkId 
@@ -90,12 +90,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // If it was rejected, maybe we should reset it to pending? Yes, allow re-submission.
         $status = ($artwork['status'] === 'rejected') ? 'pending' : $artwork['status'];
 
+        // FIXED: bind_param type string now correctly has 12 characters (i s s s s d s s i i s i)
+        // Variables: $categoryId(i), $title(s), $description(s), $medium(s), $size(s), 
+        //            $price(d), $city(s), $delivery_available(i), $similar_work_available(i), 
+        //            $status(s), $artworkId(i), $artistId(i)
         $stmt = $conn->prepare("
             UPDATE artworks 
             SET category_id = ?, title = ?, description = ?, medium = ?, size = ?, price = ?, city = ?, delivery_available = ?, similar_work_available = ?, status = ?, rejection_reason = NULL
             WHERE id = ? AND artist_id = ?
         ");
-        $stmt->bind_param('issssdsiiii', $categoryId, $title, $description, $medium, $size, $price, $city, $delivery_available, $similar_work_available, $status, $artworkId, $artistId);
+        $stmt->bind_param('issssdsiiisi', $categoryId, $title, $description, $medium, $size, $price, $city, $delivery_available, $similar_work_available, $status, $artworkId, $artistId);
         $stmt->execute();
 
         // 2. Handle New Image Uploads
@@ -149,32 +153,44 @@ if (isset($_GET['msg'])) {
 <style>
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 :root {
-    --black: #0a0a0a; --grey1: #f7f7f7; --grey2: #efefef; --grey3: #d8d8d8; --grey4: #999; --grey5: #555; --white: #ffffff; --red: #d63031; --green: #00b894; --sidebar: 220px; --top: 60px;
+    --black: #1E1B18;
+    --grey1: #F7F1E8;
+    --grey2: #E6DDD0;
+    --grey3: #D6CDBF;
+    --grey4: #8A7D72;
+    --grey5: #3D332A;
+    --white: #FFFDF8;
+    --red: #C96B4B;
+    --green: #6BA58D;
+    --terracotta: #C96B4B;
+    --sidebar: 240px;
+    --top: 60px;
 }
 html, body { height: 100%; background: var(--grey1); color: var(--black); font-family: 'DM Sans', sans-serif; }
 
 /* ── Sidebar & Topbar ───────────────────────────────── */
-.sidebar { position: fixed; top: 0; left: 0; width: var(--sidebar); height: 100vh; background: var(--white); border-right: 1px solid var(--grey2); display: flex; flex-direction: column; z-index: 100; overflow-y: auto; }
+.sidebar { position: fixed; top: 0; left: 0; width: var(--sidebar); height: 100vh; background: #EFE3D2; border-right: 1px solid var(--grey2); display: flex; flex-direction: column; z-index: 100; overflow-y: auto; }
 .sidebar-brand { padding: 22px 24px 18px; border-bottom: 1px solid var(--grey2); }
 .sidebar-brand .logo-tag { font-size: 10px; letter-spacing: 3px; text-transform: uppercase; color: var(--grey4); }
 .sidebar-brand .logo-name { font-family: 'Playfair Display', serif; font-size: 20px; color: var(--black); font-weight: 400; margin-top: 2px; }
-.sidebar-brand .logo-badge { display: inline-block; margin-top: 6px; background: var(--black); color: var(--white); font-size: 8px; letter-spacing: 2px; text-transform: uppercase; padding: 2px 7px; border-radius: 20px; }
+.sidebar-brand .logo-badge { display: inline-block; margin-top: 6px; background: var(--terracotta); color: var(--white); font-size: 8px; letter-spacing: 2px; text-transform: uppercase; padding: 2px 7px; border-radius: 20px; }
 .sidebar-section { padding: 18px 16px 6px; font-size: 9px; letter-spacing: 2.5px; text-transform: uppercase; color: var(--grey4); font-weight: 500; }
 .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 20px; font-size: 12.5px; color: var(--grey5); text-decoration: none; border-left: 2px solid transparent; transition: all .15s; }
-.nav-item:hover { color: var(--black); background: var(--grey1); border-left-color: var(--grey3); }
-.nav-item.active { color: var(--black); background: var(--grey1); border-left-color: var(--black); font-weight: 500; }
+.nav-item:hover { color: var(--black); background: rgba(255,255,255,0.3); border-left-color: var(--grey3); }
+.nav-item.active { color: var(--black); background: rgba(255,255,255,0.4); border-left-color: var(--terracotta); font-weight: 500; }
 .nav-item .icon { width: 16px; height: 16px; flex-shrink: 0; opacity: .55; }
 .nav-item.active .icon, .nav-item:hover .icon { opacity: 1; }
 .sidebar-bottom { margin-top: auto; padding: 16px; border-top: 1px solid var(--grey2); }
 .signout-btn { display: flex; align-items: center; gap: 8px; padding: 9px 12px; font-size: 12px; color: var(--grey5); text-decoration: none; border-radius: 8px; transition: all .15s; width: 100%; background: none; border: none; cursor: pointer; font-family: 'DM Sans', sans-serif; }
-.signout-btn:hover { background: #fff0f0; color: var(--red); }
+.signout-btn:hover { background: #FFF0EC; color: var(--terracotta); }
 
 .topbar { position: fixed; top: 0; left: var(--sidebar); right: 0; height: var(--top); background: var(--white); border-bottom: 1px solid var(--grey2); display: flex; align-items: center; justify-content: space-between; padding: 0 32px; z-index: 99; }
-.topbar-left h1 { font-family: 'Playfair Display', serif; font-size: 20px; font-weight: 400; }
+.topbar-left h1 { font-family: 'Playfair Display', serif; font-size: 20px; font-weight: 400; color: var(--black); }
 .artist-chip { display: flex; align-items: center; gap: 8px; background: var(--grey1); border: 1px solid var(--grey2); padding: 5px 12px 5px 5px; border-radius: 30px; }
-.artist-chip .avatar { width: 26px; height: 26px; border-radius: 50%; background: var(--black); display: flex; align-items: center; justify-content: center; font-size: 11px; color: #fff; font-weight: 600; overflow: hidden; }
+.artist-chip .avatar { width: 26px; height: 26px; border-radius: 50%; background: var(--terracotta); display: flex; align-items: center; justify-content: center; font-size: 11px; color: #fff; font-weight: 600; overflow: hidden; }
 .artist-chip .avatar img { width: 100%; height: 100%; object-fit: cover; }
-.artist-chip .name { font-size: 12px; font-weight: 500; }
+.artist-chip .name { font-size: 12px; font-weight: 500; color: var(--black); }
+.artist-chip .arrow { font-size: 12px; color: var(--grey4); margin-left: 4px; }
 
 .main { margin-left: var(--sidebar); padding-top: var(--top); min-height: 100vh; }
 .content { padding: 32px; max-width: 860px; }
@@ -182,8 +198,8 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
 
 /* ── Messages ───────────────────────────────────────── */
 .msg { padding: 12px 18px; border-radius: 10px; font-size: 12.5px; margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
-.msg.success { background: #e6fff3; color: #00875a; border: 1px solid #b2f0d5; }
-.msg.error { background: #fff0f0; color: #c0392b; border: 1px solid #f5c6c6; }
+.msg.success { background: #E8F5EE; color: #6BA58D; border: 1px solid #C8E0D5; }
+.msg.error { background: #FDEAEA; color: #D46A6A; border: 1px solid #F5C6C6; }
 
 /* ── Card ────────────────────────────────────────────── */
 .card { background: var(--white); border: 1px solid var(--grey2); border-radius: 16px; overflow: hidden; padding: 32px; margin-bottom: 24px; }
@@ -194,7 +210,7 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
 .form-grid.full { grid-template-columns: 1fr; }
 .field-group { margin-bottom: 20px; }
 .field-group label { display: block; font-size: 11px; letter-spacing: .8px; text-transform: uppercase; color: var(--grey5); font-weight: 500; margin-bottom: 8px; }
-.field-group label span { color: var(--red); }
+.field-group label span { color: var(--terracotta); }
 .field-input, .field-select, .field-textarea {
     width: 100%; padding: 12px 16px; font-size: 13px; font-family: 'DM Sans', sans-serif;
     border: 1px solid var(--grey3); border-radius: 10px; background: var(--white);
@@ -220,8 +236,8 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
     display: flex; align-items: center; gap: 4px; text-decoration: none;
 }
 .img-btn:hover { background: #eee; }
-.img-btn.danger { color: var(--red); }
-.img-btn.danger:hover { background: #fff0f0; }
+.img-btn.danger { color: var(--terracotta); }
+.img-btn.danger:hover { background: #FFF0EC; }
 .cover-tag {
     position: absolute; top: 8px; left: 8px; background: var(--black); color: #fff;
     font-size: 9px; padding: 3px 8px; border-radius: 4px; font-weight: 600;
@@ -229,7 +245,7 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
 
 /* ── Toggle Row ─────────────────────────────────────── */
 .toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-top: 1px solid var(--grey2); }
-.toggle-label { font-size: 13px; font-weight: 500; }
+.toggle-label { font-size: 13px; font-weight: 500; color: var(--black); }
 .toggle-desc { font-size: 11px; color: var(--grey4); display: block; margin-top: 2px; }
 .toggle-switch { position: relative; width: 44px; height: 24px; flex-shrink: 0; }
 .toggle-switch input { opacity: 0; width: 0; height: 0; }
@@ -246,7 +262,7 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
     text-decoration: none; display: inline-flex; align-items: center; gap: 8px; transition: all .15s;
 }
 .btn-primary { background: var(--black); color: #fff; }
-.btn-primary:hover { background: #222; }
+.btn-primary:hover { background: #333; }
 .btn-ghost { background: transparent; color: var(--grey5); border: 1px solid var(--grey3); }
 .btn-ghost:hover { border-color: var(--black); color: var(--black); }
 
@@ -255,8 +271,8 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
     border: 2px dashed var(--grey3); border-radius: 12px; padding: 24px;
     text-align: center; background: var(--grey1); cursor: pointer; margin-top: 24px;
 }
-.upload-add:hover { border-color: var(--black); background: #f0f0f0; }
-.upload-add-title { font-size: 13px; font-weight: 500; margin-bottom: 4px; }
+.upload-add:hover { border-color: var(--black); background: #F0EAE0; }
+.upload-add-title { font-size: 13px; font-weight: 500; margin-bottom: 4px; color: var(--black); }
 .upload-add-hint { font-size: 11px; color: var(--grey4); }
 
 @media (max-width: 900px) { :root { --sidebar: 0px; } .sidebar { display: none; } .topbar { left: 0; } .form-grid { grid-template-columns: 1fr; } .content { padding: 20px; } }
@@ -315,6 +331,7 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
                 <?php endif; ?>
             </div>
             <span class="name"><?= htmlspecialchars($artistName) ?></span>
+            <span class="arrow">∨</span>
         </div>
     </div>
 </header>
