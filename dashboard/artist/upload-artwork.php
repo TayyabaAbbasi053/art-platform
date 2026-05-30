@@ -8,13 +8,13 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'artist') {
     exit;
 }
 
- $artistId   = (int) $_SESSION['user_id'];
- $artistName = $_SESSION['name'] ?? 'Artist';
- $errorMsg   = '';
- $successMsg = '';
+$artistId   = (int) $_SESSION['user_id'];
+$artistName = $_SESSION['name'] ?? 'Artist';
+$errorMsg   = '';
+$successMsg = '';
 
 // ── Fetch categories ─────────────────────────────────
- $categories = $conn->query("SELECT id, name FROM categories ORDER BY name ASC")->fetch_all(MYSQLI_ASSOC);
+$categories = $conn->query("SELECT id, name FROM categories ORDER BY name ASC")->fetch_all(MYSQLI_ASSOC);
 
 // ── Handle form submission ───────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -113,43 +113,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <style>
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 :root {
-    --black: #0a0a0a;
-    --grey1: #f7f7f7;
-    --grey2: #efefef;
-    --grey3: #d8d8d8;
-    --grey4: #999;
-    --grey5: #555;
-    --white: #ffffff;
-    --red: #d63031;
-    --green: #00b894;
-    --sidebar: 220px;
+    --black: #1E1B18;
+    --grey1: #F7F1E8;
+    --grey2: #E6DDD0;
+    --grey3: #D6CDBF;
+    --grey4: #8A7D72;
+    --grey5: #3D332A;
+    --white: #FFFDF8;
+    --red: #C96B4B;
+    --green: #6BA58D;
+    --amber: #E48A4A;
+    --terracotta: #C96B4B;
+    --sidebar: 240px;
     --top: 60px;
 }
 html, body { height: 100%; background: var(--grey1); color: var(--black); font-family: 'DM Sans', sans-serif; }
 
-/* ── Sidebar (Copy from previous pages) ─────────────── */
-.sidebar { position: fixed; top: 0; left: 0; width: var(--sidebar); height: 100vh; background: var(--white); border-right: 1px solid var(--grey2); display: flex; flex-direction: column; z-index: 100; overflow-y: auto; }
+/* ── Sidebar ─────────────────────────────────────────── */
+.sidebar { position: fixed; top: 0; left: 0; width: var(--sidebar); height: 100vh; background: #EFE3D2; border-right: 1px solid var(--grey2); display: flex; flex-direction: column; z-index: 100; overflow-y: auto; }
 .sidebar-brand { padding: 22px 24px 18px; border-bottom: 1px solid var(--grey2); }
 .sidebar-brand .logo-tag { font-size: 10px; letter-spacing: 3px; text-transform: uppercase; color: var(--grey4); }
 .sidebar-brand .logo-name { font-family: 'Playfair Display', serif; font-size: 20px; color: var(--black); font-weight: 400; margin-top: 2px; }
-.sidebar-brand .logo-badge { display: inline-block; margin-top: 6px; background: var(--black); color: var(--white); font-size: 8px; letter-spacing: 2px; text-transform: uppercase; padding: 2px 7px; border-radius: 20px; }
+.sidebar-brand .logo-badge { display: inline-block; margin-top: 6px; background: var(--terracotta); color: var(--white); font-size: 8px; letter-spacing: 2px; text-transform: uppercase; padding: 2px 7px; border-radius: 20px; }
 .sidebar-section { padding: 18px 16px 6px; font-size: 9px; letter-spacing: 2.5px; text-transform: uppercase; color: var(--grey4); font-weight: 500; }
 .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 20px; font-size: 12.5px; color: var(--grey5); text-decoration: none; border-left: 2px solid transparent; transition: all .15s; }
-.nav-item:hover { color: var(--black); background: var(--grey1); border-left-color: var(--grey3); }
-.nav-item.active { color: var(--black); background: var(--grey1); border-left-color: var(--black); font-weight: 500; }
+.nav-item:hover { color: var(--black); background: rgba(255,255,255,0.3); border-left-color: var(--grey3); }
+.nav-item.active { color: var(--black); background: rgba(255,255,255,0.4); border-left-color: var(--terracotta); font-weight: 500; }
 .nav-item .icon { width: 16px; height: 16px; flex-shrink: 0; opacity: .55; }
 .nav-item.active .icon, .nav-item:hover .icon { opacity: 1; }
 .sidebar-bottom { margin-top: auto; padding: 16px; border-top: 1px solid var(--grey2); }
 .signout-btn { display: flex; align-items: center; gap: 8px; padding: 9px 12px; font-size: 12px; color: var(--grey5); text-decoration: none; border-radius: 8px; transition: all .15s; width: 100%; background: none; border: none; cursor: pointer; font-family: 'DM Sans', sans-serif; }
-.signout-btn:hover { background: #fff0f0; color: var(--red); }
+.signout-btn:hover { background: #FFF0EC; color: var(--terracotta); }
 
-/* ── Topbar (Copy from previous pages) ──────────────── */
+/* ── Topbar ──────────────────────────────────────────── */
 .topbar { position: fixed; top: 0; left: var(--sidebar); right: 0; height: var(--top); background: var(--white); border-bottom: 1px solid var(--grey2); display: flex; align-items: center; justify-content: space-between; padding: 0 32px; z-index: 99; }
-.topbar-left h1 { font-family: 'Playfair Display', serif; font-size: 20px; font-weight: 400; }
+.topbar-left h1 { font-family: 'Playfair Display', serif; font-size: 20px; font-weight: 400; color: var(--black); }
 .artist-chip { display: flex; align-items: center; gap: 8px; background: var(--grey1); border: 1px solid var(--grey2); padding: 5px 12px 5px 5px; border-radius: 30px; }
-.artist-chip .avatar { width: 26px; height: 26px; border-radius: 50%; background: var(--black); display: flex; align-items: center; justify-content: center; font-size: 11px; color: #fff; font-weight: 600; overflow: hidden; }
+.artist-chip .avatar { width: 26px; height: 26px; border-radius: 50%; background: var(--terracotta); display: flex; align-items: center; justify-content: center; font-size: 11px; color: #fff; font-weight: 600; overflow: hidden; }
 .artist-chip .avatar img { width: 100%; height: 100%; object-fit: cover; }
-.artist-chip .name { font-size: 12px; font-weight: 500; }
+.artist-chip .name { font-size: 12px; font-weight: 500; color: var(--black); }
+.artist-chip .arrow { font-size: 12px; color: var(--grey4); margin-left: 4px; }
 
 /* ── Main Layout ────────────────────────────────────── */
 .main { margin-left: var(--sidebar); padding-top: var(--top); min-height: 100vh; }
@@ -158,7 +161,7 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
 
 /* ── Messages ────────────────────────────────────────── */
 .msg { padding: 12px 18px; border-radius: 10px; font-size: 12.5px; margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
-.msg.error { background: #fff0f0; color: #c0392b; border: 1px solid #f5c6c6; }
+.msg.error { background: #FDEAEA; color: #D46A6A; border: 1px solid #F5C6C6; }
 
 /* ── Card ────────────────────────────────────────────── */
 .card { background: var(--white); border: 1px solid var(--grey2); border-radius: 16px; overflow: hidden; padding: 32px; }
@@ -168,7 +171,7 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
 .form-grid.full { grid-template-columns: 1fr; }
 .field-group { margin-bottom: 20px; }
 .field-group label { display: block; font-size: 11px; letter-spacing: .8px; text-transform: uppercase; color: var(--grey5); font-weight: 500; margin-bottom: 8px; }
-.field-group label span { color: var(--red); }
+.field-group label span { color: var(--terracotta); }
 .field-input, .field-select, .field-textarea {
     width: 100%; padding: 12px 16px; font-size: 13px; font-family: 'DM Sans', sans-serif;
     border: 1px solid var(--grey3); border-radius: 10px; background: var(--white);
@@ -179,7 +182,7 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
 
 /* ── Toggle Row ─────────────────────────────────────── */
 .toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-top: 1px solid var(--grey2); }
-.toggle-label { font-size: 13px; font-weight: 500; }
+.toggle-label { font-size: 13px; font-weight: 500; color: var(--black); }
 .toggle-desc { font-size: 11px; color: var(--grey4); display: block; margin-top: 2px; }
 .toggle-switch { position: relative; width: 44px; height: 24px; flex-shrink: 0; }
 .toggle-switch input { opacity: 0; width: 0; height: 0; }
@@ -194,16 +197,73 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
     padding: 40px 20px; text-align: center; background: var(--grey1);
     transition: border-color .2s; cursor: pointer; margin-bottom: 24px;
 }
-.upload-area:hover { border-color: var(--black); background: #f0f0f0; }
+.upload-area:hover { border-color: var(--black); background: #F0EAE0; }
 .upload-icon { color: var(--grey4); margin-bottom: 12px; }
 .upload-title { font-size: 14px; font-weight: 500; color: var(--black); margin-bottom: 4px; }
 .upload-hint { font-size: 11px; color: var(--grey4); }
-.preview-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 12px; margin-top: 20px; }
-.preview-item { position: relative; aspect-ratio: 1; border-radius: 8px; overflow: hidden; border: 1px solid var(--grey3); }
-.preview-item img { width: 100%; height: 100%; object-fit: cover; }
+
+/* ── Preview Grid with Counter ───────────────────────── */
+.preview-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 12px;
+}
+.preview-counter {
+    font-size: 11px;
+    color: var(--grey4);
+}
+.preview-counter span {
+    font-weight: 600;
+    color: var(--black);
+}
+.preview-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 12px;
+}
+.preview-item {
+    position: relative;
+    aspect-ratio: 1;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid var(--grey3);
+}
+.preview-item img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
 .preview-badge {
-    position: absolute; top: 4px; right: 4px; background: rgba(0,0,0,.7); color: #fff;
-    font-size: 9px; padding: 2px 6px; border-radius: 4px;
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    background: rgba(0,0,0,.7);
+    color: #fff;
+    font-size: 9px;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+.remove-preview {
+    position: absolute;
+    bottom: 4px;
+    right: 4px;
+    background: rgba(0,0,0,.7);
+    color: #fff;
+    border: none;
+    border-radius: 20px;
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all .2s;
+}
+.remove-preview:hover {
+    background: var(--terracotta);
+    transform: scale(1.05);
 }
 
 /* ── Actions ─────────────────────────────────────────── */
@@ -214,7 +274,7 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
     text-decoration: none; display: inline-flex; align-items: center; gap: 8px; transition: all .15s;
 }
 .btn-primary { background: var(--black); color: #fff; }
-.btn-primary:hover { background: #222; }
+.btn-primary:hover { background: #333; }
 .btn-ghost { background: transparent; color: var(--grey5); border: 1px solid var(--grey3); }
 .btn-ghost:hover { border-color: var(--black); color: var(--black); }
 
@@ -274,6 +334,7 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
                 <?php endif; ?>
             </div>
             <span class="name"><?= htmlspecialchars($artistName) ?></span>
+            <span class="arrow">∨</span>
         </div>
     </div>
 </header>
@@ -296,14 +357,18 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
             <div class="upload-area" id="dropZone">
                 <svg class="upload-icon" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                 <div class="upload-title">Click to upload images</div>
-                <div class="upload-hint">JPG, PNG, WebP (Max 3MB per image)<br>First image will be the cover photo</div>
+                <div class="upload-hint">Up to 5 images · Max 3MB each · First image will be the cover.</div>
                 <input type="file" name="images[]" id="fileInput" accept="image/jpeg,image/png,image/webp" multiple hidden required>
             </div>
 
+            <div class="preview-header">
+                <div></div>
+                <div class="preview-counter" id="previewCounter">0 / 5 images selected</div>
+            </div>
             <div class="preview-grid" id="previewGrid"></div>
 
             <!-- ── Details ────────────────────────────── -->
-            <div class="form-grid full">
+            <div class="form-grid full" style="margin-top: 24px;">
                 <div class="field-group">
                     <label>Artwork Title <span>*</span></label>
                     <input type="text" name="title" class="field-input" placeholder="e.g. The Blue Horizon" required>
@@ -392,35 +457,97 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
 </main>
 
 <script>
-// ── Image Preview Logic ─────────────────────────────
+// ── Image Preview Logic with Remove Functionality ─────────────────────────────
 const dropZone = document.getElementById('dropZone');
 const fileInput = document.getElementById('fileInput');
 const previewGrid = document.getElementById('previewGrid');
+const previewCounter = document.getElementById('previewCounter');
+
+let currentFiles = [];
 
 dropZone.addEventListener('click', () => fileInput.click());
 
-fileInput.addEventListener('change', handleFiles);
-
-function handleFiles() {
-    previewGrid.innerHTML = '';
-    const files = Array.from(fileInput.files);
+fileInput.addEventListener('change', function(e) {
+    const newFiles = Array.from(e.target.files);
     
-    files.forEach((file, index) => {
-        if (!file.type.startsWith('image/')) return;
-        
+    // Check max file limit (5)
+    if (currentFiles.length + newFiles.length > 5) {
+        alert('You can only upload up to 5 images. Please remove some before adding more.');
+        fileInput.value = '';
+        return;
+    }
+    
+    // Add new files to currentFiles array
+    newFiles.forEach(file => {
+        if (file.type.startsWith('image/')) {
+            currentFiles.push(file);
+        }
+    });
+    
+    renderPreviews();
+    updateFileInput();
+});
+
+function renderPreviews() {
+    previewGrid.innerHTML = '';
+    
+    currentFiles.forEach((file, index) => {
         const reader = new FileReader();
         reader.onload = (e) => {
             const div = document.createElement('div');
             div.className = 'preview-item';
+            div.setAttribute('data-index', index);
             div.innerHTML = `
                 <img src="${e.target.result}" alt="Preview ${index + 1}">
                 ${index === 0 ? '<span class="preview-badge">Cover</span>' : ''}
+                <button type="button" class="remove-preview" data-index="${index}" title="Remove image">×</button>
             `;
             previewGrid.appendChild(div);
         };
         reader.readAsDataURL(file);
     });
+    
+    // Update counter
+    previewCounter.innerHTML = `${currentFiles.length} / 5 images selected`;
+    
+    // Attach remove event listeners after DOM update
+    document.querySelectorAll('.remove-preview').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const idx = parseInt(this.getAttribute('data-index'));
+            removeFileAtIndex(idx);
+        });
+    });
 }
+
+function removeFileAtIndex(index) {
+    currentFiles.splice(index, 1);
+    renderPreviews();
+    updateFileInput();
+}
+
+function updateFileInput() {
+    // Create a new FileList-like object using DataTransfer
+    const dataTransfer = new DataTransfer();
+    currentFiles.forEach(file => {
+        dataTransfer.items.add(file);
+    });
+    fileInput.files = dataTransfer.files;
+    
+    // Update the required attribute if needed
+    if (currentFiles.length > 0) {
+        fileInput.removeAttribute('required');
+    } else {
+        fileInput.setAttribute('required', 'required');
+    }
+}
+
+// Clear all on form reset (optional)
+document.getElementById('uploadForm').addEventListener('reset', function() {
+    currentFiles = [];
+    renderPreviews();
+    updateFileInput();
+});
 </script>
 
 </body>

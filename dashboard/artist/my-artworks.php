@@ -8,10 +8,10 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'artist') {
     exit;
 }
 
- $artistId   = (int) $_SESSION['user_id'];
- $artistName = $_SESSION['name'] ?? 'Artist';
- $successMsg = '';
- $errorMsg   = '';
+$artistId   = (int) $_SESSION['user_id'];
+$artistName = $_SESSION['name'] ?? 'Artist';
+$successMsg = '';
+$errorMsg   = '';
 
 // ── Handle Actions (Delete) ───────────────────────────
 if (isset($_GET['delete'])) {
@@ -28,16 +28,16 @@ if (isset($_GET['delete'])) {
 }
 
 // ── Filtering ─────────────────────────────────────────
- $filterStatus = $_GET['status'] ?? '';
- $allowedFilters = ['all', 'pending', 'approved', 'sold', 'rejected'];
+$filterStatus = $_GET['status'] ?? '';
+$allowedFilters = ['all', 'pending', 'approved', 'sold', 'rejected'];
 if (!in_array($filterStatus, $allowedFilters)) {
     $filterStatus = 'all';
 }
 
 // ── Fetch Artworks ───────────────────────────────────
- $sql = "
+$sql = "
     SELECT a.*, c.name as category_name, 
-           (SELECT image_path FROM artwork_images WHERE artwork_id = a.id AND is_cover = 1 LIMIT 1) as cover_image
+           (SELECT image_path FROM artwork_images WHERE artwork_id = a.id ORDER BY is_cover DESC, sort_order ASC LIMIT 1) as cover_image
     FROM artworks a
     JOIN categories c ON a.category_id = c.id
     WHERE a.artist_id = $artistId
@@ -47,12 +47,12 @@ if ($filterStatus !== 'all') {
     $sql .= " AND a.status = '" . $conn->real_escape_string($filterStatus) . "'";
 }
 
- $sql .= " ORDER BY a.created_at DESC";
+$sql .= " ORDER BY a.created_at DESC";
 
- $artworks = $conn->query($sql)->fetch_all(MYSQLI_ASSOC);
+$artworks = $conn->query($sql)->fetch_all(MYSQLI_ASSOC);
 
 // ── Stats for Tabs ───────────────────────────────────
- $counts = [
+$counts = [
     'all'      => (int) $conn->query("SELECT COUNT(*) FROM artworks WHERE artist_id = $artistId AND status != 'hidden'")->fetch_row()[0],
     'pending'  => (int) $conn->query("SELECT COUNT(*) FROM artworks WHERE artist_id = $artistId AND status = 'pending'")->fetch_row()[0],
     'approved' => (int) $conn->query("SELECT COUNT(*) FROM artworks WHERE artist_id = $artistId AND status = 'approved'")->fetch_row()[0],
@@ -76,45 +76,47 @@ if (isset($_GET['msg'])) {
 <style>
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 :root {
-    --black: #0a0a0a;
-    --grey1: #f7f7f7;
-    --grey2: #efefef;
-    --grey3: #d8d8d8;
-    --grey4: #999;
-    --grey5: #555;
-    --white: #ffffff;
-    --red: #d63031;
-    --green: #00b894;
-    --amber: #e17055;
-    --sidebar: 220px;
+    --black: #1E1B18;
+    --grey1: #F7F1E8;
+    --grey2: #E6DDD0;
+    --grey3: #D6CDBF;
+    --grey4: #8A7D72;
+    --grey5: #3D332A;
+    --white: #FFFDF8;
+    --red: #C96B4B;
+    --green: #6BA58D;
+    --amber: #E48A4A;
+    --terracotta: #C96B4B;
+    --sidebar: 240px;
     --top: 60px;
 }
 html, body { height: 100%; background: var(--grey1); color: var(--black); font-family: 'DM Sans', sans-serif; }
 
 /* ── Sidebar & Topbar (Consistent) ─────────────────── */
-.sidebar { position: fixed; top: 0; left: 0; width: var(--sidebar); height: 100vh; background: var(--white); border-right: 1px solid var(--grey2); display: flex; flex-direction: column; z-index: 100; overflow-y: auto; }
+.sidebar { position: fixed; top: 0; left: 0; width: var(--sidebar); height: 100vh; background: #EFE3D2; border-right: 1px solid var(--grey2); display: flex; flex-direction: column; z-index: 100; overflow-y: auto; }
 .sidebar-brand { padding: 22px 24px 18px; border-bottom: 1px solid var(--grey2); }
 .sidebar-brand .logo-tag { font-size: 10px; letter-spacing: 3px; text-transform: uppercase; color: var(--grey4); }
 .sidebar-brand .logo-name { font-family: 'Playfair Display', serif; font-size: 20px; color: var(--black); font-weight: 400; margin-top: 2px; }
-.sidebar-brand .logo-badge { display: inline-block; margin-top: 6px; background: var(--black); color: var(--white); font-size: 8px; letter-spacing: 2px; text-transform: uppercase; padding: 2px 7px; border-radius: 20px; }
+.sidebar-brand .logo-badge { display: inline-block; margin-top: 6px; background: var(--terracotta); color: var(--white); font-size: 8px; letter-spacing: 2px; text-transform: uppercase; padding: 2px 7px; border-radius: 20px; }
 .sidebar-section { padding: 18px 16px 6px; font-size: 9px; letter-spacing: 2.5px; text-transform: uppercase; color: var(--grey4); font-weight: 500; }
 .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 20px; font-size: 12.5px; color: var(--grey5); text-decoration: none; border-left: 2px solid transparent; transition: all .15s; }
-.nav-item:hover { color: var(--black); background: var(--grey1); border-left-color: var(--grey3); }
-.nav-item.active { color: var(--black); background: var(--grey1); border-left-color: var(--black); font-weight: 500; }
+.nav-item:hover { color: var(--black); background: rgba(255,255,255,0.3); border-left-color: var(--grey3); }
+.nav-item.active { color: var(--black); background: rgba(255,255,255,0.4); border-left-color: var(--terracotta); font-weight: 500; }
 .nav-item .icon { width: 16px; height: 16px; flex-shrink: 0; opacity: .55; }
 .nav-item.active .icon, .nav-item:hover .icon { opacity: 1; }
-.badge { margin-left: auto; background: var(--red); color: #fff; font-size: 9px; font-weight: 600; padding: 1px 6px; border-radius: 20px; min-width: 18px; text-align: center; }
+.badge { margin-left: auto; background: var(--terracotta); color: #fff; font-size: 9px; font-weight: 600; padding: 1px 6px; border-radius: 20px; min-width: 18px; text-align: center; }
 .badge.amber { background: var(--amber); }
 .sidebar-bottom { margin-top: auto; padding: 16px; border-top: 1px solid var(--grey2); }
 .signout-btn { display: flex; align-items: center; gap: 8px; padding: 9px 12px; font-size: 12px; color: var(--grey5); text-decoration: none; border-radius: 8px; transition: all .15s; width: 100%; background: none; border: none; cursor: pointer; font-family: 'DM Sans', sans-serif; }
-.signout-btn:hover { background: #fff0f0; color: var(--red); }
+.signout-btn:hover { background: #FFF0EC; color: var(--terracotta); }
 
 .topbar { position: fixed; top: 0; left: var(--sidebar); right: 0; height: var(--top); background: var(--white); border-bottom: 1px solid var(--grey2); display: flex; align-items: center; justify-content: space-between; padding: 0 32px; z-index: 99; }
-.topbar-left h1 { font-family: 'Playfair Display', serif; font-size: 20px; font-weight: 400; }
+.topbar-left h1 { font-family: 'Playfair Display', serif; font-size: 20px; font-weight: 400; color: var(--black); }
 .artist-chip { display: flex; align-items: center; gap: 8px; background: var(--grey1); border: 1px solid var(--grey2); padding: 5px 12px 5px 5px; border-radius: 30px; }
-.artist-chip .avatar { width: 26px; height: 26px; border-radius: 50%; background: var(--black); display: flex; align-items: center; justify-content: center; font-size: 11px; color: #fff; font-weight: 600; overflow: hidden; }
+.artist-chip .avatar { width: 26px; height: 26px; border-radius: 50%; background: var(--terracotta); display: flex; align-items: center; justify-content: center; font-size: 11px; color: #fff; font-weight: 600; overflow: hidden; }
 .artist-chip .avatar img { width: 100%; height: 100%; object-fit: cover; }
-.artist-chip .name { font-size: 12px; font-weight: 500; }
+.artist-chip .name { font-size: 12px; font-weight: 500; color: var(--black); }
+.artist-chip .arrow { font-size: 12px; color: var(--grey4); margin-left: 4px; }
 
 .main { margin-left: var(--sidebar); padding-top: var(--top); min-height: 100vh; }
 .content { padding: 32px; }
@@ -122,7 +124,7 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
 
 /* ── Messages ───────────────────────────────────────── */
 .msg { padding: 12px 18px; border-radius: 10px; font-size: 12.5px; margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
-.msg.success { background: #e6fff3; color: #00875a; border: 1px solid #b2f0d5; }
+.msg.success { background: #E8F5EE; color: #6BA58D; border: 1px solid #C8E0D5; }
 
 /* ── Header Actions ─────────────────────────────────── */
 .header-actions { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
@@ -132,7 +134,7 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
     text-decoration: none; display: inline-flex; align-items: center; gap: 6px; transition: all .15s;
 }
 .btn-primary { background: var(--black); color: #fff; }
-.btn-primary:hover { background: #222; }
+.btn-primary:hover { background: #333; }
 
 /* ── Tabs ───────────────────────────────────────────── */
 .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--grey2); margin-bottom: 24px; overflow-x: auto; }
@@ -141,7 +143,7 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
     cursor: pointer; font-family: 'DM Sans', sans-serif; border-bottom: 2px solid transparent; transition: all .2s;
 }
 .tab-btn:hover { color: var(--black); }
-.tab-btn.active { color: var(--black); border-bottom-color: var(--black); font-weight: 500; }
+.tab-btn.active { color: var(--black); border-bottom-color: var(--terracotta); font-weight: 500; }
 
 /* ── Table ──────────────────────────────────────────── */
 .card { background: var(--white); border: 1px solid var(--grey2); border-radius: 16px; overflow: hidden; }
@@ -149,32 +151,32 @@ table { width: 100%; border-collapse: collapse; }
 th { font-size: 10px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--grey4); font-weight: 500; padding: 14px 24px; text-align: left; border-bottom: 1px solid var(--grey2); background: var(--grey1); }
 td { padding: 16px 24px; border-bottom: 1px solid var(--grey2); vertical-align: middle; font-size: 13px; color: var(--black); }
 tr:last-child td { border-bottom: none; }
-tr:hover td { background: #fafafa; }
+tr:hover td { background: var(--grey1); }
 
-.thumb { width: 50px; height: 50px; border-radius: 8px; object-fit: cover; background: var(--grey2); border: 1px solid var(--grey3); }
+.thumb { width: 50px; height: 50px; border-radius: 8px; object-fit: cover; background: #EFE3D2; border: 1px solid var(--grey3); }
 .art-title { font-weight: 500; font-size: 13px; color: var(--black); }
 .art-cat { font-size: 11px; color: var(--grey4); display: block; margin-top: 2px; }
 .price { font-weight: 600; font-size: 13px; color: var(--black); }
 
 /* ── Badges ─────────────────────────────────────────── */
 .pill { display: inline-block; font-size: 9px; letter-spacing: .5px; text-transform: uppercase; font-weight: 600; padding: 4px 10px; border-radius: 20px; }
-.pill.pending  { background: #fff8e6; color: #b07800; }
-.pill.approved { background: #e6fff3; color: #00875a; }
-.pill.rejected { background: #fff0f0; color: #c0392b; }
-.pill.sold     { background: #eef2ff; color: #3730a3; }
+.pill.pending  { background: #FFF4E6; color: #E48A4A; }
+.pill.approved { background: #E8F5EE; color: #6BA58D; }
+.pill.rejected { background: #FDEAEA; color: #D46A6A; }
+.pill.sold     { background: #EEE8FF; color: #6B5CE6; }
 
 /* ── Rejection Reason ───────────────────────────────── */
 .reject-reason { 
-    display: block; font-size: 11px; color: var(--red); margin-top: 4px; 
-    background: #fff5f5; padding: 4px 8px; border-radius: 4px; 
-    border: 1px solid #f5c6c6;
+    display: block; font-size: 11px; color: #D46A6A; margin-top: 4px; 
+    background: #FDEAEA; padding: 4px 8px; border-radius: 4px; 
+    border: 1px solid #F5C6C6;
 }
 
 /* ── Actions Column ─────────────────────────────────── */
 .actions { display: flex; gap: 8px; }
 .icon-btn { width: 30px; height: 30px; border-radius: 6px; border: 1px solid var(--grey3); background: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--grey5); transition: all .2s; }
 .icon-btn:hover { border-color: var(--black); color: var(--black); }
-.icon-btn.danger:hover { border-color: var(--red); color: var(--red); background: #fff0f0; }
+.icon-btn.danger:hover { border-color: var(--terracotta); color: var(--terracotta); background: #FFF0EC; }
 
 /* ── Empty State ─────────────────────────────────────── */
 .empty-state { padding: 60px 20px; text-align: center; }
@@ -237,6 +239,7 @@ tr:hover td { background: #fafafa; }
                 <?php endif; ?>
             </div>
             <span class="name"><?= htmlspecialchars($artistName) ?></span>
+            <span class="arrow">∨</span>
         </div>
     </div>
 </header>
@@ -293,7 +296,7 @@ tr:hover td { background: #fafafa; }
                                 <?php if ($art['cover_image']): ?>
                                     <img src="../../<?= htmlspecialchars($art['cover_image']) ?>" class="thumb" alt="">
                                 <?php else: ?>
-                                    <div class="thumb"></div>
+                                    <div class="thumb" style="background:#EFE3D2;border-radius:6px;"></div>
                                 <?php endif; ?>
                             </td>
                             <td>

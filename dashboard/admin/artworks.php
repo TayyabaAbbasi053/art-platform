@@ -141,7 +141,7 @@ $totalPages = max(1, ceil($totalResults / $perPage));
 // Fetch artworks
 $dataSQL = "
     SELECT a.*, c.name AS category_name, u.name AS artist_name,
-           (SELECT image_path FROM artwork_images WHERE artwork_id = a.id AND is_cover = 1 LIMIT 1) AS cover_image
+           (SELECT image_path FROM artwork_images WHERE artwork_id = a.id ORDER BY is_cover DESC, sort_order ASC LIMIT 1) AS cover_image
     FROM artworks a
     JOIN users u ON u.id = a.artist_id
     JOIN categories c ON c.id = a.category_id
@@ -703,7 +703,10 @@ tr:hover td { background: var(--grey1); }
                                 <form method="POST" style="display:inline"><input type="hidden" name="action" value="hide"><input type="hidden" name="id" value="<?= $aw['id'] ?>"><button type="submit" class="act-btn" title="Hide">Hide</button></form>
                             <?php elseif ($aw['status'] === 'rejected' || $aw['status'] === 'hidden'): ?>
                                 <form method="POST" style="display:inline"><input type="hidden" name="action" value="approve"><input type="hidden" name="id" value="<?= $aw['id'] ?>"><button type="submit" class="act-btn green" title="Re-approve">Approve</button></form>
-                            <?php endif; ?>
+                            <?php else: ?>
+    <form method="POST" style="display:inline"><input type="hidden" name="action" value="approve"><input type="hidden" name="id" value="<?= $aw['id'] ?>"><button type="submit" class="act-btn green">Approve</button></form>
+    <button type="button" class="act-btn red" onclick="openRejectModal(<?= $aw['id'] ?>)">Reject</button>
+<?php endif; ?>
                             <a href="artwork-edit.php?id=<?= $aw['id'] ?>" class="act-btn blue" title="Edit details">Edit</a>
                             <button type="button" class="act-btn red" onclick="openDelete(<?= $aw['id'] ?>, '<?= htmlspecialchars(addslashes($aw['title'])) ?>')" title="Delete permanently">Delete</button>
                         </div>
