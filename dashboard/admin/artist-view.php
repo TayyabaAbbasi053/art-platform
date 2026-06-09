@@ -7,39 +7,39 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
     exit;
 }
 
-$adminName = $_SESSION['name'] ?? 'Admin';
-$toast = '';
-$id = (int)($_GET['id'] ?? 0);
+ $adminName = $_SESSION['name'] ?? 'Admin';
+ $toast = '';
+ $id = (int)($_GET['id'] ?? 0);
 
 if (!$id) { header('Location: artists.php'); exit; }
 
 // Fetch artist
-$stmt = $conn->prepare("
+ $stmt = $conn->prepare("
     SELECT u.*, ap.bio, ap.city, ap.instagram_url, ap.contact_email, ap.contact_phone,
            ap.art_style, ap.accepts_commissions, ap.is_featured
     FROM users u
     LEFT JOIN artist_profiles ap ON ap.user_id = u.id
     WHERE u.id = ? AND u.role = 'artist'
 ");
-$stmt->bind_param('i', $id);
-$stmt->execute();
-$result = $stmt->get_result();
-$artist = $result->fetch_assoc();
+ $stmt->bind_param('i', $id);
+ $stmt->execute();
+ $result = $stmt->get_result();
+ $artist = $result->fetch_assoc();
 
 if (!$artist) { header('Location: artists.php'); exit; }
 
 // Fetch artworks
-$artworks = [];
-$awRes = $conn->prepare("
+ $artworks = [];
+ $awRes = $conn->prepare("
     SELECT a.*, c.name AS category_name
     FROM artworks a
     JOIN categories c ON c.id = a.category_id
     WHERE a.artist_id = ?
     ORDER BY a.created_at DESC
 ");
-$awRes->bind_param('i', $id);
-$awRes->execute();
-$awResult = $awRes->get_result();
+ $awRes->bind_param('i', $id);
+ $awRes->execute();
+ $awResult = $awRes->get_result();
 
 while ($row = $awResult->fetch_assoc()) {
     $imgStmt = $conn->prepare("
@@ -57,7 +57,7 @@ while ($row = $awResult->fetch_assoc()) {
     $artworks[] = $row;
 }
 
-$artworkCounts = ['pending' => 0, 'approved' => 0, 'rejected' => 0, 'sold' => 0, 'hidden' => 0];
+ $artworkCounts = ['pending' => 0, 'approved' => 0, 'rejected' => 0, 'sold' => 0, 'hidden' => 0];
 foreach ($artworks as $aw) {
     $status = $aw['status'];
     if (isset($artworkCounts[$status])) {
@@ -87,6 +87,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $artist['accepts_commissions'] = $newVal;
         $toast = $newVal ? 'Commissions enabled.' : 'Commissions disabled.';
     } elseif ($action === 'delete_artist') {
+        // Delete artist's artwork images from disk
         $imgs = $conn->query("SELECT ai.image_path FROM artwork_images ai JOIN artworks a ON a.id = ai.artwork_id WHERE a.artist_id = $id");
         $uploadDir = __DIR__ . '/../../uploads/artworks/';
         while ($img = $imgs->fetch_assoc()) { 
@@ -94,12 +95,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (file_exists($f)) unlink($f); 
         }
         
+        // Delete profile picture
         if ($artist['profile_picture']) { 
             $pf = __DIR__ . '/../../' . $artist['profile_picture']; 
             if (file_exists($pf)) unlink($pf); 
         }
         
-        $conn->query("DELETE FROM buyer_inquiries WHERE artwork_id IN (SELECT id FROM artworks WHERE artist_id = $id)");
+        // Delete from Orders (New Schema)
+        $conn->query("DELETE FROM order_items WHERE item_type='artwork' AND item_id IN (SELECT id FROM artworks WHERE artist_id = $id)");
+        
         $conn->query("DELETE FROM artwork_images WHERE artwork_id IN (SELECT id FROM artworks WHERE artist_id = $id)");
         $conn->query("DELETE FROM artworks WHERE artist_id = $id");
         $conn->query("DELETE FROM artist_profiles WHERE user_id = $id");
@@ -141,145 +145,160 @@ function getArtworkImageUrl($imagePath) {
 <style>
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 :root {
-    --black: #1E1B18;
-    --grey1: #F7F1E8;
-    --grey2: #E6DDD0;
-    --grey3: #D6CDBF;
-    --grey4: #8A7D72;
-    --grey5: #3D332A;
-    --white: #FFFDF8;
-    --red: #C96B4B;
-    --green: #6BA58D;
-    --amber: #E48A4A;
-    --blue: #0984e3;
-    --purple: #5e35b1;
-    --terracotta: #C96B4B;
+    /* Design System Variables */
+    --bg: #F6EDDE;
+    --card: #F6EDDE;
+    --sand: #DDCDAE;
+    --border: #0C3F30;
+    --ink: #0C3F30;
     --sidebar: 240px;
     --top: 60px;
 }
-html, body { height: 100%; background: var(--grey1); color: var(--black); font-family: 'DM Sans', sans-serif; }
+html, body { height: 100%; background: var(--bg); color: var(--ink); font-family: 'DM Sans', sans-serif; }
 
-.sidebar { position: fixed; top: 0; left: 0; width: var(--sidebar); height: 100vh; background: #EFE3D2; border-right: 1px solid var(--grey2); display: flex; flex-direction: column; z-index: 100; overflow-y: auto; }
-.sidebar-brand { padding: 22px 24px 18px; border-bottom: 1px solid var(--grey2); }
-.sidebar-brand .logo-tag { font-size: 10px; letter-spacing: 3px; text-transform: uppercase; color: var(--grey4); }
-.sidebar-brand .logo-name { font-family: 'Playfair Display', serif; font-size: 20px; color: var(--black); margin-top: 2px; }
-.sidebar-brand .logo-badge { display: inline-block; margin-top: 6px; background: var(--terracotta); color: var(--white); font-size: 8px; letter-spacing: 2px; text-transform: uppercase; padding: 2px 7px; border-radius: 20px; }
-.sidebar-section { padding: 18px 16px 6px; font-size: 9px; letter-spacing: 2.5px; text-transform: uppercase; color: var(--grey4); font-weight: 500; }
-.nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 20px; font-size: 12.5px; color: var(--grey5); text-decoration: none; font-weight: 400; border-left: 2px solid transparent; transition: all .15s; }
-.nav-item:hover { color: var(--black); background: rgba(255,255,255,0.3); border-left-color: var(--grey3); }
-.nav-item.active { color: var(--black); background: rgba(255,255,255,0.4); border-left-color: var(--terracotta); font-weight: 500; }
-.nav-item .icon { width: 16px; height: 16px; flex-shrink: 0; opacity: .55; }
-.nav-item.active .icon, .nav-item:hover .icon { opacity: 1; }
-.sidebar-bottom { margin-top: auto; padding: 16px; border-top: 1px solid var(--grey2); }
-.signout-btn { display: flex; align-items: center; gap: 8px; padding: 9px 12px; font-size: 12px; color: var(--grey5); text-decoration: none; border-radius: 8px; transition: all .15s; width: 100%; background: none; border: none; cursor: pointer; font-family: 'DM Sans', sans-serif; }
-.signout-btn:hover { background: #FFF0EC; color: var(--terracotta); }
+/* Sidebar */
+.sidebar { position: fixed; top: 0; left: 0; width: var(--sidebar); height: 100vh; background: var(--ink); border-right: 1px solid var(--border); display: flex; flex-direction: column; z-index: 100; overflow-y: auto; }
+.sidebar-brand { padding: 22px 24px 18px; border-bottom: 1px solid var(--border); }
+.sidebar-brand .logo-tag { font-size: 10px; letter-spacing: 3px; text-transform: uppercase; color: var(--sand); }
+.sidebar-brand .logo-name { font-family: 'Playfair Display', serif; font-size: 20px; color: var(--bg); margin-top: 2px; }
+.sidebar-brand .logo-badge { display: inline-block; margin-top: 6px; background: var(--sand); color: var(--ink); font-size: 8px; letter-spacing: 2px; text-transform: uppercase; padding: 2px 7px; border-radius: 20px; }
+.sidebar-section { padding: 18px 16px 6px; font-size: 9px; letter-spacing: 2.5px; text-transform: uppercase; color: var(--sand); font-weight: 500; }
+.nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 20px; font-size: 12.5px; color: var(--bg); text-decoration: none; font-weight: 400; border-left: 2px solid transparent; transition: all .15s; }
+.nav-item:hover { color: var(--ink); background: var(--sand); border-left-color: var(--sand); }
+.nav-item.active { color: var(--ink); background: var(--sand); border-left-color: var(--ink); font-weight: 500; }
+.nav-item .icon { width: 16px; height: 16px; flex-shrink: 0; opacity: .8; stroke: var(--bg); }
+.nav-item.active .icon, .nav-item:hover .icon { stroke: var(--ink); opacity: 1; }
+.sidebar-bottom { margin-top: auto; padding: 16px; border-top: 1px solid var(--border); }
+.signout-btn { display: flex; align-items: center; gap: 8px; padding: 9px 12px; font-size: 12px; color: var(--bg); text-decoration: none; border-radius: 8px; transition: all .15s; width: 100%; background: none; border: none; cursor: pointer; font-family: 'DM Sans', sans-serif; }
+.signout-btn:hover { background: var(--sand); color: var(--ink); }
 
-.topbar { position: fixed; top: 0; left: var(--sidebar); right: 0; height: var(--top); background: var(--white); border-bottom: 1px solid var(--grey2); display: flex; align-items: center; justify-content: space-between; padding: 0 32px; z-index: 99; }
+/* Topbar */
+.topbar { position: fixed; top: 0; left: var(--sidebar); right: 0; height: var(--top); background: var(--ink); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 32px; z-index: 99; }
 .topbar-left { display: flex; align-items: center; gap: 14px; }
-.topbar-left h1 { font-family: 'Playfair Display', serif; font-size: 20px; font-weight: 400; color: var(--black); }
-.back-link { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--grey4); text-decoration: none; }
-.back-link:hover { color: var(--black); }
-.admin-chip { display: flex; align-items: center; gap: 8px; background: var(--grey1); border: 1px solid var(--grey2); padding: 5px 12px 5px 5px; border-radius: 30px; }
-.admin-chip .avatar { width: 26px; height: 26px; border-radius: 50%; background: var(--terracotta); display: flex; align-items: center; justify-content: center; font-size: 11px; color: #fff; font-weight: 600; }
-.admin-chip .name { font-size: 12px; color: var(--black); font-weight: 500; }
-.admin-chip .arrow { font-size: 12px; color: var(--grey4); margin-left: 4px; }
+.topbar-left h1 { font-family: 'Playfair Display', serif; font-size: 20px; font-weight: 400; color: var(--bg); }
+.back-link { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--bg); text-decoration: none; opacity: 0.7; }
+.back-link:hover { opacity: 1; color: var(--sand); }
+.admin-chip { display: flex; align-items: center; gap: 8px; background: var(--sand); border: 1px solid var(--border); padding: 5px 12px 5px 5px; border-radius: 30px; }
+.admin-chip .avatar { width: 26px; height: 26px; border-radius: 50%; background: var(--bg); display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--ink); font-weight: 600; }
+.admin-chip .name { font-size: 12px; color: var(--ink); font-weight: 500; }
+.admin-chip .arrow { font-size: 12px; color: var(--ink); margin-left: 4px; opacity: 0.6; }
 
 .main { margin-left: var(--sidebar); padding-top: var(--top); min-height: 100vh; }
 .content { padding: 28px 32px; max-width: 1000px; }
 
-.toast { background: #FCEEE2; color: var(--black); border: 1px solid var(--grey2); padding: 12px 20px; border-radius: 10px; font-size: 12.5px; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; }
+.toast { background: var(--sand); color: var(--ink); border: 1px solid var(--border); padding: 12px 20px; border-radius: 10px; font-size: 12.5px; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; }
 .toast.hidden { display: none; }
-.toast-close { background: none; border: none; color: var(--grey4); cursor: pointer; font-size: 16px; }
+.toast-close { background: none; border: none; color: var(--ink); cursor: pointer; font-size: 16px; opacity: 0.6; }
 
 .btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 18px; font-size: 12px; font-weight: 500; border-radius: 10px; border: none; cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all .15s; text-decoration: none; white-space: nowrap; }
-.btn-primary { background: var(--black); color: #fff; }
-.btn-primary:hover { background: #333; }
-.btn-ghost { background: var(--white); color: var(--grey5); border: 1px solid var(--grey2); }
-.btn-ghost:hover { border-color: var(--black); color: var(--black); }
-.btn-green { background: var(--green); color: #fff; }
-.btn-green:hover { background: #5a8f7a; }
-.btn-red { background: var(--terracotta); color: #fff; }
-.btn-red:hover { background: #B85C3D; }
-.btn-amber { background: var(--amber); color: #fff; }
-.btn-amber:hover { background: #c75b3a; }
-.btn-blue { background: var(--blue); color: #fff; }
-.btn-blue:hover { background: #0770c2; }
+.btn-primary { background: var(--ink); color: var(--bg); }
+.btn-primary:hover { background: #1a5a48; }
+.btn-ghost { background: transparent; color: var(--ink); border: 1px solid var(--border); }
+.btn-ghost:hover { border-color: var(--ink); color: var(--ink); background: var(--sand); }
+.btn-green { background: var(--ink); color: var(--bg); }
+.btn-green:hover { background: #1a5a48; }
+.btn-red { background: transparent; color: var(--ink); border: 1px solid var(--border); }
+.btn-red:hover { background: var(--sand); }
+.btn-amber { background: var(--ink); color: var(--bg); }
+.btn-amber:hover { background: #1a5a48; }
+.btn-blue { background: var(--ink); color: var(--bg); }
+.btn-blue:hover { background: #1a5a48; }
 .btn-sm { padding: 5px 12px; font-size: 11px; border-radius: 7px; }
 
 .pill { display: inline-block; font-size: 9px; letter-spacing: .5px; text-transform: uppercase; font-weight: 600; padding: 3px 9px; border-radius: 20px; }
-.pill.active { background: #E8F5EE; color: #6BA58D; }
-.pill.pending { background: #FFF4E6; color: #E48A4A; }
-.pill.blocked { background: #FDEAEA; color: #D46A6A; }
-.featured-tag { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; color: #E48A4A; font-weight: 600; }
+.pill.active { background: var(--ink); color: var(--bg); }
+.pill.pending { background: var(--sand); color: var(--ink); }
+.pill.blocked { background: var(--sand); color: var(--ink); }
+.featured-tag { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; color: var(--ink); font-weight: 600; }
 
-/* ── Profile header ──────────────────────────────────── */
+/* Profile Header */
 .profile-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 28px; gap: 20px; flex-wrap: wrap; }
 .profile-info { display: flex; gap: 20px; align-items: flex-start; }
-.profile-pic { width: 72px; height: 72px; border-radius: 50%; object-fit: cover; background: var(--grey2); border: 2px solid var(--grey2); flex-shrink: 0; }
-.profile-pic-placeholder { width: 72px; height: 72px; border-radius: 50%; background: var(--terracotta); display: flex; align-items: center; justify-content: center; font-size: 26px; color: #fff; font-weight: 600; flex-shrink: 0; }
-.profile-details h2 { font-family: 'Playfair Display', serif; font-size: 24px; font-weight: 400; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: var(--black); }
-.profile-meta { font-size: 12px; color: var(--grey4); margin-top: 6px; display: flex; flex-wrap: wrap; gap: 8px; }
+.profile-pic { width: 72px; height: 72px; border-radius: 50%; object-fit: cover; background: var(--sand); border: 2px solid var(--border); flex-shrink: 0; }
+.profile-pic-placeholder { width: 72px; height: 72px; border-radius: 50%; background: var(--ink); display: flex; align-items: center; justify-content: center; font-size: 26px; color: var(--bg); font-weight: 600; flex-shrink: 0; border: 2px solid var(--border); }
+.profile-details h2 { font-family: 'Playfair Display', serif; font-size: 24px; font-weight: 400; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: var(--ink); }
+.profile-meta { font-size: 12px; color: var(--ink); margin-top: 6px; display: flex; flex-wrap: wrap; gap: 8px; opacity: 0.7; }
 .profile-meta span { display: inline-flex; align-items: center; gap: 4px; }
 .profile-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
-/* ── Stats row ──────────────────────────────────────── */
+/* Stats Row */
 .stats-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 28px; }
-.mini-stat { background: var(--white); border: 1px solid var(--grey2); border-radius: 12px; padding: 16px; text-align: center; }
-.mini-stat .num { font-family: 'Playfair Display', serif; font-size: 28px; font-weight: 400; color: var(--black); }
-.mini-stat .lbl { font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--grey4); font-weight: 500; margin-top: 4px; }
+.mini-stat { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; text-align: center; }
+.mini-stat .num { font-family: 'Playfair Display', serif; font-size: 28px; font-weight: 400; color: var(--ink); }
+.mini-stat .lbl { font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--ink); font-weight: 500; margin-top: 4px; opacity: 0.7; }
 
-/* ── Two col info ───────────────────────────────────── */
+/* Two Col Info */
 .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 28px; }
-.card { background: var(--white); border: 1px solid var(--grey2); border-radius: 14px; overflow: hidden; }
-.card-head { padding: 16px 22px; border-bottom: 1px solid var(--grey2); font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: var(--grey4); font-weight: 500; }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+.card-head { padding: 16px 22px; border-bottom: 1px solid var(--border); font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: var(--ink); font-weight: 500; }
 .card-body { padding: 22px; }
 
-.info-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--grey1); }
+.info-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--border); }
 .info-row:last-child { border-bottom: none; }
-.info-row .label { font-size: 11px; color: var(--grey4); text-transform: uppercase; letter-spacing: 1px; }
-.info-row .value { font-size: 12.5px; color: var(--black); font-weight: 500; text-align: right; max-width: 60%; word-break: break-all; }
-.info-row .value a { color: var(--blue); text-decoration: none; }
+.info-row .label { font-size: 11px; color: var(--ink); text-transform: uppercase; letter-spacing: 1px; opacity: 0.7; }
+.info-row .value { font-size: 12.5px; color: var(--ink); font-weight: 500; text-align: right; max-width: 60%; word-break: break-all; }
+.info-row .value a { color: var(--ink); text-decoration: none; }
 .info-row .value a:hover { text-decoration: underline; }
-.info-row .value.muted { color: var(--grey4); font-weight: 400; }
-.bio-text { font-size: 13px; color: var(--grey5); line-height: 1.7; white-space: pre-wrap; }
+.info-row .value.muted { color: var(--ink); opacity: 0.5; font-weight: 400; }
+.bio-text { font-size: 13px; color: var(--ink); line-height: 1.7; white-space: pre-wrap; }
 
-/* ── Artworks grid ──────────────────────────────────── */
+/* Artworks Grid */
 .aw-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 14px; }
-.aw-card { border-radius: 10px; overflow: hidden; border: 1px solid var(--grey2); background: var(--white); transition: box-shadow .15s; }
-.aw-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,.07); }
-.aw-card img { width: 100%; aspect-ratio: 1; object-fit: cover; background: var(--grey2); display: block; }
+.aw-card { border-radius: 6px; overflow: hidden; border: 1px solid var(--border); background: var(--card); transition: box-shadow .15s; }
+.aw-card:hover { box-shadow: 0 4px 16px rgba(12,63,48,0.08); }
+.aw-card img { width: 100%; aspect-ratio: 1; object-fit: cover; background: var(--sand); display: block; }
 .aw-card-info { padding: 10px 12px; }
-.aw-card-info .aw-title { font-size: 12px; font-weight: 500; color: var(--black); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.aw-card-info .aw-title { font-size: 12px; font-weight: 500; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .aw-card-info .aw-bottom { display: flex; justify-content: space-between; align-items: center; margin-top: 4px; }
-.aw-card-info .aw-price { font-size: 11px; font-weight: 600; color: var(--black); }
-.aw-card-info .aw-link { font-size: 10px; color: var(--blue); text-decoration: none; }
+.aw-card-info .aw-price { font-size: 11px; font-weight: 600; color: var(--ink); }
+.aw-card-info .aw-link { font-size: 10px; color: var(--ink); text-decoration: none; }
 .aw-card-info .aw-link:hover { text-decoration: underline; }
-.empty-sm { text-align: center; padding: 30px; color: var(--grey4); font-size: 12px; }
+.empty-sm { text-align: center; padding: 30px; color: var(--ink); font-size: 12px; opacity: 0.7; }
 
-.dash-footer { padding: 20px 32px; border-top: 1px solid var(--grey2); font-size: 11px; color: var(--grey4); margin-top: 12px; }
+.dash-footer { padding: 20px 32px; border-top: 1px solid var(--border); font-size: 11px; color: var(--bg); margin-top: 12px; background: var(--ink); }
 
-.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 200; display: flex; align-items: center; justify-content: center; opacity: 0; pointer-events: none; transition: opacity .2s; }
+.modal-overlay { position: fixed; inset: 0; background: rgba(12,63,48,0.4); z-index: 200; display: flex; align-items: center; justify-content: center; opacity: 0; pointer-events: none; transition: opacity .2s; }
 .modal-overlay.open { opacity: 1; pointer-events: auto; }
-.modal { background: var(--white); border-radius: 16px; width: 420px; max-width: 92vw; box-shadow: 0 24px 60px rgba(0,0,0,.15); }
+.modal { background: var(--card); border-radius: 16px; width: 420px; max-width: 92vw; box-shadow: 0 24px 60px rgba(12,63,48,0.2); border: 1px solid var(--border); }
 .modal-head { padding: 24px 28px 0; }
-.modal-head h3 { font-family: 'Playfair Display', serif; font-size: 20px; font-weight: 400; color: var(--black); }
+.modal-head h3 { font-family: 'Playfair Display', serif; font-size: 20px; font-weight: 400; color: var(--ink); }
 .modal-body { padding: 20px 28px; }
-.confirm-text { font-size: 13px; color: var(--grey5); line-height: 1.6; }
-.confirm-text strong { color: var(--black); }
+.confirm-text { font-size: 13px; color: var(--ink); line-height: 1.6; }
+.confirm-text strong { color: var(--ink); }
 .modal-foot { padding: 0 28px 24px; display: flex; gap: 10px; justify-content: flex-end; }
 
-@media (max-width: 900px) {
+/* Hamburger Drawer */
+#nav-drawer { display:none; position: fixed; top: 0; right: 0; width: 260px; height: 100vh; background: var(--ink); z-index: 200; transform: translateX(100%); transition: transform 0.3s ease; padding: 24px; display: flex; flex-direction: column; border-left: 1px solid var(--border); }
+#nav-drawer.open { transform: translateX(0); display: flex; }
+#nav-overlay { display:none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(12,63,48,0.4); z-index: 150; backdrop-filter: blur(2px); }
+#nav-overlay.open { display: block; }
+.ham-btn { display: none; flex-direction: column; gap: 5px; background: none; border: none; cursor: pointer; padding: 5px; width: 30px; }
+.ham-btn span { width: 100%; height: 2px; background: var(--bg); border-radius: 2px; transition: 0.2s; }
+.d-header { font-family: 'Playfair Display', serif; font-size: 18px; color: var(--bg); margin-bottom: 24px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+.d-link { color: var(--bg); text-decoration: none; font-size: 14px; padding: 12px 0; display: block; border-bottom: 1px solid rgba(246,237,222,0.1); font-family: 'DM Sans', sans-serif; }
+.d-link:hover { color: var(--sand); padding-left: 5px; transition: 0.2s; }
+
+/* Mobile Responsive */
+@media (max-width: 1080px) {
+    .stats-row { grid-template-columns: repeat(3, 1fr); }
+}
+
+@media (max-width: 768px) {
     :root { --sidebar: 0px; }
     .sidebar { display: none; }
-    .topbar { left: 0; }
+    .topbar { left: 0; padding: 0 16px; }
     .content { padding: 16px; }
-    .info-grid { grid-template-columns: 1fr; }
-    .stats-row { grid-template-columns: repeat(3, 1fr); }
     .profile-header { flex-direction: column; }
-}
-@media (max-width: 600px) {
+    .info-grid { grid-template-columns: 1fr; }
     .stats-row { grid-template-columns: repeat(2, 1fr); }
     .aw-grid { grid-template-columns: repeat(2, 1fr); }
+    .profile-actions { display: flex; flex-direction: column; width: 100%; }
+    .profile-actions form, .profile-actions button { width: 100%; }
+    .card-body { padding: 16px; }
+    .dash-footer { padding: 20px 16px; text-align: center; }
+    
+    .ham-btn { display: flex; }
+    .admin-chip { display: none; }
 }
 </style>
 </head>
@@ -313,12 +332,15 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
         <a href="artists.php" class="back-link"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg> Artists</a>
         <h1>Artist Profile</h1>
     </div>
-    <div class="topbar-right">
+    <div class="topbar-right" style="display:flex;align-items:center;gap:12px;">
         <div class="admin-chip">
             <div class="avatar"><?= strtoupper(substr($adminName, 0, 1)) ?></div>
             <span class="name"><?= htmlspecialchars($adminName) ?></span>
             <span class="arrow">∨</span>
         </div>
+        <button class="ham-btn" id="hamBtn">
+            <span></span><span></span><span></span>
+        </button>
     </div>
 </header>
 
@@ -371,10 +393,10 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
     <!-- Stats -->
     <div class="stats-row">
         <div class="mini-stat"><div class="num"><?= count($artworks) ?></div><div class="lbl">Total</div></div>
-        <div class="mini-stat"><div class="num" style="color:var(--green)"><?= $artworkCounts['approved'] ?></div><div class="lbl">Approved</div></div>
-        <div class="mini-stat"><div class="num" style="color:var(--amber)"><?= $artworkCounts['pending'] ?></div><div class="lbl">Pending</div></div>
-        <div class="mini-stat"><div class="num" style="color:var(--purple)"><?= $artworkCounts['sold'] ?></div><div class="lbl">Sold</div></div>
-        <div class="mini-stat"><div class="num" style="color:var(--terracotta)"><?= $artworkCounts['rejected'] + $artworkCounts['hidden'] ?></div><div class="lbl">Rejected/Hidden</div></div>
+        <div class="mini-stat"><div class="num"><?= $artworkCounts['approved'] ?></div><div class="lbl">Approved</div></div>
+        <div class="mini-stat"><div class="num"><?= $artworkCounts['pending'] ?></div><div class="lbl">Pending</div></div>
+        <div class="mini-stat"><div class="num"><?= $artworkCounts['sold'] ?></div><div class="lbl">Sold</div></div>
+        <div class="mini-stat"><div class="num"><?= $artworkCounts['rejected'] + $artworkCounts['hidden'] ?></div><div class="lbl">Rejected/Hidden</div></div>
     </div>
 
     <!-- Two col info -->
@@ -395,7 +417,7 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
                 <div class="info-row"><span class="label">Commissions</span><span class="value"><?= $artist['accepts_commissions'] ? '✓ Accepted' : '✗ Disabled' ?></span></div>
                 <div class="info-row"><span class="label">Instagram</span><span class="value <?= !$artist['instagram_url'] ? 'muted' : '' ?>"><?= $artist['instagram_url'] ? '<a href="' . htmlspecialchars($artist['instagram_url']) . '" target="_blank">' . htmlspecialchars($artist['instagram_url']) . '</a>' : 'Not set' ?></span></div>
                 <div class="info-row"><span class="label">Bio</span></div>
-                <div class="bio-text"><?= $artist['bio'] ? nl2br(htmlspecialchars($artist['bio'])) : '<span style="color:var(--grey4)">No bio written.</span>' ?></div>
+                <div class="bio-text"><?= $artist['bio'] ? nl2br(htmlspecialchars($artist['bio'])) : '<span style="opacity:0.5">No bio written.</span>' ?></div>
             </div>
         </div>
     </div>
@@ -416,7 +438,7 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
                     <?php if ($artworkImageUrl): ?>
                         <img src="<?= htmlspecialchars($artworkImageUrl) ?>" alt="<?= htmlspecialchars($aw['title']) ?>">
                     <?php else: ?>
-                        <div style="width:100%;aspect-ratio:1;background:var(--grey2);display:flex;align-items:center;justify-content:center;color:var(--grey4);font-size:10px;">No image</div>
+                        <div style="width:100%;aspect-ratio:1;background:var(--sand);display:flex;align-items:center;justify-content:center;color:var(--ink);font-size:10px;opacity:0.5;">No image</div>
                     <?php endif; ?>
                     <div class="aw-card-info">
                         <div class="aw-title" title="<?= htmlspecialchars($aw['title']) ?>"><?= htmlspecialchars($aw['title']) ?></div>
@@ -437,12 +459,28 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
 <div class="dash-footer">Art Bazaar Admin Panel &mdash; <?= date('Y') ?></div>
 </main>
 
+<!-- HAMBURGER DRAWER HTML -->
+<div id="nav-overlay"></div>
+<div id="nav-drawer">
+  <div class="d-header">Menu</div>
+  <a href="index.php" class="d-link">Overview</a>
+  <a href="artworks.php" class="d-link">Artworks</a>
+  <a href="artists.php" class="d-link">Artists</a>
+  <a href="categories.php" class="d-link">Categories</a>
+  <a href="inquiries.php" class="d-link">Buyer Inquiries</a>
+  <a href="commissions.php" class="d-link">Commissions</a>
+  <a href="messages.php" class="d-link">Messages</a>
+  <div style="margin-top:auto;border-top:1px solid rgba(246,237,222,0.1);padding-top:16px;">
+    <a href="../../logout.php" class="d-link" style="color:#ff9999;">Sign Out</a>
+  </div>
+</div>
+
 <!-- ══════════════ DELETE MODAL ══════════════ -->
 <div class="modal-overlay" id="deleteModal">
     <div class="modal">
         <div class="modal-head"><h3>Delete Artist</h3></div>
         <div class="modal-body">
-            <p class="confirm-text">Are you sure you want to permanently delete <strong>"<?= htmlspecialchars($artist['name']) ?>"</strong> and all their <strong><?= count($artworks) ?> artwork(s)</strong>? This will remove all images, buyer inquiries, and profile data. This cannot be undone.</p>
+            <p class="confirm-text">Are you sure you want to permanently delete <strong>"<?= htmlspecialchars($artist['name']) ?>"</strong> and all their <strong><?= count($artworks) ?> artwork(s)</strong>? This will remove all images, orders, and profile data. Order history will be preserved. This cannot be undone.</p>
         </div>
         <form method="POST">
             <input type="hidden" name="action" value="delete_artist">
@@ -455,6 +493,22 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
 </div>
 
 <script>
+// Drawer Logic
+const hamBtn = document.getElementById('hamBtn');
+const drawer = document.getElementById('nav-drawer');
+const overlay = document.getElementById('nav-overlay');
+
+if(hamBtn && drawer && overlay){
+    hamBtn.addEventListener('click', () => {
+        drawer.classList.add('open');
+        overlay.classList.add('open');
+    });
+    overlay.addEventListener('click', () => {
+        drawer.classList.remove('open');
+        overlay.classList.remove('open');
+    });
+}
+
 function openDelete() { document.getElementById('deleteModal').classList.add('open'); }
 function closeDelete() { document.getElementById('deleteModal').classList.remove('open'); }
 document.getElementById('deleteModal').addEventListener('click', function(e) { if (e.target === this) closeDelete(); });

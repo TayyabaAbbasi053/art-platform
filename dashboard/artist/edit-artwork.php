@@ -8,14 +8,18 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'artist') {
     exit;
 }
 
-$artistId   = (int) $_SESSION['user_id'];
-$artistName = $_SESSION['name'] ?? 'Artist';
-$successMsg = '';
-$errorMsg   = '';
+ $artistId   = (int) $_SESSION['user_id'];
+ $artistName = $_SESSION['name'] ?? 'Artist';
+ $successMsg = '';
+ $errorMsg   = '';
+
+// ── Fetch Artist Avatar (Added this to fix topbar display) ─────
+ $artistInfo = $conn->query("SELECT profile_picture FROM users WHERE id = $artistId")->fetch_assoc();
+ $avatarUrl = $artistInfo['profile_picture'] ? '../../' . ltrim($artistInfo['profile_picture'], './') : null;
 
 // ── Fetch Artwork & Verify Ownership ─────────────────
-$artworkId = (int) ($_GET['id'] ?? 0);
-$artwork = $conn->query("
+ $artworkId = (int) ($_GET['id'] ?? 0);
+ $artwork = $conn->query("
     SELECT a.*, c.id as cat_id
     FROM artworks a
     JOIN categories c ON a.category_id = c.id
@@ -28,10 +32,10 @@ if (!$artwork) {
 }
 
 // ── Fetch Categories ─────────────────────────────────
-$categories = $conn->query("SELECT id, name FROM categories ORDER BY name ASC")->fetch_all(MYSQLI_ASSOC);
+ $categories = $conn->query("SELECT id, name FROM categories ORDER BY name ASC")->fetch_all(MYSQLI_ASSOC);
 
 // ── Fetch Current Images ─────────────────────────────
-$images = $conn->query("
+ $images = $conn->query("
     SELECT id, image_path, is_cover, sort_order
     FROM artwork_images 
     WHERE artwork_id = $artworkId 
@@ -153,129 +157,153 @@ if (isset($_GET['msg'])) {
 <style>
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 :root {
-    --black: #1E1B18;
-    --grey1: #F7F1E8;
-    --grey2: #E6DDD0;
-    --grey3: #D6CDBF;
-    --grey4: #8A7D72;
-    --grey5: #3D332A;
-    --white: #FFFDF8;
-    --red: #C96B4B;
-    --green: #6BA58D;
-    --terracotta: #C96B4B;
+    --bg: #F6EDDE; --card: #F6EDDE; --sand: #DDCDAE; --border: #0C3F30;
+    --ink: #0C3F30; --body: #0C3F30; --muted: #0C3F30; --light: #0C3F30;
+    --r: 16px;
     --sidebar: 240px;
     --top: 60px;
 }
-html, body { height: 100%; background: var(--grey1); color: var(--black); font-family: 'DM Sans', sans-serif; }
+html, body { height: 100%; background: var(--bg); color: var(--ink); font-family: 'DM Sans', sans-serif; }
 
 /* ── Sidebar & Topbar ───────────────────────────────── */
-.sidebar { position: fixed; top: 0; left: 0; width: var(--sidebar); height: 100vh; background: #EFE3D2; border-right: 1px solid var(--grey2); display: flex; flex-direction: column; z-index: 100; overflow-y: auto; }
-.sidebar-brand { padding: 22px 24px 18px; border-bottom: 1px solid var(--grey2); }
-.sidebar-brand .logo-tag { font-size: 10px; letter-spacing: 3px; text-transform: uppercase; color: var(--grey4); }
-.sidebar-brand .logo-name { font-family: 'Playfair Display', serif; font-size: 20px; color: var(--black); font-weight: 400; margin-top: 2px; }
-.sidebar-brand .logo-badge { display: inline-block; margin-top: 6px; background: var(--terracotta); color: var(--white); font-size: 8px; letter-spacing: 2px; text-transform: uppercase; padding: 2px 7px; border-radius: 20px; }
-.sidebar-section { padding: 18px 16px 6px; font-size: 9px; letter-spacing: 2.5px; text-transform: uppercase; color: var(--grey4); font-weight: 500; }
-.nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 20px; font-size: 12.5px; color: var(--grey5); text-decoration: none; border-left: 2px solid transparent; transition: all .15s; }
-.nav-item:hover { color: var(--black); background: rgba(255,255,255,0.3); border-left-color: var(--grey3); }
-.nav-item.active { color: var(--black); background: rgba(255,255,255,0.4); border-left-color: var(--terracotta); font-weight: 500; }
+.sidebar { position: fixed; top: 0; left: 0; width: var(--sidebar); height: 100vh; background: var(--ink); border-right: 1px solid var(--border); display: flex; flex-direction: column; z-index: 100; overflow-y: auto; }
+.sidebar-brand { padding: 22px 24px 18px; border-bottom: 1px solid var(--border); }
+.sidebar-brand .logo-tag { font-size: 10px; letter-spacing: 3px; text-transform: uppercase; color: var(--bg); }
+.sidebar-brand .logo-name { font-family: 'Playfair Display', serif; font-size: 20px; color: var(--bg); font-weight: 400; margin-top: 2px; }
+.sidebar-brand .logo-badge { display: inline-block; margin-top: 6px; background: var(--sand); color: var(--ink); font-size: 8px; letter-spacing: 2px; text-transform: uppercase; padding: 2px 7px; border-radius: 20px; }
+.sidebar-section { padding: 18px 16px 6px; font-size: 9px; letter-spacing: 2.5px; text-transform: uppercase; color: var(--sand); font-weight: 500; }
+.nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 20px; font-size: 12.5px; color: var(--bg); text-decoration: none; border-left: 2px solid transparent; transition: all .15s; }
+.nav-item:hover { color: var(--ink); background: rgba(255,255,255,0.3); border-left-color: var(--sand); }
+.nav-item.active { color: var(--ink); background: var(--sand); font-weight: 500; border-left-color: var(--sand); }
 .nav-item .icon { width: 16px; height: 16px; flex-shrink: 0; opacity: .55; }
 .nav-item.active .icon, .nav-item:hover .icon { opacity: 1; }
-.sidebar-bottom { margin-top: auto; padding: 16px; border-top: 1px solid var(--grey2); }
-.signout-btn { display: flex; align-items: center; gap: 8px; padding: 9px 12px; font-size: 12px; color: var(--grey5); text-decoration: none; border-radius: 8px; transition: all .15s; width: 100%; background: none; border: none; cursor: pointer; font-family: 'DM Sans', sans-serif; }
-.signout-btn:hover { background: #FFF0EC; color: var(--terracotta); }
+.sidebar-bottom { margin-top: auto; padding: 16px; border-top: 1px solid var(--border); }
+.signout-btn { display: flex; align-items: center; gap: 8px; padding: 9px 12px; font-size: 12px; color: var(--bg); text-decoration: none; border-radius: 8px; transition: all .15s; width: 100%; background: none; border: none; cursor: pointer; font-family: 'DM Sans', sans-serif; }
+.signout-btn:hover { background: rgba(255,255,255,0.1); color: var(--sand); }
 
-.topbar { position: fixed; top: 0; left: var(--sidebar); right: 0; height: var(--top); background: var(--white); border-bottom: 1px solid var(--grey2); display: flex; align-items: center; justify-content: space-between; padding: 0 32px; z-index: 99; }
-.topbar-left h1 { font-family: 'Playfair Display', serif; font-size: 20px; font-weight: 400; color: var(--black); }
-.artist-chip { display: flex; align-items: center; gap: 8px; background: var(--grey1); border: 1px solid var(--grey2); padding: 5px 12px 5px 5px; border-radius: 30px; }
-.artist-chip .avatar { width: 26px; height: 26px; border-radius: 50%; background: var(--terracotta); display: flex; align-items: center; justify-content: center; font-size: 11px; color: #fff; font-weight: 600; overflow: hidden; }
+.topbar { position: fixed; top: 0; left: var(--sidebar); right: 0; height: var(--top); background: var(--card); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 32px; z-index: 99; }
+.topbar-left h1 { font-family: 'Playfair Display', serif; font-size: 20px; font-weight: 400; color: var(--ink); }
+.artist-chip { display: flex; align-items: center; gap: 8px; background: var(--sand); border: 1px solid var(--border); padding: 5px 12px 5px 5px; border-radius: 30px; }
+.artist-chip .avatar { width: 26px; height: 26px; border-radius: 50%; background: var(--ink); display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--bg); font-weight: 600; overflow: hidden; }
 .artist-chip .avatar img { width: 100%; height: 100%; object-fit: cover; }
-.artist-chip .name { font-size: 12px; font-weight: 500; color: var(--black); }
-.artist-chip .arrow { font-size: 12px; color: var(--grey4); margin-left: 4px; }
+.artist-chip .name { font-size: 12px; font-weight: 500; color: var(--ink); }
+.artist-chip .arrow { font-size: 12px; color: var(--muted); margin-left: 4px; }
 
 .main { margin-left: var(--sidebar); padding-top: var(--top); min-height: 100vh; }
 .content { padding: 32px; max-width: 860px; }
-.section-title { font-size: 11px; letter-spacing: 2.5px; text-transform: uppercase; color: var(--grey4); font-weight: 500; margin-bottom: 20px; }
+.section-title { font-size: 11px; letter-spacing: 2.5px; text-transform: uppercase; color: var(--ink); font-weight: 500; margin-bottom: 20px; }
 
 /* ── Messages ───────────────────────────────────────── */
 .msg { padding: 12px 18px; border-radius: 10px; font-size: 12.5px; margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
-.msg.success { background: #E8F5EE; color: #6BA58D; border: 1px solid #C8E0D5; }
-.msg.error { background: #FDEAEA; color: #D46A6A; border: 1px solid #F5C6C6; }
+.msg.success { background: var(--sand); color: var(--ink); border: 1px solid var(--border); }
+.msg.error { background: var(--sand); color: var(--ink); border: 1px solid var(--border); }
 
 /* ── Card ────────────────────────────────────────────── */
-.card { background: var(--white); border: 1px solid var(--grey2); border-radius: 16px; overflow: hidden; padding: 32px; margin-bottom: 24px; }
-.card-head { border-bottom: 1px solid var(--grey2); padding-bottom: 20px; margin-bottom: 20px; font-weight: 500; font-size: 14px; color: var(--black); }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: var(--r); overflow: hidden; padding: 32px; margin-bottom: 24px; }
+.card-head { border-bottom: 1px solid var(--border); padding-bottom: 20px; margin-bottom: 20px; font-weight: 500; font-size: 14px; color: var(--ink); }
 
 /* ── Form Grid ───────────────────────────────────────── */
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px; }
 .form-grid.full { grid-template-columns: 1fr; }
 .field-group { margin-bottom: 20px; }
-.field-group label { display: block; font-size: 11px; letter-spacing: .8px; text-transform: uppercase; color: var(--grey5); font-weight: 500; margin-bottom: 8px; }
-.field-group label span { color: var(--terracotta); }
+.field-group label { display: block; font-size: 10.5px; letter-spacing: .8px; text-transform: uppercase; color: var(--ink); font-weight: 500; margin-bottom: 8px; }
+.field-group label span { color: var(--ink); }
 .field-input, .field-select, .field-textarea {
     width: 100%; padding: 12px 16px; font-size: 13px; font-family: 'DM Sans', sans-serif;
-    border: 1px solid var(--grey3); border-radius: 10px; background: var(--white);
-    color: var(--black); outline: none; transition: border-color .15s;
+    border: 1.5px solid var(--sand); border-radius: 10px; background: var(--bg);
+    color: var(--ink); outline: none; transition: border-color .15s;
 }
-.field-input:focus, .field-select:focus, .field-textarea:focus { border-color: var(--black); }
+.field-input:focus, .field-select:focus, .field-textarea:focus { border-color: var(--ink); }
 .field-textarea { min-height: 120px; resize: vertical; line-height: 1.6; }
 
 /* ── Image Manager ───────────────────────────────────── */
 .image-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 16px; }
-.img-card { position: relative; aspect-ratio: 1; border-radius: 8px; overflow: hidden; border: 2px solid var(--grey2); }
-.img-card.cover { border-color: var(--black); }
+.img-card { position: relative; aspect-ratio: 1; border-radius: 8px; overflow: hidden; border: 2px solid var(--border); }
+.img-card.cover { border-color: var(--ink); }
 .img-card img { width: 100%; height: 100%; object-fit: cover; }
 .img-actions {
-    position: absolute; inset: 0; background: rgba(0,0,0,.6);
+    position: absolute; inset: 0; background: var(--sand);
     display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
-    opacity: 0; transition: opacity .2s;
+    opacity: 0; transition: opacity .2s; border: 1px solid var(--border);
 }
 .img-card:hover .img-actions { opacity: 1; }
 .img-btn {
-    background: #fff; border: none; padding: 8px 12px; border-radius: 6px;
-    font-size: 11px; font-weight: 600; cursor: pointer; color: var(--black);
-    display: flex; align-items: center; gap: 4px; text-decoration: none;
+    background: var(--sand); border: 1px solid var(--border); padding: 8px 12px; border-radius: 6px;
+    font-size: 11px; font-weight: 600; cursor: pointer; color: var(--ink);
+    display: flex; align-items: center; gap: 4px; text-decoration: none; width: 100%; justify-content: center;
 }
-.img-btn:hover { background: #eee; }
-.img-btn.danger { color: var(--terracotta); }
-.img-btn.danger:hover { background: #FFF0EC; }
+.img-btn:hover { background: var(--ink); color: var(--bg); }
+.img-btn.danger { color: var(--ink); border: 1px solid var(--border); background: transparent; }
+.img-btn.danger:hover { background: var(--sand); }
 .cover-tag {
-    position: absolute; top: 8px; left: 8px; background: var(--black); color: #fff;
+    position: absolute; top: 8px; left: 8px; background: var(--ink); color: var(--bg);
     font-size: 9px; padding: 3px 8px; border-radius: 4px; font-weight: 600;
 }
 
 /* ── Toggle Row ─────────────────────────────────────── */
-.toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-top: 1px solid var(--grey2); }
-.toggle-label { font-size: 13px; font-weight: 500; color: var(--black); }
-.toggle-desc { font-size: 11px; color: var(--grey4); display: block; margin-top: 2px; }
+.toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-top: 1px solid var(--border); }
+.toggle-label { font-size: 13px; font-weight: 500; color: var(--ink); }
+.toggle-desc { font-size: 11px; color: var(--muted); display: block; margin-top: 2px; }
 .toggle-switch { position: relative; width: 44px; height: 24px; flex-shrink: 0; }
-.toggle-switch input { opacity: 0; width: 0; height: 0; }
-.toggle-slider { position: absolute; inset: 0; cursor: pointer; background: var(--grey3); border-radius: 24px; transition: background .2s; }
+.toggle-switch input { opacity: 0; width: 0; height: 0; accent-color: var(--ink); }
+.toggle-slider { position: absolute; inset: 0; cursor: pointer; background: var(--sand); border: 1.5px solid var(--border); border-radius: 24px; transition: background .2s; }
 .toggle-slider::before { content: ''; position: absolute; left: 3px; top: 3px; width: 18px; height: 18px; background: #fff; border-radius: 50%; transition: transform .2s; }
-.toggle-switch input:checked + .toggle-slider { background: var(--black); }
+.toggle-switch input:checked + .toggle-slider { background: var(--ink); border-color: var(--ink); }
 .toggle-switch input:checked + .toggle-slider::before { transform: translateX(20px); }
 
 /* ── Actions ─────────────────────────────────────────── */
-.form-actions { display: flex; align-items: center; justify-content: space-between; margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--grey2); }
+.form-actions { display: flex; align-items: center; justify-content: space-between; margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--border); }
 .btn {
     padding: 12px 28px; border-radius: 10px; font-size: 13px; font-weight: 500;
     font-family: 'DM Sans', sans-serif; cursor: pointer; border: none;
     text-decoration: none; display: inline-flex; align-items: center; gap: 8px; transition: all .15s;
 }
-.btn-primary { background: var(--black); color: #fff; }
-.btn-primary:hover { background: #333; }
-.btn-ghost { background: transparent; color: var(--grey5); border: 1px solid var(--grey3); }
-.btn-ghost:hover { border-color: var(--black); color: var(--black); }
+.btn-primary { background: var(--sand); color: var(--ink); }
+.btn-primary:hover { background: #c4b69e; }
+.btn-ghost { background: transparent; color: var(--ink); border: 1px solid var(--border); }
+.btn-ghost:hover { border-color: var(--ink); color: var(--ink); }
 
 /* ── Upload Area (for adding new) ───────────────────── */
 .upload-add {
-    border: 2px dashed var(--grey3); border-radius: 12px; padding: 24px;
-    text-align: center; background: var(--grey1); cursor: pointer; margin-top: 24px;
+    border: 2px dashed var(--border); border-radius: 12px; padding: 24px;
+    text-align: center; background: var(--sand); cursor: pointer; margin-top: 24px;
 }
-.upload-add:hover { border-color: var(--black); background: #F0EAE0; }
-.upload-add-title { font-size: 13px; font-weight: 500; margin-bottom: 4px; color: var(--black); }
-.upload-add-hint { font-size: 11px; color: var(--grey4); }
+.upload-add:hover { border-color: var(--ink); background: #d0c0a0; }
+.upload-add-title { font-size: 13px; font-weight: 500; margin-bottom: 4px; color: var(--ink); }
+.upload-add-hint { font-size: 11px; color: var(--muted); }
 
-@media (max-width: 900px) { :root { --sidebar: 0px; } .sidebar { display: none; } .topbar { left: 0; } .form-grid { grid-template-columns: 1fr; } .content { padding: 20px; } }
+/* ── Drawer Global Styles ───────────────────────────── */
+#nav-drawer{display:none;}
+#nav-overlay{display:none;}
+.ham-btn{display:none;}
+
+@media(max-width:1080px){
+    .content { padding: 24px; }
+}
+
+@media(max-width:768px){
+    :root { --sidebar: 0px; }
+    .sidebar { display: none; }
+    .topbar { left: 0; }
+    .content { padding: 16px; }
+    .form-grid { grid-template-columns: 1fr; }
+    .form-actions { flex-direction: column; gap: 12px; }
+    .form-actions .btn { width: 100%; justify-content: center; }
+    
+    .ham-btn{display:inline-block;width:30px;height:24px;position:relative;background:none;border:none;cursor:pointer;z-index:2000;}
+    .ham-btn span{position:absolute;display:block;width:100%;height:2px;background:var(--ink);border-radius:2px;transition:all .3s;opacity:1;left:0;}
+    .ham-btn span:nth-child(1){top:2px;}
+    .ham-btn span:nth-child(2){top:10px;}
+    .ham-btn span:nth-child(3){top:18px;}
+    .open #nav-drawer{display:block;position:fixed;top:0;right:0;width:80%;height:100%;background:var(--ink);z-index:1001;padding:40px 20px;box-shadow:-5px 0 15px rgba(0,0,0,0.1);transition:right 0.3s ease;}
+    .open #nav-overlay{display:block;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;}
+    
+    /* Mobile Image Grid */
+    .image-list { grid-template-columns: 1fr 1fr; }
+    
+    /* Drawer Links */
+    #nav-drawer a { display: block; padding: 15px 0; color: var(--bg); font-size: 16px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+}
 </style>
 </head>
 <body>
@@ -305,6 +333,12 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
         Commission Requests
     </a>
+    <!-- ADDED ORDERS LINK HERE -->
+    <a href="orders.php" class="nav-item">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 7H4a2 2 0 00-2 2v6a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>
+        Orders
+    </a>
+    <!-- END ADDED LINK -->
     <div class="sidebar-section">Account</div>
     <a href="profile.php" class="nav-item">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
@@ -324,7 +358,7 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
     <div class="topbar-right">
         <div class="artist-chip">
             <div class="avatar">
-                <?php if ($avatarUrl ?? false): ?>
+                <?php if ($avatarUrl): ?>
                     <img src="<?= htmlspecialchars($avatarUrl) ?>" alt="">
                 <?php else: ?>
                     <?= strtoupper(substr($artistName, 0, 1)) ?>
@@ -355,7 +389,7 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
         <div class="card">
             <div class="card-head">Current Images</div>
             <?php if (empty($images)): ?>
-                <p style="font-size:12px;color:var(--grey4);">No images uploaded.</p>
+                <p style="font-size:12px;color:var(--muted);">No images uploaded.</p>
             <?php else: ?>
                 <div class="image-list">
                     <?php foreach ($images as $img): ?>
@@ -478,12 +512,52 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
 </div>
 </main>
 
+<!-- MOBILE DRAWER & OVERLAY -->
+<div id="nav-drawer">
+    <div style="margin-bottom: 30px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 20px;">
+        <h2 style="color:var(--bg); font-family:'Playfair Display',serif;">Menu</h2>
+    </div>
+    <a href="index.php">Overview</a>
+    <a href="upload-artwork.php">Upload Artwork</a>
+    <a href="my-artworks.php">My Artworks</a>
+    <a href="commissions.php">Commission Requests</a>
+    <a href="orders.php">Orders</a>
+    <a href="profile.php">My Profile</a>
+    <div style="margin-top: 40px;">
+        <a href="../../logout.php" style="display:inline-block; padding: 10px 20px; background:var(--sand); color:var(--ink); border-radius:30px; font-weight:600;">Sign Out</a>
+    </div>
+</div>
+<div id="nav-overlay"></div>
+
 <script>
 // ── Add Images Logic ─────────────────────────────────
 const addZone = document.getElementById('addZone');
 const newFiles = document.getElementById('newFiles');
 
 addZone.addEventListener('click', () => newFiles.click());
+
+// ── Drawer Logic ───────────────────────────────────────
+const drawer = document.querySelector('body');
+const overlay = document.getElementById('nav-overlay');
+
+// Inject Hamburger if not present (Mobile only)
+if(window.innerWidth <= 768 && !document.querySelector('.ham-btn')){
+    const topbarRight = document.querySelector('.topbar-right');
+    if(topbarRight){
+        const btn = document.createElement('button');
+        btn.className = 'ham-btn';
+        btn.innerHTML = '<span></span><span></span><span></span>';
+        topbarRight.insertBefore(btn, topbarRight.firstChild);
+        
+        btn.addEventListener('click', () => {
+            drawer.classList.toggle('open');
+        });
+    }
+}
+
+overlay.addEventListener('click', () => {
+    drawer.classList.remove('open');
+});
 </script>
 
 </body>

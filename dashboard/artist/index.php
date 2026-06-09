@@ -8,20 +8,18 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'artist') {
     exit;
 }
 
-$artistId   = (int) $_SESSION['user_id'];
-$artistName = $_SESSION['name'] ?? 'Artist';
+ $artistId   = (int) $_SESSION['user_id'];
+ $artistName = $_SESSION['name'] ?? 'Artist';
 
 // ── Stats queries ──────────────────────────────────────────
-$stats = [];
+ $stats = [];
 
-$statQueries = [
+ $statQueries = [
     'total_artworks'    => "SELECT COUNT(*) FROM artworks WHERE artist_id = $artistId",
     'approved_artworks' => "SELECT COUNT(*) FROM artworks WHERE artist_id = $artistId AND status = 'approved'",
     'pending_artworks'  => "SELECT COUNT(*) FROM artworks WHERE artist_id = $artistId AND status = 'pending'",
     'rejected_artworks' => "SELECT COUNT(*) FROM artworks WHERE artist_id = $artistId AND status = 'rejected'",
     'sold_artworks'     => "SELECT COUNT(*) FROM artworks WHERE artist_id = $artistId AND status = 'sold'",
-    'total_commissions' => "SELECT COUNT(*) FROM commission_requests WHERE artist_id = $artistId",
-    'new_commissions'   => "SELECT COUNT(*) FROM commission_requests WHERE artist_id = $artistId AND status = 'new'",
 ];
 
 foreach ($statQueries as $key => $sql) {
@@ -29,22 +27,50 @@ foreach ($statQueries as $key => $sql) {
     $stats[$key] = $r ? (int) $r->fetch_row()[0] : 0;
 }
 
+// Commission stats (now bridge table + orders)
+ $stats['total_commissions'] = (int)$conn->query("
+    SELECT COUNT(*) FROM commission_requests cr 
+    JOIN orders o ON cr.order_id = o.id 
+    WHERE cr.artist_id = $artistId AND o.order_type = 'commission'
+")->fetch_row()[0];
+
+ $stats['new_commissions'] = (int)$conn->query("
+    SELECT COUNT(*) FROM commission_requests cr 
+    JOIN orders o ON cr.order_id = o.id 
+    WHERE cr.artist_id = $artistId AND o.order_type = 'commission' AND o.order_status = 'pending'
+")->fetch_row()[0];
+
+// Order stats (from orders table)
+ $stats['total_orders'] = (int)$conn->query("
+    SELECT COUNT(DISTINCT o.id) FROM orders o
+    JOIN order_items oi ON o.id = oi.order_id
+    JOIN artworks a ON oi.item_id = a.id AND oi.item_type = 'artwork'
+    WHERE a.artist_id = $artistId AND o.order_type = 'artwork'
+")->fetch_row()[0];
+
+ $stats['new_orders'] = (int)$conn->query("
+    SELECT COUNT(DISTINCT o.id) FROM orders o
+    JOIN order_items oi ON o.id = oi.order_id
+    JOIN artworks a ON oi.item_id = a.id AND oi.item_type = 'artwork'
+    WHERE a.artist_id = $artistId AND o.order_type = 'artwork' AND o.order_status = 'pending'
+")->fetch_row()[0];
+
 // ── Profile completeness check ─────────────────────────────
-$profileRow = $conn->query("
+ $profileRow = $conn->query("
     SELECT bio, city, instagram_url, profile_picture
     FROM artist_profiles ap
     JOIN users u ON u.id = ap.user_id
     WHERE ap.user_id = $artistId
 ")->fetch_assoc();
 
-$profileComplete = $profileRow
+ $profileComplete = $profileRow
     && !empty($profileRow['bio'])
     && !empty($profileRow['city'])
     && !empty($profileRow['profile_picture']);
 
 // ── Recent artworks (last 6) ───────────────────────────────
-$recentArtworks = [];
-$ra = $conn->query("
+ $recentArtworks = [];
+ $ra = $conn->query("
     SELECT a.id, a.title, a.price, a.status, a.created_at, c.name AS category
     FROM artworks a
     JOIN categories c ON c.id = a.category_id
@@ -54,18 +80,28 @@ $ra = $conn->query("
 ");
 while ($row = $ra->fetch_assoc()) $recentArtworks[] = $row;
 
-// ── Recent commission requests ─────────────────────────────
-$recentCommissions = [];
-$rc = $conn->query("
-    SELECT id, buyer_name, budget_min, budget_max, deadline, status, created_at
-    FROM commission_requests
-    WHERE artist_id = $artistId
-    ORDER BY created_at DESC
+// ── Recent Orders ───────────────────────────────
+ $recentOrders = [];
+ $ro = $conn->query("
+    SELECT o.id, o.order_number, o.order_status, o.created_at,
+           o.guest_name, o.guest_email, 
+           u.name AS buyer_name_real, u.email AS buyer_email_real,
+           a.title AS artwork_title
+    FROM orders o
+    JOIN order_items oi ON o.id = oi.order_id
+    JOIN artworks a ON oi.item_id = a.id AND oi.item_type = 'artwork'
+    LEFT JOIN users u ON o.buyer_id = u.id
+    WHERE a.artist_id = $artistId AND o.order_type = 'artwork'
+    GROUP BY o.id
+    ORDER BY o.created_at DESC
     LIMIT 5
 ");
-while ($row = $rc->fetch_assoc()) $recentCommissions[] = $row;
+while ($row = $ro->fetch_assoc()) {
+    $row['display_name'] = $row['buyer_name_real'] ?: $row['guest_name'];
+    $recentOrders[] = $row;
+}
 
-$today = date('l, d F Y');
+ $today = date('l, d F Y');
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -78,100 +114,89 @@ $today = date('l, d F Y');
 /* ── Reset & Base ─────────────────────────────────────── */
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 :root {
-    --black:   #1E1B18;
-    --grey1:   #F7F1E8;
-    --grey2:   #E6DDD0;
-    --grey3:   #D6CDBF;
-    --grey4:   #8A7D72;
-    --grey5:   #3D332A;
-    --white:   #FFFDF8;
-    --accent:  #1E1B18;
-    --red:     #C96B4B;
-    --green:   #6BA58D;
-    --amber:   #E48A4A;
-    --blue:    #0984e3;
-    --terracotta: #C96B4B;
+    --bg:#F6EDDE; --card:#F6EDDE; --sand:#DDCDAE; --border:#0C3F30;
+    --ink:#0C3F30; --body:#0C3F30; --muted:#0C3F30; --light:#0C3F30;
     --sidebar: 240px;
     --top:     60px;
 }
-html, body { height: 100%; background: var(--grey1); color: var(--black); font-family: 'DM Sans', sans-serif; }
+html, body { height: 100%; background: var(--bg); color: var(--ink); font-family: 'DM Sans', sans-serif; }
 
 /* ── Sidebar ─────────────────────────────────────────── */
 .sidebar {
     position: fixed; top: 0; left: 0;
     width: var(--sidebar); height: 100vh;
-    background: #EFE3D2;
-    border-right: 1px solid var(--grey2);
+    background: var(--ink);
+    border-right: 1px solid rgba(246,237,222,.1);
     display: flex; flex-direction: column;
     z-index: 100;
     overflow-y: auto;
 }
 .sidebar-brand {
     padding: 22px 24px 18px;
-    border-bottom: 1px solid var(--grey2);
+    border-bottom: 1px solid rgba(246,237,222,.1);
 }
 .sidebar-brand .logo-tag {
-    font-size: 10px; letter-spacing: 3px; text-transform: uppercase; color: var(--grey4); font-weight: 400;
+    font-size: 10px; letter-spacing: 3px; text-transform: uppercase; color: var(--bg); font-weight: 400;
 }
 .sidebar-brand .logo-name {
-    font-family: 'Playfair Display', serif; font-size: 20px; color: var(--black); font-weight: 400; margin-top: 2px;
+    font-family: 'Playfair Display', serif; font-size: 20px; color: var(--bg); font-weight: 400; margin-top: 2px;
 }
 .sidebar-brand .logo-badge {
-    display: inline-block; margin-top: 6px; background: var(--terracotta); color: var(--white);
+    display: inline-block; margin-top: 6px; background: var(--sand); color: var(--ink);
     font-size: 8px; letter-spacing: 2px; text-transform: uppercase; padding: 2px 7px; border-radius: 20px;
 }
 .sidebar-section {
     padding: 18px 16px 6px;
-    font-size: 9px; letter-spacing: 2.5px; text-transform: uppercase; color: var(--grey4); font-weight: 500;
+    font-size: 9px; letter-spacing: 2.5px; text-transform: uppercase; color: var(--sand); font-weight: 500;
 }
 .nav-item {
     display: flex; align-items: center; gap: 10px;
     padding: 10px 20px;
-    font-size: 12.5px; color: var(--grey5); text-decoration: none; font-weight: 400;
+    font-size: 12.5px; color: var(--bg); text-decoration: none; font-weight: 400;
     border-left: 2px solid transparent;
     transition: all .15s; position: relative;
 }
-.nav-item:hover { color: var(--black); background: rgba(255,255,255,0.3); border-left-color: var(--grey3); }
-.nav-item.active { color: var(--black); background: rgba(255,255,255,0.4); border-left-color: var(--terracotta); font-weight: 500; }
-.nav-item .icon { width: 16px; height: 16px; flex-shrink: 0; opacity: .55; }
+.nav-item:hover { color: var(--bg); background: rgba(255,255,255,0.05); border-left-color: rgba(255,255,255,0.2); }
+.nav-item.active { color: var(--ink); background: var(--sand); font-weight: 500; }
+.nav-item .icon { width: 16px; height: 16px; flex-shrink: 0; opacity: .7; }
 .nav-item.active .icon, .nav-item:hover .icon { opacity: 1; }
 .badge {
-    margin-left: auto; background: var(--terracotta); color: #fff;
+    margin-left: auto; background: var(--sand); color: var(--ink);
     font-size: 9px; font-weight: 600; padding: 1px 6px; border-radius: 20px; min-width: 18px; text-align: center;
 }
-.badge.amber { background: var(--amber); }
+.badge.amber { background: #fff; color: var(--ink); }
 .sidebar-bottom {
-    margin-top: auto; padding: 16px; border-top: 1px solid var(--grey2);
+    margin-top: auto; padding: 16px; border-top: 1px solid rgba(246,237,222,.1);
 }
 .signout-btn {
     display: flex; align-items: center; gap: 8px; padding: 9px 12px;
-    font-size: 12px; color: var(--grey5); text-decoration: none; border-radius: 8px;
+    font-size: 12px; color: var(--bg); text-decoration: none; border-radius: 8px;
     transition: all .15s; width: 100%; background: none; border: none; cursor: pointer; font-family: 'DM Sans', sans-serif;
 }
-.signout-btn:hover { background: #FFF0EC; color: var(--terracotta); }
+.signout-btn:hover { background: rgba(255,255,255,0.1); color: var(--bg); }
 
 /* ── Topbar ──────────────────────────────────────────── */
 .topbar {
     position: fixed; top: 0; left: var(--sidebar); right: 0; height: var(--top);
-    background: var(--white); border-bottom: 1px solid var(--grey2);
+    background: var(--card); border-bottom: 1px solid var(--border);
     display: flex; align-items: center; justify-content: space-between;
     padding: 0 32px; z-index: 99;
 }
-.topbar-left h1 { font-family: 'Playfair Display', serif; font-size: 20px; font-weight: 400; color: var(--black); }
-.topbar-left .date { font-size: 11px; color: var(--grey4); margin-top: 1px; }
+.topbar-left h1 { font-family: 'Playfair Display', serif; font-size: 20px; font-weight: 400; color: var(--ink); }
+.topbar-left .date { font-size: 11px; color: var(--muted); margin-top: 1px; }
 .topbar-right { display: flex; align-items: center; gap: 20px; }
 .artist-chip {
     display: flex; align-items: center; gap: 8px;
-    background: var(--grey1); border: 1px solid var(--grey2);
+    background: var(--sand); border: 1px solid var(--border);
     padding: 5px 12px 5px 5px; border-radius: 30px;
 }
 .artist-chip .avatar {
-    width: 26px; height: 26px; border-radius: 50%; background: var(--terracotta);
+    width: 26px; height: 26px; border-radius: 50%; background: var(--sand);
     display: flex; align-items: center; justify-content: center;
-    font-size: 11px; color: #fff; font-weight: 600;
+    font-size: 11px; color: var(--ink); font-weight: 600;
 }
-.artist-chip .name { font-size: 12px; color: var(--black); font-weight: 500; }
-.artist-chip .arrow { font-size: 12px; color: var(--grey4); margin-left: 4px; }
+.artist-chip .name { font-size: 12px; color: var(--ink); font-weight: 500; }
+.artist-chip .arrow { font-size: 12px; color: var(--muted); margin-left: 4px; }
 
 /* ── Main ────────────────────────────────────────────── */
 .main { margin-left: var(--sidebar); padding-top: var(--top); min-height: 100vh; }
@@ -179,100 +204,68 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
 
 /* ── Section headers ─────────────────────────────────── */
 .section-header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 18px; }
-.section-title { font-size: 11px; letter-spacing: 2.5px; text-transform: uppercase; color: var(--grey4); font-weight: 500; }
-.section-link { font-size: 11px; color: var(--grey5); text-decoration: none; border-bottom: 1px solid var(--grey3); }
-.section-link:hover { color: var(--black); }
+.section-title { font-size: 11px; letter-spacing: 2.5px; text-transform: uppercase; color: var(--muted); font-weight: 500; }
+.section-link { font-size: 11px; color: var(--body); text-decoration: none; border-bottom: 1px solid var(--sand); }
+.section-link:hover { color: var(--ink); }
 
 /* ── Alert strip ─────────────────────────────────────── */
 .alert-strip {
-    background: #FCEEE2; color: var(--black);
-    border: 1px solid var(--grey2);
+    background: var(--sand); color: var(--ink);
+    border: 1px solid var(--border);
     border-radius: 12px; padding: 14px 20px;
     display: flex; align-items: center; justify-content: space-between;
     margin-bottom: 28px; gap: 12px;
 }
-.alert-strip .alert-text { font-size: 12.5px; line-height: 1.5; color: var(--grey5); }
-.alert-strip .alert-text strong { font-weight: 600; color: var(--black); }
+.alert-strip .alert-text { font-size: 12.5px; line-height: 1.5; color: var(--body); }
+.alert-strip .alert-text strong { font-weight: 600; color: var(--ink); }
 .alert-strip .alert-actions { display: flex; gap: 8px; flex-shrink: 0; }
 .alert-btn {
     padding: 7px 14px; border-radius: 8px; font-size: 11px; font-weight: 500;
     text-decoration: none; font-family: 'DM Sans', sans-serif; cursor: pointer; border: none;
     transition: opacity .15s; white-space: nowrap;
 }
-.alert-btn.primary { background: var(--terracotta); color: #fff; }
-.alert-btn.ghost { background: transparent; color: var(--grey5); border: 1px solid var(--grey3); }
-.alert-btn.ghost:hover { border-color: var(--terracotta); color: var(--terracotta); }
+.alert-btn.primary { background: var(--ink); color: var(--bg); }
+.alert-btn.ghost { background: transparent; color: var(--ink); border: 1px solid var(--border); }
+.alert-btn.ghost:hover { border-color: var(--ink); color: var(--ink); }
 .alert-btn:hover { opacity: .85; }
 
 /* ── Stat cards ──────────────────────────────────────── */
 .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 32px; }
 .stat-card {
-    background: var(--white); border: 1px solid var(--grey2); border-radius: 14px;
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px;
     padding: 22px 24px; position: relative; overflow: hidden; transition: box-shadow .2s;
 }
 .stat-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,.06); }
-.stat-card .label { font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--grey4); font-weight: 500; margin-bottom: 10px; }
-.stat-card .value { font-family: 'Playfair Display', serif; font-size: 36px; font-weight: 400; color: var(--black); line-height: 1; }
-.stat-card .sub { font-size: 11px; color: var(--grey4); margin-top: 6px; }
+.stat-card .label { font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--ink); font-weight: 500; margin-bottom: 10px; }
+.stat-card .value { font-family: 'Playfair Display', serif; font-size: 36px; font-weight: 400; color: var(--ink); line-height: 1; }
+.stat-card .sub { font-size: 11px; color: var(--muted); margin-top: 6px; }
 .stat-card .sub span { font-weight: 600; }
 .stat-card .corner-icon {
     position: absolute; right: 18px; top: 18px; width: 32px; height: 32px;
     border-radius: 8px; display: flex; align-items: center; justify-content: center;
+    background: var(--sand);
 }
-.stat-card .corner-icon::before {
-    content: '';
-    position: absolute;
-    inset: -8px;
-    border-radius: 50%;
-    background: radial-gradient(circle, var(--glow-color) 0%, transparent 70%);
-    opacity: 0.35;
-    z-index: -1;
-    filter: blur(6px);
-}
-.stat-card .corner-icon svg {
-    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.08));
-    z-index: 2;
-}
-.stat-card.artworks .corner-icon {
-    background: #EEF2F8;
-    --glow-color: rgba(59, 125, 216, 0.2);
-}
-.stat-card.artworks .corner-icon svg { stroke: #3B7DD8; }
-.stat-card.pending .corner-icon {
-    background: #FFF4E6;
-    --glow-color: rgba(228, 138, 74, 0.22);
-}
-.stat-card.pending .corner-icon svg { stroke: #E48A4A; }
-.stat-card.sold .corner-icon {
-    background: #EEE8FF;
-    --glow-color: rgba(107, 91, 230, 0.2);
-}
-.stat-card.sold .corner-icon svg { stroke: #6B5CE6; }
-.stat-card.commissions .corner-icon {
-    background: #EEF7F3;
-    --glow-color: rgba(107, 165, 141, 0.22);
-}
-.stat-card.commissions .corner-icon svg { stroke: #6BA58D; }
+.stat-card .corner-icon svg { stroke: var(--ink); }
+/* GLOW OVERRIDE */
+.stat-card .corner-icon::before { display: none; }
 
 /* ── Quick actions ───────────────────────────────────── */
 .quick-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 28px; }
 .quick-card {
-    background: var(--white); border: 1px solid var(--grey2); border-radius: 12px;
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
     padding: 18px 16px; text-decoration: none; display: flex; flex-direction: column; align-items: flex-start;
     gap: 10px; transition: all .2s;
 }
-.quick-card:hover { border-color: var(--terracotta); box-shadow: 0 4px 16px rgba(0,0,0,.07); }
+.quick-card:hover { border-color: var(--muted); box-shadow: 0 4px 16px rgba(0,0,0,.07); }
 .quick-card .q-icon {
     width: 36px; height: 36px; border-radius: 10px;
     display: flex; align-items: center; justify-content: center;
+    background: var(--sand);
 }
-.quick-card.upload-artwork .q-icon { background: #EEF2F8; }
-.quick-card.my-artworks .q-icon { background: #EEF5F0; }
-.quick-card.commissions .q-icon { background: #EEF7F3; }
-.quick-card .q-label { font-size: 12px; font-weight: 500; color: var(--black); line-height: 1.3; }
-.quick-card .q-desc { font-size: 10.5px; color: var(--grey4); }
+.quick-card .q-label { font-size: 12px; font-weight: 500; color: var(--ink); line-height: 1.3; }
+.quick-card .q-desc { font-size: 10.5px; color: var(--muted); }
 .pending-badge {
-    margin-left: 4px; background: var(--amber); color: #fff;
+    margin-left: 4px; background: var(--sand); color: var(--ink);
     font-size: 9px; font-weight: 700; padding: 1px 6px; border-radius: 10px;
 }
 
@@ -281,58 +274,86 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
 
 /* ── Table card ──────────────────────────────────────── */
 .card {
-    background: var(--white); border: 1px solid var(--grey2); border-radius: 14px; overflow: hidden;
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px; overflow: hidden;
 }
 .card-head {
-    padding: 18px 22px 14px; border-bottom: 1px solid var(--grey2);
+    padding: 18px 22px 14px; border-bottom: 1px solid var(--border);
     display: flex; align-items: center; justify-content: space-between;
 }
-.card-head .card-title { font-size: 13px; font-weight: 500; color: var(--black); }
+.card-head .card-title { font-size: 13px; font-weight: 500; color: var(--ink); }
 table { width: 100%; border-collapse: collapse; }
-th { font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--grey4); font-weight: 500; padding: 10px 22px; text-align: left; border-bottom: 1px solid var(--grey2); background: var(--grey1); }
-td { font-size: 12px; color: var(--grey5); padding: 12px 22px; border-bottom: 1px solid var(--grey2); vertical-align: middle; }
+th { font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); font-weight: 500; padding: 10px 22px; text-align: left; border-bottom: 1px solid var(--border); background: var(--sand); }
+td { font-size: 12px; color: var(--body); padding: 12px 22px; border-bottom: 1px solid var(--border); vertical-align: middle; }
 tr:last-child td { border-bottom: none; }
-tr:hover td { background: var(--grey1); color: var(--black); }
-.td-title { color: var(--black); font-weight: 500; font-size: 12.5px; max-width: 160px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.td-price { font-weight: 500; color: var(--black); white-space: nowrap; }
+tr:hover td { background: var(--sand); color: var(--ink); }
+.td-title { color: var(--ink); font-weight: 500; font-size: 12.5px; max-width: 160px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.td-price { font-weight: 500; color: var(--ink); white-space: nowrap; }
 
 /* ── Status badges ───────────────────────────────────── */
 .pill {
     display: inline-block; font-size: 9px; letter-spacing: .5px; text-transform: uppercase;
     font-weight: 600; padding: 3px 9px; border-radius: 20px;
 }
-.pill.pending     { background: #FFF4E6; color: #E48A4A; }
-.pill.approved    { background: #E8F5EE; color: #6BA58D; }
-.pill.rejected    { background: #FDEAEA; color: #D46A6A; }
-.pill.sold        { background: #EEE8FF; color: #6B5CE6; }
+.pill.pending     { background: var(--sand); color: var(--ink); }
+.pill.approved    { background: var(--sand); color: var(--ink); }
+.pill.rejected    { background: var(--sand); color: var(--ink); }
+.pill.sold        { background: var(--sand); color: var(--ink); }
 .pill.hidden      { background: #F4F4F4; color: #888; }
-.pill.new         { background: #FFF0EC; color: #C96B4B; font-weight: 700; }
-.pill.contacted   { background: #E8F4FF; color: #1565c0; }
-.pill.assigned    { background: #FFF4E6; color: #E48A4A; }
-.pill.in_progress { background: #EEF2F8; color: #3B7DD8; }
-.pill.completed   { background: #EEE8FF; color: #6B5CE6; }
+.pill.new         { background: var(--sand); color: var(--ink); font-weight: 700; }
+.pill.contacted   { background: var(--sand); color: var(--ink); }
+.pill.assigned    { background: var(--sand); color: var(--ink); }
+.pill.in_progress { background: var(--sand); color: var(--ink); }
+.pill.completed   { background: var(--ink); color: var(--bg); }
 .pill.cancelled   { background: #F4F4F4; color: #888; }
+/* Order specific badges */
+.pill.processing { background: var(--sand); color: var(--ink); }
+.pill.shipped    { background: var(--sand); color: var(--ink); }
+.pill.delivered  { background: var(--ink); color: var(--bg); }
+.pill.confirmed  { background: var(--sand); color: var(--ink); }
 
 /* ── Empty state ─────────────────────────────────────── */
-.empty { text-align: center; padding: 32px; color: var(--grey4); font-size: 12px; }
+.empty { text-align: center; padding: 32px; color: var(--muted); font-size: 12px; }
 
 /* ── Footer ──────────────────────────────────────────── */
-.dash-footer { padding: 20px 32px; border-top: 1px solid var(--grey2); font-size: 11px; color: var(--grey4); margin-top: 12px; }
+.dash-footer { background: var(--ink); padding: 20px 32px; font-size: 11px; color: var(--bg); margin-top: 12px; text-align: center;}
+
+/* ── Drawer (Hamburger) ──────────────────────────────── */
+#nav-drawer{display:none; position:fixed; top:0; right:0; bottom:0; width:260px; background:var(--ink); z-index:200; padding:20px; transform:translateX(100%); transition:transform .3s ease; flex-direction:column; border-left:1px solid rgba(246,237,222,.1);}
+#nav-drawer.open{transform:translateX(0); display:flex;}
+#nav-overlay{display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:199;}
+#nav-overlay.open{display:block;}
+.ham-btn{display:none; flex-direction:column; gap:4px; background:none; border:none; cursor:pointer; padding:4px;}
+.ham-btn span{width:22px; height:2px; background:var(--ink); border-radius:2px; transition:.2s;}
+.drawer-top{display:flex; justify-content:space-between; align-items:center; margin-bottom:30px; border-bottom:1px solid rgba(246,237,222,.1); padding-bottom:15px;}
+.drawer-logo{font-family:'Playfair Display',serif; font-size:18px; color:var(--bg); font-weight:400;}
+.drawer-close{background:none; border:none; color:var(--bg); font-size:24px; cursor:pointer;}
+.drawer-links a{display:block; color:var(--bg); text-decoration:none; padding:12px 0; border-bottom:1px solid rgba(246,237,222,.05); font-size:14px;}
+.drawer-links a:hover{color:var(--sand);}
+.drawer-actions{margin-top:auto; padding-top:20px; border-top:1px solid rgba(246,237,222,.1);}
+.drawer-actions a{display:block; padding:10px 0; color:var(--bg); text-decoration:none; font-size:13px;}
 
 /* ── Responsive ──────────────────────────────────────── */
-@media (max-width: 1200px) {
-    .stats-grid { grid-template-columns: repeat(2, 1fr); }
-    .quick-grid  { grid-template-columns: repeat(2, 1fr); }
+@media (max-width: 1080px) {
+    .stats-grid { grid-template-columns: repeat(3, 1fr); }
 }
-@media (max-width: 900px) {
+
+@media (max-width: 768px) {
     :root { --sidebar: 0px; }
     .sidebar { display: none; }
-    .topbar  { left: 0; }
+    .topbar  { left: 0; padding: 0 16px; }
+    .content { padding: 16px; }
+    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    .quick-grid { grid-template-columns: 1fr; }
     .two-col { grid-template-columns: 1fr; }
-}
-@media (max-width: 600px) {
-    .stats-grid { grid-template-columns: 1fr 1fr; }
-    .content { padding: 18px; }
+    
+    .card { overflow-x: auto; }
+    table { min-width: 500px; }
+    
+    .ham-btn { display: flex; }
+    .topbar-right { align-items: center; }
+    
+    /* Hide non-essential topbar items */
+    .topbar-left .date { display: none; }
 }
 </style>
 </head>
@@ -371,6 +392,15 @@ tr:hover td { background: var(--grey1); color: var(--black); }
             <span class="badge"><?= $stats['new_commissions'] ?></span>
         <?php endif; ?>
     </a>
+    
+    <!-- ADDED ORDERS LINK TO SIDEBAR -->
+    <a href="orders.php" class="nav-item">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 7H4a2 2 0 00-2 2v6a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>
+        Orders
+        <?php if ($stats['new_orders'] > 0): ?>
+            <span class="badge"><?= $stats['new_orders'] ?></span>
+        <?php endif; ?>
+    </a>
 
     <div class="sidebar-section">Account</div>
     <a href="profile.php" class="nav-item">
@@ -396,6 +426,7 @@ tr:hover td { background: var(--grey1); color: var(--black); }
         <div class="date"><?= $today ?></div>
     </div>
     <div class="topbar-right">
+        <button class="ham-btn" onclick="openDrawer()"><span></span><span></span><span></span></button>
         <div class="artist-chip">
             <div class="avatar"><?= strtoupper(substr($artistName, 0, 1)) ?></div>
             <span class="name"><?= htmlspecialchars($artistName) ?></span>
@@ -422,12 +453,12 @@ tr:hover td { background: var(--grey1); color: var(--black); }
 
     <!-- Rejected artworks alert -->
     <?php if ($stats['rejected_artworks'] > 0): ?>
-    <div class="alert-strip" style="background: #FDEAEA; border-color: #F5C6C6;">
-        <div class="alert-text" style="color: #D46A6A;">
+    <div class="alert-strip" style="background: var(--sand); border-color: var(--border);">
+        <div class="alert-text" style="color: var(--ink);">
             You have <strong><?= $stats['rejected_artworks'] ?> artwork<?= $stats['rejected_artworks'] > 1 ? 's' : '' ?></strong> that were rejected. Review them and resubmit if needed.
         </div>
         <div class="alert-actions">
-            <a href="my-artworks.php?status=rejected" class="alert-btn primary" style="background: #D46A6A;">View Rejected</a>
+            <a href="my-artworks.php?status=rejected" class="alert-btn primary" style="background: var(--ink);">View Rejected</a>
         </div>
     </div>
     <?php endif; ?>
@@ -444,8 +475,8 @@ tr:hover td { background: var(--grey1); color: var(--black); }
             <div class="label">Total Artworks</div>
             <div class="value"><?= $stats['total_artworks'] ?></div>
             <div class="sub">
-                <span style="color:var(--green)"><?= $stats['approved_artworks'] ?></span> approved
-                &middot; <span style="color:#6B5CE6"><?= $stats['sold_artworks'] ?></span> sold
+                <span><?= $stats['approved_artworks'] ?></span> approved
+                &middot; <span><?= $stats['sold_artworks'] ?></span> sold
             </div>
         </div>
         <div class="stat-card pending">
@@ -460,9 +491,11 @@ tr:hover td { background: var(--grey1); color: var(--black); }
             <div class="corner-icon">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 7H4a2 2 0 00-2 2v6a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>
             </div>
-            <div class="label">Sold Artworks</div>
-            <div class="value"><?= $stats['sold_artworks'] ?></div>
-            <div class="sub">Confirmed by admin</div>
+            <div class="label">Total Orders</div>
+            <div class="value"><?= $stats['total_orders'] ?></div>
+            <div class="sub">
+                <span><?= $stats['new_orders'] ?></span> new/pending
+            </div>
         </div>
         <div class="stat-card commissions">
             <div class="corner-icon">
@@ -471,7 +504,7 @@ tr:hover td { background: var(--grey1); color: var(--black); }
             <div class="label">Commission Requests</div>
             <div class="value"><?= $stats['total_commissions'] ?></div>
             <div class="sub">
-                <span style="color:var(--terracotta)"><?= $stats['new_commissions'] ?></span> new
+                <span><?= $stats['new_commissions'] ?></span> new
             </div>
         </div>
     </div>
@@ -545,43 +578,38 @@ tr:hover td { background: var(--grey1); color: var(--black); }
             <?php endif; ?>
         </div>
 
-        <!-- Recent Commission Requests -->
+        <!-- Recent Orders -->
         <div class="card">
             <div class="card-head">
-                <span class="card-title">Commission Requests</span>
-                <a href="commissions.php" class="section-link">View all &rarr;</a>
+                <span class="card-title">Recent Orders</span>
+                <a href="orders.php" class="section-link">View all &rarr;</a>
             </div>
-            <?php if (empty($recentCommissions)): ?>
-                <div class="empty">No commission requests yet.</div>
+            <?php if (empty($recentOrders)): ?>
+                <div class="empty">No orders yet.</div>
             <?php else: ?>
             <table>
                 <thead>
                     <tr>
                         <th>Buyer</th>
-                        <th>Budget</th>
-                        <th>Deadline</th>
+                        <th>Artwork</th>
+                        <th>Date</th>
                         <th>Status</th>
                     </tr>
                 </thead>
                 <tbody>
-                <?php foreach ($recentCommissions as $cr): ?>
+                <?php foreach ($recentOrders as $order): 
+                    $statusClass = $order['order_status'];
+                    $label = ucfirst($order['order_status']);
+                ?>
                     <tr>
-                        <td class="td-title" title="<?= htmlspecialchars($cr['buyer_name']) ?>"><?= htmlspecialchars($cr['buyer_name']) ?></td>
-                        <td class="td-price" style="font-size:11px">
-                            <?php if ($cr['budget_min'] || $cr['budget_max']): ?>
-                                PKR <?= number_format($cr['budget_min']) ?>&ndash;<?= number_format($cr['budget_max']) ?>
-                            <?php else: ?>
-                                &mdash;
-                            <?php endif; ?>
-                        </td>
-                        <td style="white-space:nowrap;font-size:11px">
-                            <?= $cr['deadline'] ? date('d M Y', strtotime($cr['deadline'])) : '&mdash;' ?>
-                        </td>
-                        <td><span class="pill <?= $cr['status'] ?>"><?= ucfirst(str_replace('_', ' ', $cr['status'])) ?></span></td>
+                        <td class="td-title" title="<?= htmlspecialchars($order['display_name']) ?>"><?= htmlspecialchars($order['display_name']) ?></td>
+                        <td class="td-title" title="<?= htmlspecialchars($order['artwork_title']) ?>"><?= htmlspecialchars($order['artwork_title']) ?></td>
+                        <td style="white-space:nowrap;font-size:11px"><?= date('d M', strtotime($order['created_at'])) ?></td>
+                        <td><span class="pill <?= $statusClass ?>"><?= $label ?></span></td>
                     </tr>
                 <?php endforeach; ?>
                 </tbody>
-            </tr>
+            </table>
             <?php endif; ?>
         </div>
 
@@ -593,6 +621,38 @@ tr:hover td { background: var(--grey1); color: var(--black); }
     Art Bazaar &mdash; Artist Dashboard &mdash; <?= date('Y') ?>
 </div>
 </main>
+
+<!-- NAV DRAWER (Mobile) -->
+<div id="nav-overlay" onclick="closeDrawer()"></div>
+<div id="nav-drawer">
+    <div class="drawer-top">
+        <div class="drawer-logo">Art Bazaar</div>
+        <button class="drawer-close" onclick="closeDrawer()">&times;</button>
+    </div>
+    <div class="drawer-links">
+        <a href="../../index.php">Home</a>
+        <a href="index.php">Dashboard</a>
+        <a href="my-artworks.php">My Artworks</a>
+        <a href="commissions.php">Commissions</a>
+        <a href="orders.php">Orders</a>
+        <a href="profile.php">Profile</a>
+    </div>
+    <div class="drawer-actions">
+        <a href="../../cart.php">Cart</a>
+        <a href="../../logout.php">Logout</a>
+    </div>
+</div>
+
+<script>
+function openDrawer() {
+    document.getElementById('nav-drawer').classList.add('open');
+    document.getElementById('nav-overlay').classList.add('open');
+}
+function closeDrawer() {
+    document.getElementById('nav-drawer').classList.remove('open');
+    document.getElementById('nav-overlay').classList.remove('open');
+}
+</script>
 
 </body>
 </html>
