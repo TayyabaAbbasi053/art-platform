@@ -8,12 +8,13 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
     exit;
 }
 
-$adminName = $_SESSION['name'] ?? 'Admin';
+ $adminName = $_SESSION['name'] ?? 'Admin';
 
 // ── Stats queries ──────────────────────────────────────────
-$stats = [];
+ $stats = [];
 
-$queries = [
+// Stats now query the unified 'orders' table
+ $queries = [
     'total_artists'      => "SELECT COUNT(*) FROM users WHERE role='artist'",
     'active_artists'     => "SELECT COUNT(*) FROM users WHERE role='artist' AND status='active'",
     'pending_artists'    => "SELECT COUNT(*) FROM users WHERE role='artist' AND status='pending'",
@@ -22,10 +23,15 @@ $queries = [
     'approved_artworks'  => "SELECT COUNT(*) FROM artworks WHERE status='approved'",
     'sold_artworks'      => "SELECT COUNT(*) FROM artworks WHERE status='sold'",
     'featured_artworks'  => "SELECT COUNT(*) FROM artworks WHERE is_featured=1",
-    'total_inquiries'    => "SELECT COUNT(*) FROM buyer_inquiries",
-    'new_inquiries'      => "SELECT COUNT(*) FROM buyer_inquiries WHERE status='new'",
-    'total_commissions'  => "SELECT COUNT(*) FROM commission_requests",
-    'new_commissions'    => "SELECT COUNT(*) FROM commission_requests WHERE status='new'",
+    
+    // Updated: Queries orders for artwork purchases (formerly buyer_inquiries)
+    'total_inquiries'    => "SELECT COUNT(*) FROM orders WHERE order_type = 'artwork'",
+    'new_inquiries'      => "SELECT COUNT(*) FROM orders WHERE order_type = 'artwork' AND order_status = 'pending'",
+    
+    // Updated: Queries orders for commissions (formerly commission_requests)
+    'total_commissions'  => "SELECT COUNT(*) FROM orders WHERE order_type = 'commission'",
+    'new_commissions'    => "SELECT COUNT(*) FROM orders WHERE order_type = 'commission' AND order_status = 'pending'",
+    
     'total_messages'     => "SELECT COUNT(*) FROM contact_messages",
     'unread_messages'    => "SELECT COUNT(*) FROM contact_messages WHERE is_read=0",
 ];
@@ -36,8 +42,8 @@ foreach ($queries as $key => $sql) {
 }
 
 // ── Recent artworks (last 6 pending) ──────────────────────
-$recentArtworks = [];
-$ra = $conn->query("
+ $recentArtworks = [];
+ $ra = $conn->query("
     SELECT a.id, a.title, a.price, a.status, a.created_at,
            u.name AS artist_name, c.name AS category
     FROM artworks a
@@ -48,16 +54,25 @@ $ra = $conn->query("
 while ($row = $ra->fetch_assoc()) $recentArtworks[] = $row;
 
 // ── Recent inquiries (last 5) ──────────────────────────────
-$recentInquiries = [];
-$ri = $conn->query("
-    SELECT bi.id, bi.buyer_name, bi.status, bi.created_at, a.title AS artwork_title
-    FROM buyer_inquiries bi
-    JOIN artworks a ON a.id = bi.artwork_id
-    ORDER BY bi.created_at DESC LIMIT 5
+// Updated: Now queries 'orders' joined with 'order_items' and 'artworks'
+ $recentInquiries = [];
+ $ri = $conn->query("
+    SELECT 
+        o.id, 
+        o.order_status AS status, 
+        o.created_at, 
+        COALESCE(u.name, o.guest_name) AS buyer_name,
+        a.title AS artwork_title
+    FROM orders o
+    JOIN order_items oi ON o.id = oi.order_id AND oi.item_type = 'artwork'
+    JOIN artworks a ON oi.item_id = a.id
+    LEFT JOIN users u ON o.buyer_id = u.id
+    WHERE o.order_type = 'artwork'
+    ORDER BY o.created_at DESC LIMIT 5
 ");
 while ($row = $ri->fetch_assoc()) $recentInquiries[] = $row;
 
-$today = date('l, d F Y');
+ $today = date('l, d F Y');
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -70,55 +85,44 @@ $today = date('l, d F Y');
 /* ── Reset & Base ─────────────────────────────────────── */
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 :root {
-    --black:   #1E1B18;
-    --grey1:   #F7F1E8;
-    --grey2:   #E6DDD0;
-    --grey3:   #D6CDBF;
-    --grey4:   #8A7D72;
-    --grey5:   #3D332A;
-    --white:   #FFFDF8;
-    --accent:  #1E1B18;
-    --red:     #C96B4B;
-    --green:   #6BA58D;
-    --amber:   #E48A4A;
-    --blue:    #0984e3;
-    --terracotta: #C96B4B;
+    --bg:#F6EDDE; --card:#F6EDDE; --sand:#DDCDAE; --border:#0C3F30;
+    --ink:#0C3F30; --body:#0C3F30; --muted:#0C3F30; --light:#0C3F30;
     --sidebar: 240px;
     --top:     60px;
 }
-html, body { height: 100%; background: var(--grey1); color: var(--black); font-family: 'DM Sans', sans-serif; }
+html, body { height: 100%; background: var(--bg); color: var(--ink); font-family: 'DM Sans', sans-serif; }
 
 /* ── Sidebar ─────────────────────────────────────────── */
 .sidebar {
     position: fixed; top: 0; left: 0;
     width: var(--sidebar); height: 100vh;
-    background: #EFE3D2;
-    border-right: 1px solid var(--grey2);
+    background: var(--ink);
+    border-right: 1px solid rgba(246,237,222,.1);
     display: flex; flex-direction: column;
     z-index: 100;
     overflow-y: auto;
 }
 .sidebar-brand {
     padding: 22px 24px 18px;
-    border-bottom: 1px solid var(--grey2);
+    border-bottom: 1px solid rgba(246,237,222,.1);
 }
 .sidebar-brand .logo-text {
     font-family: 'Playfair Display', serif;
     font-size: 18px;
     font-weight: 500;
-    color: var(--black);
+    color: var(--bg);
 }
 .sidebar-brand .logo-tag {
     font-size: 8px;
     letter-spacing: 2px;
-    color: var(--grey4);
+    color: var(--sand);
     margin-top: 2px;
 }
 .sidebar-brand .logo-badge {
     display: inline-block;
     margin-left: 6px;
-    background: var(--terracotta);
-    color: var(--white);
+    background: var(--sand);
+    color: var(--ink);
     font-size: 8px;
     letter-spacing: 2px;
     text-transform: uppercase;
@@ -130,7 +134,7 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
     font-size: 9px;
     letter-spacing: 2.5px;
     text-transform: uppercase;
-    color: var(--grey4);
+    color: var(--sand);
     font-weight: 500;
 }
 .nav-item {
@@ -139,7 +143,7 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
     gap: 10px;
     padding: 10px 20px;
     font-size: 12.5px;
-    color: var(--grey5);
+    color: var(--bg);
     text-decoration: none;
     font-weight: 400;
     border-left: 2px solid transparent;
@@ -147,29 +151,28 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
     position: relative;
 }
 .nav-item:hover {
-    color: var(--black);
-    background: rgba(255,255,255,0.3);
-    border-left-color: var(--grey3);
+    color: var(--bg);
+    background: rgba(255,255,255,0.05);
+    border-left-color: rgba(255,255,255,0.2);
 }
 .nav-item.active {
-    color: var(--black);
-    background: rgba(255,255,255,0.4);
-    border-left-color: var(--terracotta);
+    color: var(--ink);
+    background: var(--sand);
     font-weight: 500;
 }
 .nav-item .icon {
     width: 16px;
     height: 16px;
     flex-shrink: 0;
-    opacity: .55;
+    opacity: .7;
 }
 .nav-item.active .icon, .nav-item:hover .icon {
     opacity: 1;
 }
 .badge {
     margin-left: auto;
-    background: var(--terracotta);
-    color: #fff;
+    background: var(--sand);
+    color: var(--ink);
     font-size: 9px;
     font-weight: 600;
     padding: 1px 6px;
@@ -178,12 +181,13 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
     text-align: center;
 }
 .badge.amber {
-    background: var(--amber);
+    background: #fff;
+    color: var(--ink);
 }
 .sidebar-bottom {
     margin-top: auto;
     padding: 16px;
-    border-top: 1px solid var(--grey2);
+    border-top: 1px solid rgba(246,237,222,.1);
 }
 .signout-btn {
     display: flex;
@@ -191,7 +195,7 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
     gap: 8px;
     padding: 9px 12px;
     font-size: 12px;
-    color: var(--grey5);
+    color: var(--bg);
     text-decoration: none;
     border-radius: 8px;
     transition: all .15s;
@@ -202,8 +206,8 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
     font-family: 'DM Sans', sans-serif;
 }
 .signout-btn:hover {
-    background: rgba(255,255,255,0.3);
-    color: var(--terracotta);
+    background: rgba(255,255,255,0.1);
+    color: var(--bg);
 }
 
 /* ── Topbar ──────────────────────────────────────────── */
@@ -213,8 +217,8 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
     left: var(--sidebar);
     right: 0;
     height: var(--top);
-    background: var(--white);
-    border-bottom: 1px solid var(--grey2);
+    background: var(--ink);
+    border-bottom: 1px solid rgba(246,237,222,.1);
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -225,11 +229,11 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
     font-family: 'Playfair Display', serif;
     font-size: 20px;
     font-weight: 400;
-    color: var(--black);
+    color: var(--bg);
 }
 .topbar-left .date {
     font-size: 11px;
-    color: var(--grey4);
+    color: var(--sand);
     margin-top: 1px;
 }
 .topbar-right {
@@ -241,13 +245,13 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
     width: 34px;
     height: 34px;
     border-radius: 50%;
-    background: var(--grey1);
+    background: rgba(255,255,255,0.1);
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
     position: relative;
-    border: 1px solid var(--grey2);
+    border: 1px solid rgba(255,255,255,0.1);
 }
 .topbar-right .notif-dot {
     position: absolute;
@@ -255,16 +259,16 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
     right: 6px;
     width: 6px;
     height: 6px;
-    background: var(--terracotta);
+    background: var(--sand);
     border-radius: 50%;
-    border: 1.5px solid #fff;
+    border: 1.5px solid var(--ink);
 }
 .admin-chip {
     display: flex;
     align-items: center;
     gap: 8px;
-    background: var(--grey1);
-    border: 1px solid var(--grey2);
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.2);
     padding: 5px 12px 5px 5px;
     border-radius: 30px;
 }
@@ -272,22 +276,22 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
     width: 26px;
     height: 26px;
     border-radius: 50%;
-    background: var(--terracotta);
+    background: var(--sand);
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 11px;
-    color: #fff;
+    color: var(--ink);
     font-weight: 600;
 }
 .admin-chip .name {
     font-size: 12px;
-    color: var(--black);
+    color: var(--bg);
     font-weight: 500;
 }
 .admin-chip .arrow {
     font-size: 12px;
-    color: var(--grey4);
+    color: var(--sand);
     margin-left: 4px;
 }
 
@@ -312,17 +316,17 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
     font-size: 11px;
     letter-spacing: 2.5px;
     text-transform: uppercase;
-    color: var(--grey4);
+    color: var(--muted);
     font-weight: 500;
 }
 .section-link {
     font-size: 11px;
-    color: var(--grey5);
+    color: var(--body);
     text-decoration: none;
-    border-bottom: 1px solid var(--grey3);
+    border-bottom: 1px solid var(--border);
 }
 .section-link:hover {
-    color: var(--black);
+    color: var(--ink);
 }
 
 /* ── Stat cards ──────────────────────────────────────── */
@@ -333,8 +337,8 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
     margin-bottom: 32px;
 }
 .stat-card {
-    background: var(--white);
-    border: 1px solid var(--grey2);
+    background: var(--card);
+    border: 1px solid var(--border);
     border-radius: 14px;
     padding: 22px 24px;
     position: relative;
@@ -348,7 +352,7 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
     font-size: 10px;
     letter-spacing: 1.5px;
     text-transform: uppercase;
-    color: var(--grey4);
+    color: var(--ink);
     font-weight: 500;
     margin-bottom: 10px;
 }
@@ -356,12 +360,12 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
     font-family: 'Playfair Display', serif;
     font-size: 36px;
     font-weight: 400;
-    color: var(--black);
+    color: var(--ink);
     line-height: 1;
 }
 .stat-card .sub {
     font-size: 11px;
-    color: var(--grey4);
+    color: var(--muted);
     margin-top: 6px;
 }
 .stat-card .sub span {
@@ -378,60 +382,21 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
     align-items: center;
     justify-content: center;
     z-index: 1;
-}
-/* ── Soft radial glow behind icons ───────────────────── */
-.stat-card .corner-icon::before {
-    content: '';
-    position: absolute;
-    inset: -8px;
-    border-radius: 50%;
-    background: radial-gradient(circle, var(--glow-color) 0%, transparent 70%);
-    opacity: 0.35;
-    z-index: -1;
-    filter: blur(6px);
+    background: var(--sand);
 }
 .stat-card .corner-icon svg {
-    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.08));
-    z-index: 2;
+    stroke: var(--ink);
 }
-/* Artists card — soft sage glow */
-.stat-card.artists .corner-icon {
-    background: #EEF5F0;
-    --glow-color: rgba(107, 165, 141, 0.25);
-}
-.stat-card.artists .corner-icon svg {
-    stroke: #6BA58D;
-}
-/* Artworks card — soft blue glow */
-.stat-card.artworks .corner-icon {
-    background: #EEF2F8;
-    --glow-color: rgba(59, 125, 216, 0.2);
-}
-.stat-card.artworks .corner-icon svg {
-    stroke: #3B7DD8;
-}
-/* Inquiries card — soft terracotta/peach glow */
-.stat-card.inquiries .corner-icon {
-    background: #FFF0EC;
-    --glow-color: rgba(201, 107, 75, 0.22);
-}
-.stat-card.inquiries .corner-icon svg {
-    stroke: #C96B4B;
-}
-/* Commissions card — soft emerald glow */
-.stat-card.commissions .corner-icon {
-    background: #EEF7F3;
-    --glow-color: rgba(107, 165, 141, 0.22);
-}
-.stat-card.commissions .corner-icon svg {
-    stroke: #6BA58D;
+/* Glow override */
+.stat-card .corner-icon::before {
+    display: none;
 }
 
 /* ── Alert strip ─────────────────────────────────────── */
 .alert-strip {
-    background: #FCEEE2;
-    color: var(--black);
-    border: 1px solid var(--grey2);
+    background: var(--sand);
+    color: var(--ink);
+    border: 1px solid var(--border);
     border-radius: 12px;
     padding: 14px 20px;
     display: flex;
@@ -446,11 +411,11 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
 .alert-strip .alert-text {
     font-size: 12.5px;
     line-height: 1.5;
-    color: var(--grey5);
+    color: var(--body);
 }
 .alert-strip .alert-text strong {
     font-weight: 600;
-    color: var(--black);
+    color: var(--ink);
 }
 .alert-strip .alert-actions {
     display: flex;
@@ -470,17 +435,17 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
     white-space: nowrap;
 }
 .alert-btn.primary {
-    background: var(--terracotta);
-    color: #fff;
+    background: var(--ink);
+    color: var(--bg);
 }
 .alert-btn.ghost {
     background: transparent;
-    color: var(--grey5);
-    border: 1px solid var(--grey3);
+    color: var(--ink);
+    border: 1px solid var(--border);
 }
 .alert-btn.ghost:hover {
-    border-color: var(--terracotta);
-    color: var(--terracotta);
+    border-color: var(--ink);
+    color: var(--ink);
 }
 .alert-btn:hover {
     opacity: .85;
@@ -496,14 +461,14 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
 
 /* ── Table card ──────────────────────────────────────── */
 .card {
-    background: var(--white);
-    border: 1px solid var(--grey2);
+    background: var(--card);
+    border: 1px solid var(--border);
     border-radius: 14px;
     overflow: hidden;
 }
 .card-head {
     padding: 18px 22px 14px;
-    border-bottom: 1px solid var(--grey2);
+    border-bottom: 1px solid var(--border);
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -511,11 +476,11 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
 .card-head .card-title {
     font-size: 13px;
     font-weight: 500;
-    color: var(--black);
+    color: var(--ink);
 }
 .card-head .card-count {
     font-size: 11px;
-    color: var(--grey4);
+    color: var(--muted);
 }
 table {
     width: 100%;
@@ -525,29 +490,29 @@ th {
     font-size: 9px;
     letter-spacing: 1.5px;
     text-transform: uppercase;
-    color: var(--grey4);
+    color: var(--muted);
     font-weight: 500;
     padding: 10px 22px;
     text-align: left;
-    border-bottom: 1px solid var(--grey2);
-    background: var(--grey1);
+    border-bottom: 1px solid var(--border);
+    background: var(--sand);
 }
 td {
     font-size: 12px;
-    color: var(--grey5);
+    color: var(--body);
     padding: 12px 22px;
-    border-bottom: 1px solid var(--grey2);
+    border-bottom: 1px solid var(--border);
     vertical-align: middle;
 }
 tr:last-child td {
     border-bottom: none;
 }
 tr:hover td {
-    background: var(--grey1);
-    color: var(--black);
+    background: var(--sand);
+    color: var(--ink);
 }
 .td-title {
-    color: var(--black);
+    color: var(--ink);
     font-weight: 500;
     font-size: 12.5px;
     max-width: 140px;
@@ -557,7 +522,7 @@ tr:hover td {
 }
 .td-price {
     font-weight: 500;
-    color: var(--black);
+    color: var(--ink);
     white-space: nowrap;
 }
 
@@ -572,41 +537,41 @@ tr:hover td {
     border-radius: 20px;
 }
 .pill.pending {
-    background: #FFF4E6;
-    color: #E48A4A;
+    background: var(--sand);
+    color: var(--ink);
 }
 .pill.approved {
-    background: #E8F5EE;
-    color: #6BA58D;
+    background: var(--ink);
+    color: var(--bg);
 }
 .pill.rejected {
-    background: #FDEAEA;
-    color: #D46A6A;
+    background: var(--sand);
+    color: var(--ink);
 }
 .pill.sold {
-    background: #EEE8FF;
-    color: #6B5CE6;
+    background: var(--ink);
+    color: var(--bg);
 }
 .pill.hidden {
     background: #f4f4f4;
     color: #888;
 }
 .pill.new {
-    background: #FFF0EC;
-    color: #C96B4B;
+    background: var(--sand);
+    color: var(--ink);
     font-weight: 700;
 }
 .pill.contacted {
-    background: #E8F4FF;
-    color: #1565c0;
+    background: var(--sand);
+    color: var(--ink);
 }
 .pill.confirmed {
-    background: #E8F5EE;
-    color: #6BA58D;
+    background: var(--ink);
+    color: var(--bg);
 }
 .pill.completed {
-    background: #EEE8FF;
-    color: #6B5CE6;
+    background: var(--ink);
+    color: var(--bg);
 }
 .pill.cancelled {
     background: #F4F4F4;
@@ -621,8 +586,8 @@ tr:hover td {
     margin-bottom: 28px;
 }
 .quick-card {
-    background: var(--white);
-    border: 1px solid var(--grey2);
+    background: var(--card);
+    border: 1px solid var(--border);
     border-radius: 12px;
     padding: 18px 16px;
     text-decoration: none;
@@ -633,7 +598,7 @@ tr:hover td {
     transition: all .2s;
 }
 .quick-card:hover {
-    border-color: var(--terracotta);
+    border-color: var(--border);
     box-shadow: 0 4px 16px rgba(0,0,0,.07);
 }
 .quick-card .q-icon {
@@ -643,33 +608,22 @@ tr:hover td {
     display: flex;
     align-items: center;
     justify-content: center;
-}
-.quick-card.review-artworks .q-icon {
-    background: #EEF2F8;
-}
-.quick-card.manage-artists .q-icon {
-    background: #EEF5F0;
-}
-.quick-card.new-inquiries .q-icon {
-    background: #FFF0EC;
-}
-.quick-card.new-commissions .q-icon {
-    background: #EEF7F3;
+    background: var(--sand);
 }
 .quick-card .q-label {
     font-size: 12px;
     font-weight: 500;
-    color: var(--black);
+    color: var(--ink);
     line-height: 1.3;
 }
 .quick-card .q-desc {
     font-size: 10.5px;
-    color: var(--grey4);
+    color: var(--muted);
 }
 .pending-badge {
     margin-left: 4px;
-    background: var(--amber);
-    color: #fff;
+    background: var(--ink);
+    color: var(--bg);
     font-size: 9px;
     font-weight: 700;
     padding: 1px 6px;
@@ -680,49 +634,51 @@ tr:hover td {
 .empty {
     text-align: center;
     padding: 32px;
-    color: var(--grey4);
+    color: var(--muted);
     font-size: 12px;
 }
 
 /* ── Footer ──────────────────────────────────────────── */
 .dash-footer {
+    background: var(--ink);
     padding: 20px 32px;
-    border-top: 1px solid var(--grey2);
     font-size: 11px;
-    color: var(--grey4);
+    color: var(--bg);
     margin-top: 12px;
+    text-align: center;
 }
 
+/* ── Drawer (Hamburger) ──────────────────────────────── */
+#nav-drawer{display:none; position:fixed; top:0; right:0; bottom:0; width:260px; background:var(--ink); z-index:200; padding:20px; transform:translateX(100%); transition:transform .3s ease; flex-direction:column; border-left:1px solid rgba(246,237,222,.1);}
+#nav-drawer.open{transform:translateX(0); display:flex;}
+#nav-overlay{display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:199;}
+#nav-overlay.open{display:block;}
+.ham-btn{display:none; flex-direction:column; gap:4px; background:none; border:none; cursor:pointer; padding:4px;}
+.ham-btn span{width:22px; height:2px; background:var(--bg); border-radius:2px; transition:.2s;}
+.drawer-top{display:flex; justify-content:space-between; align-items:center; margin-bottom:30px; border-bottom:1px solid rgba(246,237,222,.1); padding-bottom:15px;}
+.drawer-logo{font-family:'Playfair Display',serif; font-size:18px; color:var(--bg); font-weight:400;}
+.drawer-close{background:none; border:none; color:var(--bg); font-size:24px; cursor:pointer;}
+.drawer-links a{display:block; color:var(--bg); text-decoration:none; padding:12px 0; border-bottom:1px solid rgba(246,237,222,.05); font-size:14px;}
+.drawer-links a:hover{color:var(--sand);}
+.drawer-actions{margin-top:auto; padding-top:20px; border-top:1px solid rgba(246,237,222,.1);}
+.drawer-actions a{display:block; padding:10px 0; color:var(--bg); text-decoration:none; font-size:13px;}
+
 /* ── Responsive ──────────────────────────────────────── */
-@media (max-width: 1200px) {
-    .stats-grid {
-        grid-template-columns: repeat(2, 1fr);
-    }
-    .quick-grid {
-        grid-template-columns: repeat(2, 1fr);
-    }
+@media (max-width: 1080px) {
+    .stats-grid { grid-template-columns: repeat(3, 1fr); }
 }
-@media (max-width: 900px) {
-    :root {
-        --sidebar: 0px;
-    }
-    .sidebar {
-        display: none;
-    }
-    .topbar {
-        left: 0;
-    }
-    .two-col {
-        grid-template-columns: 1fr;
-    }
-}
-@media (max-width: 600px) {
-    .stats-grid {
-        grid-template-columns: 1fr 1fr;
-    }
-    .content {
-        padding: 18px;
-    }
+
+@media (max-width: 768px) {
+    :root { --sidebar: 0px; }
+    .sidebar { display: none; }
+    .topbar { left: 0; padding: 0 16px; }
+    .content { padding: 16px; }
+    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    .quick-grid { grid-template-columns: repeat(2, 1fr); }
+    .two-col { grid-template-columns: 1fr; }
+    .card { overflow-x: auto; }
+    table { min-width: 500px; }
+    .ham-btn { display: flex; }
 }
 </style>
 </head>
@@ -766,7 +722,7 @@ tr:hover td {
     <div class="sidebar-section">Requests</div>
     <a href="inquiries.php" class="nav-item">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-        Buyer Inquiries
+        Orders & Inquiries
         <?php if ($stats['new_inquiries'] > 0): ?>
             <span class="badge"><?= $stats['new_inquiries'] ?></span>
         <?php endif; ?>
@@ -801,9 +757,10 @@ tr:hover td {
         <div class="date"><?= $today ?></div>
     </div>
     <div class="topbar-right">
+        <button class="ham-btn" onclick="openDrawer()"><span></span><span></span><span></span></button>
         <?php if ($stats['new_inquiries'] + $stats['new_commissions'] + $stats['unread_messages'] > 0): ?>
         <div class="notif" title="You have pending notifications">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="1.8"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
             <span class="notif-dot"></span>
         </div>
         <?php endif; ?>
@@ -853,7 +810,7 @@ tr:hover td {
             </div>
             <div class="label">Artists</div>
             <div class="value"><?= $stats['total_artists'] ?></div>
-            <div class="sub"><span><?= $stats['active_artists'] ?></span> active &middot; <span style="color:var(--amber)"><?= $stats['pending_artists'] ?></span> pending</div>
+            <div class="sub"><span><?= $stats['active_artists'] ?></span> active &middot; <span><?= $stats['pending_artists'] ?></span> pending</div>
         </div>
         <div class="stat-card artworks">
             <div class="corner-icon">
@@ -861,7 +818,7 @@ tr:hover td {
             </div>
             <div class="label">Artworks</div>
             <div class="value"><?= $stats['total_artworks'] ?></div>
-            <div class="sub"><span><?= $stats['approved_artworks'] ?></span> approved &middot; <span style="color:var(--amber)"><?= $stats['pending_artworks'] ?></span> pending &middot; <span style="color:#6B5CE6"><?= $stats['sold_artworks'] ?></span> sold</div>
+            <div class="sub"><span><?= $stats['approved_artworks'] ?></span> approved &middot; <span><?= $stats['pending_artworks'] ?></span> pending &middot; <span style="color:var(--ink)"><?= $stats['sold_artworks'] ?></span> sold</div>
         </div>
         <div class="stat-card inquiries">
             <div class="corner-icon">
@@ -869,7 +826,7 @@ tr:hover td {
             </div>
             <div class="label">Buyer Inquiries</div>
             <div class="value"><?= $stats['total_inquiries'] ?></div>
-            <div class="sub"><span style="color:var(--terracotta)"><?= $stats['new_inquiries'] ?></span> new &amp; unread</div>
+            <div class="sub"><span><?= $stats['new_inquiries'] ?></span> new &amp; pending</div>
         </div>
         <div class="stat-card commissions">
             <div class="corner-icon">
@@ -877,7 +834,7 @@ tr:hover td {
             </div>
             <div class="label">Commissions</div>
             <div class="value"><?= $stats['total_commissions'] ?></div>
-            <div class="sub"><span style="color:var(--terracotta)"><?= $stats['new_commissions'] ?></span> new requests</div>
+            <div class="sub"><span><?= $stats['new_commissions'] ?></span> new requests</div>
         </div>
     </div>
 
@@ -904,7 +861,7 @@ tr:hover td {
                 <div class="q-desc">Approve or block artist accounts</div>
             </div>
         </a>
-        <a href="inquiries.php?status=new" class="quick-card new-inquiries">
+        <a href="inquiries.php?status=pending" class="quick-card new-inquiries">
             <div class="q-icon">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="1.8"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
             </div>
@@ -913,7 +870,7 @@ tr:hover td {
                 <div class="q-desc">Buyer purchase requests</div>
             </div>
         </a>
-        <a href="commissions.php?status=new" class="quick-card new-commissions">
+        <a href="commissions.php?status=pending" class="quick-card new-commissions">
             <div class="q-icon">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="1.8"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
             </div>
@@ -1011,7 +968,7 @@ tr:hover td {
         <div class="stat-card">
             <div class="label">Contact Messages</div>
             <div class="value" style="font-size:28px"><?= $stats['total_messages'] ?></div>
-            <div class="sub"><span style="color:var(--amber)"><?= $stats['unread_messages'] ?></span> unread</div>
+            <div class="sub"><span><?= $stats['unread_messages'] ?></span> unread</div>
         </div>
         <div class="stat-card">
             <div class="label">Total Buyers Reached</div>
@@ -1026,6 +983,38 @@ tr:hover td {
     Art Bazaar Admin Panel &mdash; <?= date('Y') ?>
 </div>
 </main>
+
+<!-- NAV DRAWER (Mobile) -->
+<div id="nav-overlay" onclick="closeDrawer()"></div>
+<div id="nav-drawer">
+    <div class="drawer-top">
+        <div class="drawer-logo">Art Bazaar</div>
+        <button class="drawer-close" onclick="closeDrawer()">&times;</button>
+    </div>
+    <div class="drawer-links">
+        <a href="index.php">Dashboard</a>
+        <a href="artworks.php">Artworks</a>
+        <a href="artists.php">Artists</a>
+        <a href="categories.php">Categories</a>
+        <a href="inquiries.php">Orders & Inquiries</a>
+        <a href="commissions.php">Commissions</a>
+        <a href="messages.php">Messages</a>
+    </div>
+    <div class="drawer-actions">
+        <a href="../../logout.php">Logout</a>
+    </div>
+</div>
+
+<script>
+function openDrawer() {
+    document.getElementById('nav-drawer').classList.add('open');
+    document.getElementById('nav-overlay').classList.add('open');
+}
+function closeDrawer() {
+    document.getElementById('nav-drawer').classList.remove('open');
+    document.getElementById('nav-overlay').classList.remove('open');
+}
+</script>
 
 </body>
 </html>

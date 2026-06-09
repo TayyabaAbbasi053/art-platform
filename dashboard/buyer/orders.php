@@ -1,0 +1,422 @@
+
+<?php
+session_start();
+require_once __DIR__ . '/../../config/db.php';
+
+// ── Auth guard ───────────────────────────────────────────
+if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'buyer') {
+    header('Location: ../../login.php');
+    exit;
+}
+
+ $buyerId = (int) $_SESSION['user_id'];
+ $buyerName = $_SESSION['name'] ?? 'Buyer';
+ $successMsg = $_GET['msg'] ?? '';
+
+// ── Filter and pagination ────────────────────────────────
+ $statusFilter = $_GET['status'] ?? '';
+ $allowedStatuses = ['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'];
+if (!in_array($statusFilter, $allowedStatuses)) {
+    $statusFilter = '';
+}
+
+ $page = max(1, (int)($_GET['page'] ?? 1));
+ $perPage = 10;
+ $offset = ($page - 1) * $perPage;
+
+// ── Count total orders ───────────────────────────────────
+ $countSql = "SELECT COUNT(*) FROM orders WHERE buyer_id = ?";
+ $params = [$buyerId];
+ $types = 'i';
+
+if ($statusFilter) {
+    $countSql .= " AND order_status = ?";
+    $params[] = $statusFilter;
+    $types .= 's';
+}
+
+ $stmt = $conn->prepare($countSql);
+ $stmt->bind_param($types, ...$params);
+ $stmt->execute();
+ $totalOrders = $stmt->get_result()->fetch_row()[0];
+ $totalPages = max(1, ceil($totalOrders / $perPage));
+
+// ── Fetch orders (now includes order_type) ───────────────
+ $sql = "
+    SELECT o.*, o.order_type,
+           (SELECT COUNT(*) FROM order_items WHERE order_id = o.id) AS item_count
+    FROM orders o
+    WHERE o.buyer_id = ?
+";
+if ($statusFilter) {
+    $sql .= " AND o.order_status = ?";
+}
+ $sql .= " ORDER BY o.created_at DESC LIMIT ? OFFSET ?";
+
+ $params = [$buyerId];
+ $types = 'i';
+if ($statusFilter) {
+    $params[] = $statusFilter;
+    $types .= 's';
+}
+ $params[] = $perPage;
+ $params[] = $offset;
+ $types .= 'ii';
+
+ $stmt = $conn->prepare($sql);
+ $stmt->bind_param($types, ...$params);
+ $stmt->execute();
+ $orders = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+
+// ── Status counts for tabs ───────────────────────────────
+ $statusCounts = [
+    'all' => $totalOrders,
+    'pending' => 0,
+    'confirmed' => 0,
+    'processing' => 0,
+    'shipped' => 0,
+    'delivered' => 0,
+    'cancelled' => 0
+];
+
+ $countStmt = $conn->prepare("SELECT order_status, COUNT(*) FROM orders WHERE buyer_id = ? GROUP BY order_status");
+ $countStmt->bind_param('i', $buyerId);
+ $countStmt->execute();
+ $countResult = $countStmt->get_result();
+while ($row = $countResult->fetch_assoc()) {
+    if (isset($statusCounts[$row['order_status']])) {
+        $statusCounts[$row['order_status']] = $row['COUNT(*)'];
+    }
+}
+
+function getStatusBadgeClass($status) {
+    // Maintained for logic flow, though CSS now handles styling uniformly via generic rules
+    $classes = [
+        'pending' => 'pending',
+        'confirmed' => 'confirmed',
+        'processing' => 'processing',
+        'shipped' => 'shipped',
+        'delivered' => 'delivered',
+        'cancelled' => 'cancelled'
+    ];
+    return $classes[$status] ?? 'pending';
+}
+
+function getStatusLabel($status) {
+    $labels = [
+        'pending' => 'Pending',
+        'confirmed' => 'Confirmed',
+        'processing' => 'Processing',
+        'shipped' => 'Shipped',
+        'delivered' => 'Delivered',
+        'cancelled' => 'Cancelled'
+    ];
+    return $labels[$status] ?? ucfirst($status);
+}
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My Orders — Art Bazaar</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;1,400&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
+:root{
+  --bg:#F6EDDE; --card:#F6EDDE; --sand:#DDCDAE; --border:#0C3F30;
+  --ink:#0C3F30; --body:#0C3F30; --muted:#0C3F30; --light:#0C3F30;
+  --sidebar:260px; --top:60px;
+}
+body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--ink);font-size:14px;line-height:1.55;}
+a{text-decoration:none;color:inherit;}
+img{max-width:100%;display:block;}
+
+/* SIDEBAR */
+.sidebar{position:fixed;top:0;left:0;width:var(--sidebar);height:100vh;background:var(--ink);border-right:1px solid var(--border);display:flex;flex-direction:column;z-index:100;overflow-y:auto;}
+.sidebar-brand{padding:24px 24px 20px;border-bottom:1px solid var(--border);}
+.sidebar-brand .logo-text{font-family:'Playfair Display',serif;font-size:20px;font-weight:500;color:var(--bg);}
+.sidebar-brand .logo-tag{font-size:9px;letter-spacing:2px;color:var(--sand);margin-top:2px;}
+.sidebar-section{padding:20px 20px 8px;font-size:9px;letter-spacing:2.5px;text-transform:uppercase;color:var(--sand);font-weight:500;}
+.nav-item{display:flex;align-items:center;gap:12px;padding:10px 20px;font-size:13px;color:var(--bg);border-left:2px solid transparent;transition:all .15s;}
+.nav-item:hover{color:var(--ink);background:rgba(255,255,255,0.3);border-left-color:var(--border);}
+.nav-item.active{color:var(--ink);background:var(--sand);font-weight:500;border-left-color:var(--sand);}
+.nav-item .icon{width:18px;height:18px;opacity:.6;}
+.nav-item.active .icon{opacity:1;}
+.badge{margin-left:auto;background:var(--sand);color:var(--ink);font-size:9px;padding:2px 7px;border-radius:20px;}
+.sidebar-bottom{margin-top:auto;padding:20px;border-top:1px solid var(--border);}
+.signout-btn{display:flex;align-items:center;gap:10px;padding:10px;font-size:13px;color:var(--bg);border-radius:8px;transition:all .15s;}
+.signout-btn:hover{background:#FFF0EC;color:var(--ink);}
+
+/* TOPBAR */
+.topbar{position:fixed;top:0;left:var(--sidebar);right:0;height:var(--top);background:var(--card);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 32px;z-index:99;}
+.topbar-left h1{font-family:'Playfair Display',serif;font-size:22px;font-weight:400;}
+.buyer-chip{display:flex;align-items:center;gap:10px;background:var(--sand);border:1px solid var(--border);padding:5px 12px 5px 8px;border-radius:30px;}
+.buyer-chip .avatar{width:32px;height:32px;border-radius:50%;background:var(--ink);display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--bg);font-weight:600;}
+.buyer-chip .name{font-size:13px;font-weight:500;}
+
+/* MAIN */
+.main{margin-left:var(--sidebar);padding-top:var(--top);min-height:100vh;}
+.content{padding:28px 32px;}
+
+/* TABS */
+.tabs{display:flex;gap:4px;margin-bottom:24px;flex-wrap:wrap;border-bottom:1px solid var(--border);}
+.tab{padding:10px 20px;font-size:13px;color:var(--ink);border-bottom:2px solid transparent;transition:all .15s;}
+.tab:hover{color:var(--ink); background: var(--sand);}
+.tab.active{color:var(--bg);background:var(--ink);border-bottom-color:var(--ink);font-weight:500;}
+.tab .count{font-size:11px;color:var(--bg);margin-left:5px;}
+
+/* ORDERS TABLE */
+.orders-card{background:var(--card);border:1px solid var(--border);border-radius:16px;overflow:hidden;}
+table{width:100%;border-collapse:collapse;}
+th{font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);font-weight:500;padding:14px 20px;text-align:left;border-bottom:1px solid var(--border);background:var(--sand);}
+td{padding:16px 20px;border-bottom:1px solid var(--border);vertical-align:middle;}
+tr:last-child td{border-bottom:none;}
+tr:hover { box-shadow: 0 4px 12px rgba(12,63,48,.06); }
+.order-number{font-weight:600;color:var(--ink);display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.order-date{font-size:12px;color:var(--muted);margin-top:2px;}
+.item-count{font-size:12px;color:var(--muted);}
+.price{font-weight:600;color:var(--ink);}
+
+/* TYPE BADGE */
+.type-badge{display:inline-block;font-size:9px;letter-spacing:.5px;text-transform:uppercase;font-weight:600;padding:2px 8px;border-radius:20px;}
+.type-badge.commission{background:var(--sand);color:var(--ink);border:1px solid var(--border);}
+.type-badge.artwork{background:var(--sand);color:var(--ink);border:1px solid var(--border);}
+
+.status-badge{display:inline-block;font-size:10px;letter-spacing:.5px;text-transform:uppercase;font-weight:600;padding:4px 10px;border-radius:20px; background:var(--sand); color:var(--ink);}
+.status-badge.delivered{background:var(--ink);color:var(--bg);}
+
+.view-btn{display:inline-block;padding:6px 14px;border-radius:6px;font-size:11px;font-weight:500;border:1px solid var(--border);background:var(--sand);color:var(--ink);cursor:pointer;transition:all .15s;}
+.view-btn:hover{background:#c4b69e;color:var(--ink);}
+
+.empty{text-align:center;padding:60px 20px;}
+.empty svg{opacity:.2;margin-bottom:16px;}
+.empty h3{font-family:'Playfair Display',serif;font-size:20px;font-weight:400;margin-bottom:8px;}
+
+/* PAGINATION */
+.pagination{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:24px;}
+.page-btn{padding:8px 14px;border:1px solid var(--border);border-radius:8px;background:var(--card);font-size:13px;cursor:pointer;transition:all .12s; color:var(--ink);}
+.page-btn.active{background:var(--ink);color:var(--bg);border-color:var(--ink);}
+.page-btn:hover:not(.active){border-color:var(--ink);color:var(--ink);}
+.page-btn.disabled{opacity:.4;cursor:default;}
+
+/* SUCCESS MESSAGE */
+.success-msg{background:#E8F5EE;color:#6BA58D;padding:12px 16px;border-radius:10px;margin-bottom:20px;border:1px solid #C8E0D5; background:var(--sand); color:var(--ink); border-color:var(--border);}
+
+/* HAMBURGER DRAWER & OVERLAY */
+#nav-drawer{display:none;}
+#nav-overlay{display:none;}
+.ham-btn{display:none;}
+.ham-btn{width:30px;height:24px;position:relative;background:none;border:none;cursor:pointer;z-index:2000;}
+.ham-btn span{position:absolute;display:block;width:100%;height:2px;background:var(--ink);border-radius:2px;transition:all .3s;opacity:1;left:0;}
+.ham-btn span:nth-child(1){top:2px;}
+.ham-btn span:nth-child(2){top:10px;}
+.ham-btn span:nth-child(3){top:18px;}
+/* Tablet Adjustments */
+@media(max-width:1080px){
+    /* Footer adjustments handled in mobile block if necessary, or kept as is */
+}
+
+/* RESPONSIVE MOBILE */
+@media(max-width:768px){
+    :root{--sidebar:0px;}
+    .sidebar{display:none;}
+    .topbar{left:0;}
+    .content{padding:16px;}
+    
+    /* Drawer Active States */
+    .open #nav-drawer{display:block;position:fixed;top:0;right:0;width:80%;height:100%;background:var(--ink);z-index:1001;padding:40px 20px;box-shadow:-5px 0 15px rgba(0,0,0,0.1);transition:right 0.3s ease;}
+    .open #nav-overlay{display:block;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;}
+    
+    /* Show Hamburger */
+    .ham-btn{display:inline-block;}
+    
+    /* Stack Table Rows to Cards */
+    table, thead, tbody, th, td, tr{display:block;}
+    thead{display:none;}
+    tr{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:16px;position:relative;}
+    td{padding:8px 0;border:none;display:flex;justify-content:space-between;align-items:center;text-align:right;}
+    td:before{content:attr(data-label);font-weight:600;font-size:11px;text-transform:uppercase;color:var(--muted);text-align:left;flex:1;}
+    
+    /* Hide less critical columns visually via display:none or simplified CSS */
+    .hide-mobile{display:none;} 
+    
+    /* Force button full width */
+    .view-btn{width:100%;margin-top:10px;text-align:center;justify-content:center;}
+    
+    /* Tabs Scroll */
+    .tabs{overflow-x:auto;flex-wrap:nowrap;white-space:nowrap;padding-bottom:4px;}
+    .tab{flex:0 0 auto;}
+}
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<aside class="sidebar">
+  <div class="sidebar-brand">
+    <div class="logo-text">Art Bazaar</div>
+    <div class="logo-tag">BUYER DASHBOARD</div>
+  </div>
+  <div class="sidebar-section">Account</div>
+  <a href="account.php" class="nav-item">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+    Overview
+  </a>
+  <a href="orders.php" class="nav-item active">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 7H4a2 2 0 00-2 2v6a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>
+    My Orders
+    <?php if ($statusCounts['pending'] > 0): ?><span class="badge"><?= $statusCounts['pending'] ?></span><?php endif; ?>
+  </a>
+  <div class="sidebar-bottom">
+    <a href="../../logout.php" class="signout-btn">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      Sign Out
+    </a>
+  </div>
+</aside>
+
+<!-- TOPBAR -->
+<header class="topbar">
+  <div class="topbar-left"><h1>My Orders</h1></div>
+  <div class="topbar-right">
+    <div class="buyer-chip">
+      <div class="avatar"><?= strtoupper(substr($buyerName, 0, 1)) ?></div>
+      <span class="name"><?= htmlspecialchars($buyerName) ?></span>
+    </div>
+  </div>
+</header>
+
+<!-- MAIN -->
+<main class="main">
+<div class="content">
+
+  <?php if ($successMsg === 'order_placed'): ?>
+    <div class="success-msg">✓ Order placed successfully! You will receive a confirmation email shortly.</div>
+  <?php endif; ?>
+
+  <!-- Status Tabs -->
+  <div class="tabs">
+    <a href="?status=" class="tab <?= !$statusFilter ? 'active' : '' ?>">All <span class="count">(<?= $statusCounts['all'] ?>)</span></a>
+    <a href="?status=pending" class="tab <?= $statusFilter === 'pending' ? 'active' : '' ?>">Pending <span class="count">(<?= $statusCounts['pending'] ?>)</span></a>
+    <a href="?status=confirmed" class="tab <?= $statusFilter === 'confirmed' ? 'active' : '' ?>">Confirmed <span class="count">(<?= $statusCounts['confirmed'] ?>)</span></a>
+    <a href="?status=processing" class="tab <?= $statusFilter === 'processing' ? 'active' : '' ?>">Processing <span class="count">(<?= $statusCounts['processing'] ?>)</span></a>
+    <a href="?status=shipped" class="tab <?= $statusFilter === 'shipped' ? 'active' : '' ?>">Shipped <span class="count">(<?= $statusCounts['shipped'] ?>)</span></a>
+    <a href="?status=delivered" class="tab <?= $statusFilter === 'delivered' ? 'active' : '' ?>">Delivered <span class="count">(<?= $statusCounts['delivered'] ?>)</span></a>
+    <a href="?status=cancelled" class="tab <?= $statusFilter === 'cancelled' ? 'active' : '' ?>">Cancelled <span class="count">(<?= $statusCounts['cancelled'] ?>)</span></a>
+  </div>
+
+  <!-- Orders Table -->
+  <div class="orders-card">
+    <?php if (empty($orders)): ?>
+      <div class="empty">
+        <svg width="56" height="56" fill="none" stroke="currentColor" stroke-width="1.2" viewBox="0 0 24 24"><path d="M20 7H4a2 2 0 00-2 2v6a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>
+        <h3>No orders found</h3>
+        <p>You haven't placed any orders yet.</p>
+        <a href="../../artworks.php" style="color:var(--ink);margin-top:12px;display:inline-block;">Browse Artworks →</a>
+      </div>
+    <?php else: ?>
+      <table>
+        <thead>
+          <tr>
+            <th>Order #</th>
+            <th class="hide-mobile">Date</th>
+            <th>Items</th>
+            <th>Total</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <?php foreach ($orders as $order): ?>
+          <tr>
+            <td data-label="Order #">
+              <div class="order-number">
+                <?= htmlspecialchars($order['order_number']) ?>
+                <?php if ($order['order_type'] === 'commission'): ?>
+                  <span class="type-badge commission">Commission</span>
+                <?php else: ?>
+                  <span class="type-badge artwork">Artwork</span>
+                <?php endif; ?>
+              </div>
+              <div class="order-date hide-desktop"><?= date('d M Y', strtotime($order['created_at'])) ?></div>
+            </td>
+            <td class="hide-mobile" data-label="Date"><?= date('d M Y', strtotime($order['created_at'])) ?></td>
+            <td class="item-count" data-label="Items"><?= $order['item_count'] ?> item<?= $order['item_count'] != 1 ? 's' : '' ?></td>
+            <td class="price" data-label="Total">PKR <?= number_format($order['total']) ?></td>
+            <td data-label="Status"><span class="status-badge <?= getStatusBadgeClass($order['order_status']) ?>"><?= getStatusLabel($order['order_status']) ?></span></td>
+            <td><a href="order-detail.php?id=<?= $order['id'] ?>" class="view-btn">View Details</a></td>
+          </tr>
+          <?php endforeach; ?>
+        </tbody>
+      </table>
+    <?php endif; ?>
+  </div>
+
+  <!-- Pagination -->
+  <?php if ($totalPages > 1): ?>
+  <div class="pagination">
+    <?php if ($page > 1): ?>
+      <a href="?<?= http_build_query(array_merge($_GET, ['page' => $page - 1])) ?>" class="page-btn">← Prev</a>
+    <?php else: ?>
+      <span class="page-btn disabled">← Prev</span>
+    <?php endif; ?>
+    
+    <?php for ($i = max(1, $page - 2); $i <= min($totalPages, $page + 2); $i++): ?>
+      <a href="?<?= http_build_query(array_merge($_GET, ['page' => $i])) ?>" class="page-btn <?= $i == $page ? 'active' : '' ?>"><?= $i ?></a>
+    <?php endfor; ?>
+    
+    <?php if ($page < $totalPages): ?>
+      <a href="?<?= http_build_query(array_merge($_GET, ['page' => $page + 1])) ?>" class="page-btn">Next →</a>
+    <?php else: ?>
+      <span class="page-btn disabled">Next →</span>
+    <?php endif; ?>
+  </div>
+  <?php endif; ?>
+
+</div>
+</main>
+
+<!-- MOBILE DRAWER & OVERLAY -->
+<div id="nav-drawer">
+    <div style="margin-bottom: 30px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 20px;">
+        <h2 style="color:var(--bg); font-family:'Playfair Display',serif;">Menu</h2>
+    </div>
+    <a href="account.php" style="display:block; padding: 15px 0; color:var(--bg); font-size:16px; border-bottom:1px solid rgba(255,255,255,0.05);">Account Overview</a>
+    <a href="orders.php" style="display:block; padding: 15px 0; color:var(--bg); font-size:16px; border-bottom:1px solid rgba(255,255,255,0.05);">My Orders</a>
+    <a href="../../artworks.php" style="display:block; padding: 15px 0; color:var(--bg); font-size:16px; border-bottom:1px solid rgba(255,255,255,0.05);">Browse Artworks</a>
+    <div style="margin-top: 40px;">
+        <a href="../../logout.php" style="display:inline-block; padding: 10px 20px; background:var(--sand); color:var(--ink); border-radius:30px; font-weight:600;">Sign Out</a>
+    </div>
+</div>
+<div id="nav-overlay"></div>
+
+<script>
+// Drawer Logic
+const drawer = document.querySelector('body');
+const overlay = document.getElementById('nav-overlay');
+// Note: The hamburger button HTML is dynamically or typically added to header in design patterns.
+// Since we cannot touch the header HTML block, we inject the button via JS as an implementation detail of the Drawer feature.
+if(!document.querySelector('.ham-btn')){
+    const topbarRight = document.querySelector('.topbar-right');
+    if(topbarRight){
+        const btn = document.createElement('button');
+        btn.className = 'ham-btn';
+        btn.innerHTML = '<span></span><span></span><span></span>';
+        // Insert before the chip or append
+        topbarRight.insertBefore(btn, topbarRight.firstChild);
+        
+        // Event Listeners
+        btn.addEventListener('click', () => {
+            drawer.classList.toggle('open');
+        });
+    }
+}
+
+overlay.addEventListener('click', () => {
+    drawer.classList.remove('open');
+});
+</script>
+
+</body>
+</html>

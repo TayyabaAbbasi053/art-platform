@@ -13,9 +13,9 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
     exit;
 }
 
-$adminName = $_SESSION['name'] ?? 'Admin';
-$toast = '';
-$id = (int)($_GET['id'] ?? 0);
+ $adminName = $_SESSION['name'] ?? 'Admin';
+ $toast = '';
+ $id = (int)($_GET['id'] ?? 0);
 
 // ── DEBUGGING: Stop here if no ID is provided ──
 if (!$id) {
@@ -23,16 +23,16 @@ if (!$id) {
 }
 
 // Fetch artwork with artist and category
-$stmt = $conn->prepare("
+ $stmt = $conn->prepare("
     SELECT a.*, c.name AS category_name, u.name AS artist_name
     FROM artworks a
     JOIN users u ON u.id = a.artist_id
     JOIN categories c ON c.id = a.category_id
     WHERE a.id = ?
 ");
-$stmt->bind_param('i', $id);
-$stmt->execute();
-$artwork = $stmt->get_result()->fetch_assoc();
+ $stmt->bind_param('i', $id);
+ $stmt->execute();
+ $artwork = $stmt->get_result()->fetch_assoc();
 
 // ── DEBUGGING: Stop if artwork doesn't exist ──
 if (!$artwork) {
@@ -40,30 +40,33 @@ if (!$artwork) {
 }
 
 // Fetch all images (display only)
-$images = [];
-$imgRes = $conn->prepare("SELECT * FROM artwork_images WHERE artwork_id = ? ORDER BY is_cover DESC, sort_order ASC");
-$imgRes->bind_param('i', $id);
-$imgRes->execute();
-$imgResult = $imgRes->get_result();
+ $images = [];
+ $imgRes = $conn->prepare("SELECT * FROM artwork_images WHERE artwork_id = ? ORDER BY is_cover DESC, sort_order ASC");
+ $imgRes->bind_param('i', $id);
+ $imgRes->execute();
+ $imgResult = $imgRes->get_result();
 while ($row = $imgResult->fetch_assoc()) $images[] = $row;
 
 // Fetch categories for dropdown
-$categories = [];
-$catRes = $conn->query("SELECT id, name FROM categories ORDER BY name ASC");
+ $categories = [];
+ $catRes = $conn->query("SELECT id, name FROM categories ORDER BY name ASC");
 while ($row = $catRes->fetch_assoc()) $categories[] = $row;
 
-// Fetch inquiries for this artwork
-$inquiries = [];
-$inqRes = $conn->prepare("
-    SELECT bi.*, a.title AS artwork_title
-    FROM buyer_inquiries bi
-    JOIN artworks a ON a.id = bi.artwork_id
-    WHERE bi.artwork_id = ?
-    ORDER BY bi.created_at DESC
+// Fetch inquiries (Orders) for this artwork
+ $inquiries = [];
+// UPDATED: Now queries 'orders' + 'order_items' instead of 'buyer_inquiries'
+ $inqRes = $conn->prepare("
+    SELECT o.order_number, o.order_status, o.created_at, o.buyer_notes AS message,
+           u.name AS buyer_name, u.email AS buyer_email, u.phone AS buyer_phone
+    FROM orders o
+    JOIN order_items oi ON o.id = oi.order_id
+    JOIN users u ON o.buyer_id = u.id
+    WHERE oi.item_type = 'artwork' AND oi.item_id = ?
+    ORDER BY o.created_at DESC
 ");
-$inqRes->bind_param('i', $id);
-$inqRes->execute();
-$inqResult = $inqRes->get_result();
+ $inqRes->bind_param('i', $id);
+ $inqRes->execute();
+ $inqResult = $inqRes->get_result();
 while ($row = $inqResult->fetch_assoc()) $inquiries[] = $row;
 
 // ── Handle POST actions ──────────────────────────────────
@@ -87,6 +90,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
         $upd->bind_param('sisddsssii', $title, $category_id, $medium, $size, $price, $city, $description, $delivery, $similar, $id);
         
         if ($upd->execute()) {
+            // Re-fetch artwork data to update the view
+            $stmt = $conn->prepare("SELECT a.*, c.name AS category_name, u.name AS artist_name FROM artworks a JOIN users u ON u.id = a.artist_id JOIN categories c ON c.id = a.category_id WHERE a.id = ?");
             $stmt->bind_param('i', $id);
             $stmt->execute();
             $artwork = $stmt->get_result()->fetch_assoc();
@@ -116,7 +121,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'rejec
         $artwork['rejection_reason'] = $reason;
         $toast = 'Artwork rejected. Artist will be notified.';
     } else {
-        $toast = 'Please provide a rejection reason.';
+        $toast = 'please provide a rejection reason.';
     }
 }
 
@@ -138,168 +143,173 @@ function getImagePath($dbPath) {
 <style>
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 :root {
-    --black: #1E1B18;
-    --grey1: #F7F1E8;
-    --grey2: #E6DDD0;
-    --grey3: #D6CDBF;
-    --grey4: #8A7D72;
-    --grey5: #3D332A;
-    --white: #FFFDF8;
-    --red: #C96B4B;
-    --green: #6BA58D;
-    --amber: #E48A4A;
-    --blue: #0984e3;
-    --purple: #5e35b1;
-    --terracotta: #C96B4B;
+    --bg: #F6EDDE; --card: #F6EDDE; --sand: #DDCDAE; --border: #0C3F30;
+    --ink: #0C3F30; --body: #0C3F30; --muted: #0C3F30; --light: #0C3F30;
+    --r: 16px;
     --sidebar: 240px;
     --top: 60px;
 }
-html, body { height: 100%; background: var(--grey1); color: var(--black); font-family: 'DM Sans', sans-serif; }
+html, body { height: 100%; background: var(--bg); color: var(--ink); font-family: 'DM Sans', sans-serif; }
 
 /* ── Sidebar ─────────────────────────────────────────── */
-.sidebar { position: fixed; top: 0; left: 0; width: var(--sidebar); height: 100vh; background: #EFE3D2; border-right: 1px solid var(--grey2); display: flex; flex-direction: column; z-index: 100; overflow-y: auto; }
-.sidebar-brand { padding: 22px 24px 18px; border-bottom: 1px solid var(--grey2); }
-.sidebar-brand .logo-tag { font-size: 10px; letter-spacing: 3px; text-transform: uppercase; color: var(--grey4); }
-.sidebar-brand .logo-name { font-family: 'Playfair Display', serif; font-size: 20px; color: var(--black); margin-top: 2px; }
-.sidebar-brand .logo-badge { display: inline-block; margin-top: 6px; background: var(--terracotta); color: var(--white); font-size: 8px; letter-spacing: 2px; text-transform: uppercase; padding: 2px 7px; border-radius: 20px; }
-.sidebar-section { padding: 18px 16px 6px; font-size: 9px; letter-spacing: 2.5px; text-transform: uppercase; color: var(--grey4); font-weight: 500; }
-.nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 20px; font-size: 12.5px; color: var(--grey5); text-decoration: none; font-weight: 400; border-left: 2px solid transparent; transition: all .15s; }
-.nav-item:hover { color: var(--black); background: rgba(255,255,255,0.3); border-left-color: var(--grey3); }
-.nav-item.active { color: var(--black); background: rgba(255,255,255,0.4); border-left-color: var(--terracotta); font-weight: 500; }
+.sidebar { position: fixed; top: 0; left: 0; width: var(--sidebar); height: 100vh; background: var(--ink); border-right: 1px solid var(--border); display: flex; flex-direction: column; z-index: 100; overflow-y: auto; }
+.sidebar-brand { padding: 22px 24px 18px; border-bottom: 1px solid var(--border); }
+.sidebar-brand .logo-tag { font-size: 10px; letter-spacing: 3px; text-transform: uppercase; color: var(--bg); }
+.sidebar-brand .logo-name { font-family: 'Playfair Display', serif; font-size: 20px; color: var(--bg); margin-top: 2px; }
+.sidebar-brand .logo-badge { display: inline-block; margin-top: 6px; background: var(--sand); color: var(--ink); font-size: 8px; letter-spacing: 2px; text-transform: uppercase; padding: 2px 7px; border-radius: 20px; }
+.sidebar-section { padding: 18px 16px 6px; font-size: 9px; letter-spacing: 2.5px; text-transform: uppercase; color: var(--sand); font-weight: 500; }
+.nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 20px; font-size: 12.5px; color: var(--bg); text-decoration: none; font-weight: 400; border-left: 2px solid transparent; transition: all .15s; }
+.nav-item:hover { color: var(--ink); background: rgba(255,255,255,0.3); border-left-color: var(--sand); }
+.nav-item.active { color: var(--ink); background: var(--sand); font-weight: 500; border-left-color: var(--sand); }
 .nav-item .icon { width: 16px; height: 16px; flex-shrink: 0; opacity: .55; }
 .nav-item.active .icon, .nav-item:hover .icon { opacity: 1; }
-.sidebar-bottom { margin-top: auto; padding: 16px; border-top: 1px solid var(--grey2); }
-.signout-btn { display: flex; align-items: center; gap: 8px; padding: 9px 12px; font-size: 12px; color: var(--grey5); text-decoration: none; border-radius: 8px; transition: all .15s; width: 100%; background: none; border: none; cursor: pointer; font-family: 'DM Sans', sans-serif; }
-.signout-btn:hover { background: #FFF0EC; color: var(--terracotta); }
+.sidebar-bottom { margin-top: auto; padding: 16px; border-top: 1px solid var(--border); }
+.signout-btn { display: flex; align-items: center; gap: 8px; padding: 9px 12px; font-size: 12px; color: var(--bg); text-decoration: none; border-radius: 8px; transition: all .15s; width: 100%; background: none; border: none; cursor: pointer; font-family: 'DM Sans', sans-serif; }
+.signout-btn:hover { background: rgba(255,255,255,0.1); color: var(--sand); }
 
 /* ── Topbar ──────────────────────────────────────────── */
-.topbar { position: fixed; top: 0; left: var(--sidebar); right: 0; height: var(--top); background: var(--white); border-bottom: 1px solid var(--grey2); display: flex; align-items: center; justify-content: space-between; padding: 0 32px; z-index: 99; }
+.topbar { position: fixed; top: 0; left: var(--sidebar); right: 0; height: var(--top); background: var(--ink); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 32px; z-index: 99; }
 .topbar-left { display: flex; align-items: center; gap: 14px; }
-.topbar-left h1 { font-family: 'Playfair Display', serif; font-size: 20px; font-weight: 400; color: var(--black); }
-.back-link { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--grey4); text-decoration: none; transition: color .15s; }
-.back-link:hover { color: var(--black); }
-.admin-chip { display: flex; align-items: center; gap: 8px; background: var(--grey1); border: 1px solid var(--grey2); padding: 5px 12px 5px 5px; border-radius: 30px; }
-.admin-chip .avatar { width: 26px; height: 26px; border-radius: 50%; background: var(--terracotta); display: flex; align-items: center; justify-content: center; font-size: 11px; color: #fff; font-weight: 600; }
-.admin-chip .name { font-size: 12px; color: var(--black); font-weight: 500; }
-.admin-chip .arrow { font-size: 12px; color: var(--grey4); margin-left: 4px; }
+.topbar-left h1 { font-family: 'Playfair Display', serif; font-size: 20px; font-weight: 400; color: var(--bg); }
+.back-link { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--bg); text-decoration: none; transition: color .15s; opacity: 0.7; }
+.back-link:hover { color: var(--bg); opacity: 1; }
+.admin-chip { display: flex; align-items: center; gap: 8px; background: var(--sand); border: 1px solid var(--border); padding: 5px 12px 5px 5px; border-radius: 30px; }
+.admin-chip .avatar { width: 26px; height: 26px; border-radius: 50%; background: var(--ink); display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--bg); font-weight: 600; }
+.admin-chip .name { font-size: 12px; color: var(--ink); font-weight: 500; }
+.admin-chip .arrow { font-size: 12px; color: var(--ink); margin-left: 4px; }
 
 /* ── Main ────────────────────────────────────────────── */
 .main { margin-left: var(--sidebar); padding-top: var(--top); min-height: 100vh; }
 .content { padding: 28px 32px; max-width: 1100px; }
 
 /* ── Toast ───────────────────────────────────────────── */
-.toast { background: #FCEEE2; color: var(--black); border: 1px solid var(--grey2); padding: 12px 20px; border-radius: 10px; font-size: 12.5px; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; }
-.toast.error { background: #FDEAEA; color: #D46A6A; border-color: #F5C6C6; }
+.toast { background: var(--sand); color: var(--ink); border: 1px solid var(--border); padding: 12px 20px; border-radius: 10px; font-size: 12.5px; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; }
+.toast.error { background: var(--sand); color: var(--ink); border-color: var(--border); }
 .toast.hidden { display: none; }
-.toast-close { background: none; border: none; color: var(--grey4); cursor: pointer; font-size: 16px; }
-.toast-close:hover { color: var(--black); }
+.toast-close { background: none; border: none; color: var(--ink); cursor: pointer; font-size: 16px; }
+.toast-close:hover { color: var(--ink); }
 
 /* ── Page header ─────────────────────────────────────── */
 .page-head { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 24px; gap: 16px; flex-wrap: wrap; }
-.page-head .info h2 { font-family: 'Playfair Display', serif; font-size: 24px; font-weight: 400; color: var(--black); }
-.page-head .info .meta { font-size: 12px; color: var(--grey4); margin-top: 4px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.page-head .info h2 { font-family: 'Playfair Display', serif; font-size: 24px; font-weight: 400; color: var(--ink); }
+.page-head .info .meta { font-size: 12px; color: var(--muted); margin-top: 4px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 
 /* ── Buttons ─────────────────────────────────────────── */
 .btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 18px; font-size: 12px; font-weight: 500; border-radius: 10px; border: none; cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all .15s; text-decoration: none; white-space: nowrap; }
-.btn-primary { background: var(--black); color: #fff; }
-.btn-primary:hover { background: #333; }
-.btn-ghost { background: var(--white); color: var(--grey5); border: 1px solid var(--grey2); }
-.btn-ghost:hover { border-color: var(--black); color: var(--black); }
-.btn-green { background: var(--green); color: #fff; }
-.btn-green:hover { background: #5a8f7a; }
-.btn-red { background: var(--terracotta); color: #fff; }
-.btn-red:hover { background: #B85C3D; }
-.btn-amber { background: var(--amber); color: #fff; }
-.btn-amber:hover { background: #c75b3a; }
+.btn-primary { background: var(--sand); color: var(--ink); }
+.btn-primary:hover { background: #c4b69e; }
+.btn-ghost { background: transparent; color: var(--ink); border: 1px solid var(--border); }
+.btn-ghost:hover { border-color: var(--ink); color: var(--ink); }
+.btn-green { background: var(--ink); color: var(--bg); }
+.btn-green:hover { background: #1a4d3e; }
+.btn-red { background: transparent; border: 1px solid var(--border); color: var(--ink); }
+.btn-red:hover { background: var(--sand); color: var(--ink); }
+.btn-amber { background: transparent; border: 1px solid var(--border); color: var(--ink); }
+.btn-amber:hover { background: var(--sand); }
 .btn-sm { padding: 5px 12px; font-size: 11px; border-radius: 7px; }
 
 /* ── Pills ───────────────────────────────────────────── */
 .pill { display: inline-block; font-size: 9px; letter-spacing: .5px; text-transform: uppercase; font-weight: 600; padding: 3px 9px; border-radius: 20px; }
-.pill.pending { background: #FFF4E6; color: #E48A4A; }
-.pill.approved { background: #E8F5EE; color: #6BA58D; }
-.pill.rejected { background: #FDEAEA; color: #D46A6A; }
-.pill.sold { background: #EEE8FF; color: #6B5CE6; }
-.pill.hidden { background: #F4F4F4; color: #888; }
-.featured-tag { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; color: #E48A4A; font-weight: 600; }
+.pill.pending { background: var(--sand); color: var(--ink); }
+.pill.approved { background: var(--ink); color: var(--bg); }
+.pill.rejected { background: var(--sand); color: var(--ink); }
+.pill.sold { background: var(--ink); color: var(--bg); }
+.pill.hidden { background: var(--bg); border: 1px solid var(--border); color: var(--ink); }
+.featured-tag { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; color: var(--ink); font-weight: 600; }
 
 /* ── Two col layout ──────────────────────────────────── */
 .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 28px; }
-.card { background: var(--white); border: 1px solid var(--grey2); border-radius: 14px; overflow: hidden; }
-.card-head { padding: 16px 22px; border-bottom: 1px solid var(--grey2); font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: var(--grey4); font-weight: 500; }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: var(--r); overflow: hidden; }
+.card-head { padding: 16px 22px; border-bottom: 1px solid var(--border); font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: var(--ink); font-weight: 500; }
 .card-body { padding: 22px; }
 
 /* ── Images grid (read-only) ─────────────────────────── */
 .img-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }
-.img-item { position: relative; border-radius: 10px; overflow: hidden; border: 2px solid transparent; aspect-ratio: 1; background: var(--grey2); }
-.img-item.cover { border-color: var(--black); }
+.img-item { position: relative; border-radius: 6px; overflow: hidden; border: 1px solid var(--border); aspect-ratio: 1; background: var(--sand); }
+.img-item.cover { border-color: var(--ink); }
 .img-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.img-cover-badge { position: absolute; top: 6px; left: 6px; background: var(--black); color: #fff; font-size: 8px; letter-spacing: 1px; text-transform: uppercase; padding: 2px 7px; border-radius: 6px; font-weight: 600; }
-.img-empty { text-align: center; padding: 30px; color: var(--grey4); font-size: 12px; }
-.img-readonly-note { margin-top: 12px; font-size: 11px; color: var(--grey4); text-align: center; padding: 8px; background: var(--grey1); border-radius: 8px; }
+.img-cover-badge { position: absolute; top: 6px; left: 6px; background: var(--ink); color: var(--bg); font-size: 8px; letter-spacing: 1px; text-transform: uppercase; padding: 2px 7px; border-radius: 6px; font-weight: 600; }
+.img-empty { text-align: center; padding: 30px; color: var(--muted); font-size: 12px; }
+.img-readonly-note { margin-top: 12px; font-size: 11px; color: var(--muted); text-align: center; padding: 8px; background: var(--sand); border-radius: 8px; border: 1px solid var(--border); }
 
 /* ── Form fields ─────────────────────────────────────── */
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .form-group { display: flex; flex-direction: column; }
 .form-group.full { grid-column: 1 / -1; }
-.form-group label { font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--grey4); font-weight: 500; margin-bottom: 6px; }
+.form-group label { font-size: 10.5px; letter-spacing: 0.7px; text-transform: uppercase; color: var(--ink); font-weight: 500; margin-bottom: 6px; }
 .form-group input, .form-group select, .form-group textarea {
-    padding: 9px 14px; border: 1.5px solid var(--grey2); border-radius: 9px;
-    font-size: 13px; font-family: 'DM Sans', sans-serif; color: var(--black);
-    background: var(--white); outline: none; transition: border-color .15s;
+    padding: 9px 14px; border: 1.5px solid var(--sand); border-radius: 9px;
+    font-size: 13px; font-family: 'DM Sans', sans-serif; color: var(--ink);
+    background: var(--bg); outline: none; transition: border-color .15s;
 }
-.form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color: var(--black); }
+.form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color: var(--ink); }
 .form-group textarea { resize: vertical; min-height: 80px; }
 
 /* ── Checkbox ────────────────────────────────────────── */
 .check-row { display: flex; align-items: center; gap: 8px; padding: 10px 0; }
-.check-row input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--black); cursor: pointer; }
-.check-row label { font-size: 12.5px; color: var(--grey5); cursor: pointer; }
+.check-row input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--ink); cursor: pointer; }
+.check-row label { font-size: 12.5px; color: var(--ink); cursor: pointer; }
 
 /* ── Inquiries table ─────────────────────────────────── */
 .card table { width: 100%; border-collapse: collapse; }
-.card th { font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--grey4); font-weight: 500; padding: 10px 18px; text-align: left; border-bottom: 1px solid var(--grey2); background: var(--grey1); }
-.card td { font-size: 12px; color: var(--grey5); padding: 10px 18px; border-bottom: 1px solid var(--grey2); vertical-align: middle; }
+.card th { font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); font-weight: 500; padding: 10px 18px; text-align: left; border-bottom: 1px solid var(--border); background: var(--sand); }
+.card td { font-size: 12px; color: var(--body); padding: 10px 18px; border-bottom: 1px solid var(--border); vertical-align: middle; }
 .card tr:last-child td { border-bottom: none; }
-.card tr:hover td { background: var(--grey1); }
-.inq-pill { display: inline-block; font-size: 9px; letter-spacing: .5px; text-transform: uppercase; font-weight: 600; padding: 2px 8px; border-radius: 20px; }
-.inq-pill.new { background: #FFF0EC; color: var(--terracotta); }
-.inq-pill.contacted { background: #E8F4FF; color: #1565c0; }
-.inq-pill.confirmed { background: #E8F5EE; color: #6BA58D; }
-.inq-pill.completed { background: #EEE8FF; color: #6B5CE6; }
-.inq-pill.cancelled { background: #F4F4F4; color: #888; }
-.empty-sm { text-align: center; padding: 24px; color: var(--grey4); font-size: 12px; }
+.card tr:hover td { background: var(--bg); }
+.inq-pill { display: inline-block; font-size: 9px; letter-spacing: .5px; text-transform: uppercase; font-weight: 600; padding: 2px 8px; border-radius: 20px; background: var(--sand); color: var(--ink); }
+.empty-sm { text-align: center; padding: 24px; color: var(--muted); font-size: 12px; }
 
 /* ── Rejection reason display ────────────────────────── */
-.rejection-box { margin-top: 12px; padding: 12px; background: #FDEAEA; border-radius: 8px; border-left: 3px solid var(--terracotta); }
-.rejection-box .label { font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--terracotta); font-weight: 600; margin-bottom: 6px; }
-.rejection-box .reason { font-size: 13px; color: var(--grey5); line-height: 1.5; }
+.rejection-box { margin-top: 12px; padding: 12px; background: var(--sand); border-radius: 8px; border-left: 3px solid var(--ink); }
+.rejection-box .label { font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--ink); font-weight: 600; margin-bottom: 6px; }
+.rejection-box .reason { font-size: 13px; color: var(--ink); line-height: 1.5; }
 
 /* ── Delete modal ────────────────────────────────────── */
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 200; display: flex; align-items: center; justify-content: center; opacity: 0; pointer-events: none; transition: opacity .2s; }
 .modal-overlay.open { opacity: 1; pointer-events: auto; }
-.modal { background: var(--white); border-radius: 16px; width: 420px; max-width: 92vw; box-shadow: 0 24px 60px rgba(0,0,0,.15); }
+.modal { background: var(--card); border-radius: 16px; width: 420px; max-width: 92vw; box-shadow: 0 24px 60px rgba(0,0,0,.15); border: 1px solid var(--border); }
 .modal-head { padding: 24px 28px 0; }
-.modal-head h3 { font-family: 'Playfair Display', serif; font-size: 20px; font-weight: 400; color: var(--black); }
+.modal-head h3 { font-family: 'Playfair Display', serif; font-size: 20px; font-weight: 400; color: var(--ink); }
 .modal-body { padding: 20px 28px; }
-.confirm-text { font-size: 13px; color: var(--grey5); line-height: 1.6; }
-.confirm-text strong { color: var(--black); }
+.confirm-text { font-size: 13px; color: var(--body); line-height: 1.6; }
+.confirm-text strong { color: var(--ink); }
 .modal-foot { padding: 0 28px 24px; display: flex; gap: 10px; justify-content: flex-end; }
-.modal-input { width: 100%; padding: 10px; border: 1px solid var(--grey2); border-radius: 8px; font-family: 'DM Sans', sans-serif; font-size: 13px; resize: vertical; }
-.modal-input:focus { outline: none; border-color: var(--black); }
+.modal-input { width: 100%; padding: 10px; border: 1.5px solid var(--sand); border-radius: 8px; font-family: 'DM Sans', sans-serif; font-size: 13px; resize: vertical; background: var(--bg); color: var(--ink); }
+.modal-input:focus { outline: none; border-color: var(--ink); }
 
-.dash-footer { padding: 20px 32px; border-top: 1px solid var(--grey2); font-size: 11px; color: var(--grey4); margin-top: 12px; }
+.dash-footer { padding: 20px 32px; border-top: 1px solid var(--border); font-size: 11px; color: var(--bg); margin-top: 12px; background: var(--ink); }
 
-@media (max-width: 900px) {
+/* Drawer & Responsive Styles */
+#nav-drawer{display:none;}
+#nav-overlay{display:none;}
+.ham-btn{display:none;}
+
+@media(max-width:1080px){
+    .content { padding: 24px; }
+}
+
+@media(max-width:768px){
     :root { --sidebar: 0px; }
     .sidebar { display: none; }
     .topbar { left: 0; }
     .content { padding: 16px; }
     .two-col { grid-template-columns: 1fr; }
     .form-grid { grid-template-columns: 1fr; }
-}
-@media (max-width: 600px) {
-    .page-head { flex-direction: column; }
-    .img-grid { grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); }
+    
+    .ham-btn{display:inline-block;width:30px;height:24px;position:relative;background:none;border:none;cursor:pointer;z-index:2000;}
+    .ham-btn span{position:absolute;display:block;width:100%;height:2px;background:var(--bg);border-radius:2px;transition:all .3s;opacity:1;left:0;}
+    .ham-btn span:nth-child(1){top:2px;}
+    .ham-btn span:nth-child(2){top:10px;}
+    .ham-btn span:nth-child(3){top:18px;}
+    
+    .open #nav-drawer{display:block;position:fixed;top:0;right:0;width:80%;height:100%;background:var(--ink);z-index:1001;padding:40px 20px;box-shadow:-5px 0 15px rgba(0,0,0,0.1);transition:right 0.3s ease;}
+    .open #nav-overlay{display:block;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;}
+    
+    #nav-drawer a { display: block; padding: 15px 0; color: var(--bg); font-size: 16px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+    
+    .img-grid { grid-template-columns: 1fr 1fr; }
+    .page-head .actions { display: flex; flex-direction: column; width: 100%; gap: 10px; }
+    .page-head .actions .btn { width: 100%; justify-content: center; }
 }
 </style>
 </head>
@@ -482,6 +492,7 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
         <table>
             <thead>
                 <tr>
+                    <th>Order #</th>
                     <th>Buyer</th>
                     <th>Contact</th>
                     <th>Message</th>
@@ -492,14 +503,15 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
             <tbody>
             <?php foreach ($inquiries as $inq): ?>
                 <tr>
-                    <td style="font-weight:500;color:var(--black)"><?= htmlspecialchars($inq['buyer_name']) ?></td>
+                    <td><?= htmlspecialchars($inq['order_number']) ?></td>
+                    <td style="font-weight:500;color:var(--ink)"><?= htmlspecialchars($inq['buyer_name']) ?></td>
                     <td>
                         <?php if ($inq['buyer_email']): ?><div style="font-size:11px"><?= htmlspecialchars($inq['buyer_email']) ?></div><?php endif; ?>
-                        <?php if ($inq['buyer_phone']): ?><div style="font-size:11px;color:var(--grey4)"><?= htmlspecialchars($inq['buyer_phone']) ?></div><?php endif; ?>
+                        <?php if ($inq['buyer_phone']): ?><div style="font-size:11px;color:var(--muted)"><?= htmlspecialchars($inq['buyer_phone']) ?></div><?php endif; ?>
                     </td>
                     <td style="max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="<?= htmlspecialchars($inq['message'] ?? '') ?>"><?= htmlspecialchars($inq['message'] ?? '—') ?></td>
-                    <td><span class="inq-pill <?= $inq['status'] ?>"><?= ucfirst($inq['status']) ?></span></td>
-                    <td style="white-space:nowrap;font-size:11px;color:var(--grey4)"><?= date('d M Y', strtotime($inq['created_at'])) ?></td>
+                    <td><span class="inq-pill"><?= ucfirst($inq['order_status']) ?></span></td>
+                    <td style="white-space:nowrap;font-size:11px;color:var(--muted)"><?= date('d M Y', strtotime($inq['created_at'])) ?></td>
                 </tr>
             <?php endforeach; ?>
             </tbody>
@@ -516,7 +528,7 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
     <div class="modal">
         <div class="modal-head"><h3>Delete Artwork</h3></div>
         <div class="modal-body">
-            <p class="confirm-text">Are you sure you want to permanently delete <strong>"<?= htmlspecialchars($artwork['title']) ?>"</strong>? This will remove all images, buyer inquiries, and cannot be undone.</p>
+            <p class="confirm-text">Are you sure you want to permanently delete <strong>"<?= htmlspecialchars($artwork['title']) ?>"</strong>? This will remove all images, buyer orders, and cannot be undone.</p>
         </div>
         <form method="POST" action="artworks.php">
             <input type="hidden" name="action" value="delete">
@@ -547,6 +559,24 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
     </div>
 </div>
 
+<!-- MOBILE DRAWER & OVERLAY -->
+<div id="nav-drawer">
+    <div style="margin-bottom: 30px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 20px;">
+        <h2 style="color:var(--bg); font-family:'Playfair Display',serif;">Menu</h2>
+    </div>
+    <a href="index.php">Overview</a>
+    <a href="artworks.php">Artworks</a>
+    <a href="artists.php">Artists</a>
+    <a href="categories.php">Categories</a>
+    <a href="inquiries.php">Buyer Inquiries</a>
+    <a href="commissions.php">Commissions</a>
+    <a href="messages.php">Messages</a>
+    <div style="margin-top: 40px;">
+        <a href="../../logout.php" style="display:inline-block; padding: 10px 20px; background:var(--sand); color:var(--ink); border-radius:30px; font-weight:600;">Sign Out</a>
+    </div>
+</div>
+<div id="nav-overlay"></div>
+
 <script>
 function openDelete() { document.getElementById('deleteModal').classList.add('open'); }
 function closeDelete() { document.getElementById('deleteModal').classList.remove('open'); }
@@ -569,6 +599,29 @@ document.addEventListener('keydown', function(e) {
         closeDelete();
         closeReject();
     }
+});
+
+// ── Drawer Logic ───────────────────────────────────────
+const drawer = document.querySelector('body');
+const overlay = document.getElementById('nav-overlay');
+
+// Inject Hamburger if not present (Mobile only)
+if(window.innerWidth <= 768 && !document.querySelector('.ham-btn')){
+    const topbarRight = document.querySelector('.topbar-right');
+    if(topbarRight){
+        const btn = document.createElement('button');
+        btn.className = 'ham-btn';
+        btn.innerHTML = '<span></span><span></span><span></span>';
+        topbarRight.insertBefore(btn, topbarRight.firstChild);
+        
+        btn.addEventListener('click', () => {
+            drawer.classList.toggle('open');
+        });
+    }
+}
+
+overlay.addEventListener('click', () => {
+    drawer.classList.remove('open');
 });
 </script>
 </body>

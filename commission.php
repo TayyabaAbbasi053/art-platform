@@ -1,0 +1,594 @@
+<?php
+session_start();
+require_once __DIR__ . '/config/db.php';
+
+// Initialize cart if not exists
+if (!isset($_SESSION['cart'])) {
+    $_SESSION['cart'] = [];
+}
+
+// Helper function to get cart count
+function getCartCount() {
+    global $conn;
+    if (isset($_SESSION['user_id']) && $_SESSION['role'] === 'buyer') {
+        $buyerId = (int)$_SESSION['user_id'];
+        $res = $conn->query("SELECT SUM(quantity) as total FROM shopping_cart WHERE buyer_id = $buyerId");
+        $row = $res->fetch_assoc();
+        return (int)($row['total'] ?? 0);
+    }
+    $count = 0;
+    foreach ($_SESSION['cart'] as $item) {
+        if (($item['type'] ?? 'artwork') === 'artwork') {
+            $count += $item['quantity'];
+        }
+    }
+    return $count;
+}
+
+ $isLoggedIn = isset($_SESSION['user_id']) && $_SESSION['role'] === 'buyer';
+
+ $preSelectedArtistId = isset($_GET['artist']) ? (int)$_GET['artist'] : null;
+ $preSelectedArtistName = null;
+ $preSelectedArtistStyle = null;
+
+if ($preSelectedArtistId) {
+    $stmt = $conn->prepare("SELECT u.name, ap.art_style FROM users u LEFT JOIN artist_profiles ap ON u.id = ap.user_id WHERE u.id = ? AND u.role = 'artist' AND u.status = 'active'");
+    $stmt->bind_param('i', $preSelectedArtistId);
+    $stmt->execute();
+    $artist = $stmt->get_result()->fetch_assoc();
+    if ($artist) {
+        $preSelectedArtistName = $artist['name'];
+        $preSelectedArtistStyle = $artist['art_style'];
+    }
+}
+
+// Pre-fill form for logged-in users
+ $prefillName = '';
+ $prefillEmail = '';
+ $prefillPhone = '';
+if (isset($_SESSION['user_id'])) {
+    $uid = (int)$_SESSION['user_id'];
+    $userRes = $conn->query("SELECT name, email, phone FROM users WHERE id = $uid");
+    if ($userRow = $userRes->fetch_assoc()) {
+        $prefillName = htmlspecialchars($userRow['name'] ?? '');
+        $prefillEmail = htmlspecialchars($userRow['email'] ?? '');
+        $prefillPhone = htmlspecialchars($userRow['phone'] ?? '');
+    }
+}
+
+// ============================================================
+// HANDLE FORM SUBMISSION
+// Saves to orders (order_type='commission') + commission_requests bridge
+// Then redirects to buyer account page with confirmation flag
+// ============================================================
+ $commissionError = false;
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'commission_request') {
+    $buyerName  = trim($_POST['buyer_name'] ?? '');
+    $buyerEmail = trim($_POST['buyer_email'] ?? '');
+    $buyerPhone = trim($_POST['buyer_phone'] ?? '');
+    $requestedArtistId = !empty($_POST['requested_artist_id']) ? (int)$_POST['requested_artist_id'] : null;
+    $artworkType = trim($_POST['artwork_type'] ?? '');
+    $budgetMin  = !empty($_POST['budget_min']) ? (float)$_POST['budget_min'] : null;
+    $budgetMax  = !empty($_POST['budget_max']) ? (float)$_POST['budget_max'] : null;
+    $deadline   = !empty($_POST['deadline']) ? $_POST['deadline'] : null;
+    $description = trim($_POST['description'] ?? '');
+    $referenceImage = null;
+
+    // Handle reference image upload
+    if (isset($_FILES['reference_image']) && $_FILES['reference_image']['error'] === UPLOAD_ERR_OK) {
+        $file = $_FILES['reference_image'];
+        $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+        $maxSize = 2 * 1024 * 1024;
+        $allowedExt = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
+        if ($file['size'] <= $maxSize && in_array($ext, $allowedExt)) {
+            $dir = __DIR__ . '/uploads/commissions/';
+            if (!is_dir($dir)) mkdir($dir, 0755, true);
+            $filename = 'ref_' . time() . '_' . rand(1000, 9999) . '.' . $ext;
+            if (move_uploaded_file($file['tmp_name'], $dir . $filename)) {
+                $referenceImage = $filename;
+            }
+        }
+    }
+
+    // Validate required fields
+    if (!$buyerName || !$buyerEmail || !$description) {
+        $commissionError = "Name, email, and description are required.";
+    } else {
+        // Map artwork_type to a category slug → commission_category_id
+        $commissionCategoryId = null;
+        if (!empty($artworkType)) {
+            $slugMap = [
+                'painting'     => 'painting',
+                'portrait'     => 'portrait',
+                'digital art' => 'digital-art',
+                'calligraphy' => 'calligraphy',
+                'abstract'     => 'custom-orders',
+                'landscape'    => 'custom-orders',
+                'other'        => 'custom-orders'
+            ];
+            $slug = $slugMap[$artworkType] ?? 'custom-orders';
+            $catSlug = $conn->real_escape_string($slug);
+            $catRes = $conn->query("SELECT id FROM categories WHERE slug = '$catSlug' LIMIT 1");
+            if ($catRow = $catRes->fetch_assoc()) {
+                $commissionCategoryId = (int)$catRow['id'];
+            }
+        }
+
+        // Determine buyer_id: logged-in user or NULL for guest
+        $buyerId = (isset($_SESSION['user_id'])) ? (int)$_SESSION['user_id'] : null;
+
+        // Generate unique order number
+        $orderNumber = 'COM-' . time() . '-' . rand(1000, 9999);
+
+        // Price placeholder = budget_min or 0 (will be confirmed/agreed later)
+        $subtotal = $budgetMin ?? 0;
+        $total    = $subtotal;
+
+        // Insert into orders with order_type='commission'
+        $stmt = $conn->prepare("
+            INSERT INTO orders (
+                buyer_id, guest_name, guest_email, guest_phone,
+                order_number, order_type, order_status,
+                subtotal, shipping_fee, discount, total,
+                payment_method, payment_status,
+                shipping_address, shipping_city, shipping_phone,
+                commission_description, commission_reference_image,
+                commission_deadline, commission_category_id,
+                budget_min, budget_max,
+                created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, 'commission', 'pending', ?, 0, 0, ?, 'cod', 'pending', '', '', '', ?, ?, ?, ?, ?, ?, NOW(), NOW())
+        ");
+
+        $stmt->bind_param(
+            "issssddsssidd",
+            $buyerId, $buyerName, $buyerEmail, $buyerPhone,
+            $orderNumber,
+            $subtotal, $total,
+            $description, $referenceImage,
+            $deadline, $commissionCategoryId,
+            $budgetMin, $budgetMax
+        );
+
+        $commissionSuccess = $stmt->execute();
+
+        if ($commissionSuccess) {
+            $orderId = $conn->insert_id;
+
+            // Insert bridge row in commission_requests (order_id + artist_id)
+            if ($requestedArtistId) {
+                $cr = $conn->prepare("INSERT INTO commission_requests (order_id, artist_id, created_at, updated_at) VALUES (?, ?, NOW(), NOW())");
+                $cr->bind_param("ii", $orderId, $requestedArtistId);
+            } else {
+                $cr = $conn->prepare("INSERT INTO commission_requests (order_id, artist_id, created_at, updated_at) VALUES (?, NULL, NOW(), NOW())");
+                $cr->bind_param("i", $orderId);
+            }
+            $cr->execute();
+
+            // Log initial status in order_status_history
+            $changedByRole = isset($_SESSION['user_id']) ? 'buyer' : 'system';
+            $changedById   = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 'NULL';
+            $conn->query("
+                INSERT INTO order_status_history (order_id, status_from, status_to, notes, changed_by_role, changed_by_id, created_at)
+                VALUES ($orderId, NULL, 'pending', 'Commission request submitted', '$changedByRole', $changedById, NOW())
+            ");
+
+            // Redirect to buyer account page with confirmation flag
+            header("Location: dashboard/buyer/account.php?commission_submitted=1");
+            exit;
+        } else {
+            $commissionError = "Failed to submit. Please try again.";
+        }
+    }
+}
+
+// Fetch available artists for the dropdown
+ $availableArtists = $conn->query("
+    SELECT u.id, u.name, ap.city, ap.art_style, ap.accepts_commissions 
+    FROM users u 
+    JOIN artist_profiles ap ON u.id = ap.user_id 
+    WHERE u.role = 'artist' AND u.status = 'active' AND ap.accepts_commissions = 1 
+    ORDER BY u.name ASC
+")->fetch_all(MYSQLI_ASSOC);
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Commission Custom Artwork — Art Bazaar</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;1,400&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
+:root{
+  --bg:#F6EDDE;
+  --card:#F6EDDE;
+  --sand:#DDCDAE;
+  --border:#0C3F30;
+  --ink:#0C3F30;
+  --body:#0C3F30;
+  --muted:#0C3F30;
+  --light:#0C3F30;
+  --w:1280px; --r:10px;
+}
+body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--ink);font-size:14px;line-height:1.55;}
+a{text-decoration:none;color:inherit;}
+img{max-width:100%;display:block;}
+
+/* NAV */
+.nav{background:var(--ink);border-bottom:1px solid var(--ink);position:sticky;top:0;z-index:200;}
+.nw{max-width:var(--w);margin:0 auto;padding:0 28px;height:58px;display:flex;align-items:center;gap:16px;}
+.nlogo{flex-shrink:0;display:flex;flex-direction:column;line-height:1;margin-right:4px;}
+.nlogo b{font-family:'Playfair Display',serif;font-size:18px;font-weight:500;color:var(--bg);}
+.nlogo small{font-size:7.5px;letter-spacing:2.5px;text-transform:uppercase;color:var(--sand);margin-top:1px;}
+.nlinks{display:flex;align-items:center;gap:1px;flex:1;}
+.nlinks a{font-size:12.5px;color:var(--bg);padding:6px 10px;border-radius:6px;transition:background .12s;}
+.nlinks a:hover,.nlinks a.active{background:var(--sand);color:var(--ink);}
+.nsearch{display:flex;align-items:center;gap:6px;background:var(--bg);border:1px solid var(--sand);border-radius:6px;padding:6px 12px;width:210px;flex-shrink:0;}
+.nsearch input{border:none;background:transparent;font-size:12.5px;font-family:'DM Sans',sans-serif;color:var(--ink);outline:none;width:100%;}
+.nsearch input::placeholder{color:var(--ink);opacity:0.6;}
+.nsearch svg{color:var(--ink);opacity:0.6;flex-shrink:0;}
+.nend{display:flex;align-items:center;gap:8px;flex-shrink:0;position:relative;margin-left:auto;}
+.cart-icon{position:relative;display:flex;align-items:center;padding:6px 10px;border-radius:6px;transition:background .12s;cursor:pointer;color:var(--bg);}
+.cart-icon:hover{background:var(--sand);color:var(--ink);}
+.cart-count{position:absolute;top:-5px;right:-5px;background:var(--sand);color:var(--ink);font-size:9px;font-weight:600;padding:2px 5px;border-radius:20px;min-width:16px;text-align:center;}
+.btn-ghost{font-size:12.5px;color:var(--bg);padding:7px 14px;border-radius:6px;border:1px solid var(--bg);background:transparent;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .12s;}
+.btn-ghost:hover{border-color:var(--sand);background:var(--sand);color:var(--ink);}
+.btn-dark{font-size:12.5px;color:var(--ink);padding:7px 16px;border-radius:6px;border:none;background:var(--sand);cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:500;transition:background .12s;}
+.btn-dark:hover{background:#c4b69e;}
+
+/* ─── MOBILE HAMBURGER & DRAWER GLOBAL STYLES ─── */
+#nav-drawer{display:none;}
+#nav-overlay{display:none;}
+.ham-btn{display:none;}
+
+/* HERO */
+.hero{background:var(--ink);padding:52px 28px;}
+.hero-inner{max-width:var(--w);margin:0 auto;}
+.hero-tag{font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--sand);margin-bottom:8px;}
+.hero h1{font-family:'Playfair Display',serif;font-size:clamp(32px,3.5vw,44px);font-weight:400;color:var(--bg);line-height:1.15;}
+.hero h1 em{font-style:italic;color:var(--sand);}
+.hero-desc{font-size:14px;color:rgba(246,237,222,.5);max-width:560px;margin-top:12px;}
+
+/* MAIN LAYOUT */
+.main{max-width:var(--w);margin:0 auto;padding:28px;display:grid;grid-template-columns:1fr 0.9fr;gap:48px;}
+
+/* LEFT: HOW IT WORKS */
+.process-section{margin-bottom:32px;}
+.process-title{font-family:'Playfair Display',serif;font-size:20px;font-weight:500;color:var(--ink);margin-bottom:20px;border-left:3px solid var(--sand);padding-left:14px;}
+.process-step{display:flex;gap:14px;margin-bottom:24px;}
+.step-num{width:36px;height:36px;background:var(--sand);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:600;color:var(--ink);flex-shrink:0;}
+.step-content h4{font-size:14px;font-weight:600;color:var(--ink);margin-bottom:4px;}
+.step-content p{font-size:12.5px;color:var(--muted);line-height:1.6;}
+.info-box{background:var(--sand);border-radius:12px;padding:20px;margin-top:28px;}
+.info-box h4{font-size:13px;font-weight:600;margin-bottom:8px;display:flex;align-items:center;gap:6px;}
+.info-box p{font-size:12px;color:var(--body);line-height:1.65;}
+.info-box ul{margin-top:8px;padding-left:20px;}
+.info-box li{font-size:12px;color:var(--muted);margin-bottom:4px;}
+
+/* FORM CARD */
+.form-card{background:var(--card);border:1px solid var(--border);border-radius:16px;overflow:hidden;}
+.form-title{font-family:'Playfair Display',serif;font-size:22px;font-weight:400;margin-bottom:4px;}
+.form-sub{font-size:12px;color:var(--muted);margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--border);}
+.form-pane{padding:28px;}
+.fg{margin-bottom:16px;}
+.fg label{display:block;font-size:10.5px;letter-spacing:.7px;text-transform:uppercase;color:var(--body);font-weight:500;margin-bottom:6px;}
+.fg label span{color:var(--sand);}
+.fi,.fs,.ft{width:100%;padding:10px 14px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;background:var(--bg);outline:none;transition:border-color .12s;}
+.fi:focus,.fs:focus,.ft:focus{border-color:var(--ink);}
+.ft{min-height:100px;resize:vertical;line-height:1.55;}
+.frow{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.fr3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;}
+.msub{width:100%;background:var(--ink);color:#fff;border:none;padding:12px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;margin-top:8px;transition:background .15s;}
+.msub:hover{background:var(--body);}
+.mmsg{padding:12px 16px;border-radius:8px;font-size:12.5px;margin-bottom:16px;}
+.mmsg.er{background:#FCEEE9;color:#7D2A14;border:1px solid #EEC5B8;}
+
+/* FOOTER */
+.footer{background:var(--ink);color:var(--bg);margin-top:56px;}
+.fw{max-width:var(--w);margin:0 auto;padding:40px 28px 26px;}
+.fg-foot{display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:32px;margin-bottom:32px;}
+.fb b{font-family:'Playfair Display',serif;font-size:17px;color:var(--bg);display:block;margin-bottom:7px;}
+.fb p{font-size:12.5px;line-height:1.65;max-width:230px;}
+.fc h4{font-size:9.5px;letter-spacing:2px;text-transform:uppercase;color:var(--sand);margin-bottom:11px;}
+.fc a{display:block;font-size:12.5px;color:rgba(246,237,222,.42);margin-bottom:8px;transition:color .12s;}
+.fc a:hover{color:var(--bg);}
+.fbot{border-top:1px solid rgba(246,237,222,.07);padding-top:18px;display:flex;justify-content:space-between;font-size:11.5px;}
+
+/* ─── RESPONSIVE ─── */
+
+/* Tablet (max-width: 1080px) */
+@media(max-width:1080px){
+  .main{grid-template-columns:1fr;}
+  .fg-foot{grid-template-columns:1fr 1fr;}
+}
+
+/* Mobile (max-width: 768px) */
+@media(max-width:768px){
+  /* Nav */
+  .nlinks,.nsearch{display:none;}
+  .nend .btn-ghost,.nend .btn-dark,.nend span{display:none;}
+  .ham-btn{display:flex;flex-direction:column;justify-content:center;gap:5px;background:transparent;border:none;cursor:pointer;padding:6px;margin-left:auto;}
+  .ham-btn span{display:block;width:22px;height:2px;background:var(--bg);border-radius:2px;}
+
+  #nav-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:298;}
+  #nav-overlay.open{display:block;}
+  #nav-drawer{display:flex;flex-direction:column;position:fixed;top:0;right:0;width:75vw;max-width:300px;height:100vh;background:var(--ink);z-index:299;transform:translateX(100%);transition:transform 0.3s ease;padding:0;overflow-y:auto;}
+  #nav-drawer.open{transform:translateX(0);}
+  .drawer-top{display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid rgba(246,237,222,0.1);}
+  .drawer-logo b{font-family:'Playfair Display',serif;font-size:16px;color:var(--bg);display:block;}
+  .drawer-logo small{font-size:7px;letter-spacing:2px;text-transform:uppercase;color:var(--sand);}
+  .drawer-close{background:transparent;border:none;color:var(--bg);font-size:18px;cursor:pointer;padding:4px;}
+  .drawer-links{display:flex;flex-direction:column;padding:12px 0;}
+  .drawer-links a{color:var(--bg);font-size:14px;padding:13px 20px;border-bottom:1px solid rgba(246,237,222,0.07);transition:background 0.12s;}
+  .drawer-links a:hover{background:rgba(246,237,222,0.06);}
+  .drawer-actions{margin-top:auto;padding:20px;display:flex;flex-direction:column;gap:10px;border-top:1px solid rgba(246,237,222,0.1);}
+  .drawer-cart{color:var(--bg);font-size:13.5px;padding:8px 0;}
+  .drawer-btn-ghost{font-size:13px;color:var(--bg);padding:9px 14px;border-radius:6px;border:1px solid rgba(246,237,222,0.4);text-align:center;transition:all 0.12s;}
+  .drawer-btn-ghost:hover{border-color:var(--sand);background:rgba(246,237,222,0.08);}
+  .drawer-btn-dark{font-size:13px;color:var(--ink);padding:9px 14px;border-radius:6px;background:var(--sand);text-align:center;font-weight:500;transition:background 0.12s;}
+  .drawer-btn-dark:hover{background:#c4b69e;}
+
+  /* Layout */
+  .main{padding:16px;}
+  .hero{padding:32px 20px;}
+  
+  /* Footer */
+  .fg-foot{display:flex;flex-direction:column;align-items:center;text-align:center;padding:20px 16px;}
+  .fc{display:none;}
+  .fb{margin-bottom:12px;}
+  .fb b{font-size:16px;}
+  .fb p{font-size:10px;}
+  .fbot{flex-direction:column;gap:12px;text-align:center;font-size:10px;padding-top:14px;}
+}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav class="nav">
+  <div class="nw">
+    <a href="index.php" class="nlogo"><b>Art Bazaar</b><small>Marketplace</small></a>
+    <div class="nlinks">
+      <a href="artworks.php">Explore Art</a>
+      <a href="artists.php">Artists</a>
+      <a href="commission.php" class="active">Commission Art</a>
+      <a href="sell.php">Sell Your Art</a>
+      <a href="about.php">About Us</a>
+      <a href="contact.php">Contact</a>
+    </div>
+    <div class="nsearch">
+      <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+      <input type="text" placeholder="Search...">
+    </div>
+    <div class="nend">
+      <a href="cart.php" class="cart-icon">
+        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 002 1.61h9.72a2 2 0 002-1.61L23 6H6"/></svg>
+        <?php $cartCount = getCartCount(); if ($cartCount > 0): ?>
+        <span class="cart-count"><?= $cartCount ?></span>
+        <?php endif; ?>
+      </a>
+
+      <?php if ($isLoggedIn): ?>
+        <span style="font-size:12.5px;color:var(--bg);">Hi, <?= htmlspecialchars($_SESSION['name'] ?? 'Buyer') ?></span>
+        <a href="dashboard/buyer/account.php" class="btn-ghost">My Account</a>
+        <a href="logout.php" class="btn-dark">Logout</a>
+      <?php else: ?>
+        <a href="login.php" class="btn-ghost">Login</a>
+        <a href="register.php" class="btn-dark">Join as Artist</a>
+      <?php endif; ?>
+      <button class="ham-btn" aria-label="Open menu">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </div>
+</nav>
+
+<!-- HERO (Breadcrumb removed) -->
+<section class="hero">
+  <div class="hero-inner">
+    <div class="hero-tag">CUSTOM ARTWORK</div>
+    <h1>Bring your vision to life<br>with a <em>custom commission</em>.</h1>
+    <p class="hero-desc">Work directly with Pakistani artists to create something uniquely yours — a portrait, calligraphy piece, abstract painting, or any idea you can imagine.</p>
+  </div>
+</section>
+
+<!-- MAIN CONTENT -->
+<div class="main">
+  <!-- LEFT: HOW IT WORKS -->
+  <div>
+    <div class="process-section">
+      <h3 class="process-title">How commissions work</h3>
+      
+      <div class="process-step">
+        <div class="step-num">1</div>
+        <div class="step-content">
+          <h4>Tell us what you're looking for</h4>
+          <p>Fill out the form with your idea, budget, preferred artist (if any), and deadline. Include reference images if you have them.</p>
+        </div>
+      </div>
+      
+      <div class="process-step">
+        <div class="step-num">2</div>
+        <div class="step-content">
+          <h4>We match you with the right artist</h4>
+          <p>Our team reviews your request and connects you with an artist whose style and expertise match your vision.</p>
+        </div>
+      </div>
+      
+      <div class="process-step">
+        <div class="step-num">3</div>
+        <div class="step-content">
+          <h4>Discuss details & confirm</h4>
+          <p>You'll communicate with the artist through our platform to refine the concept, timeline, and final price.</p>
+        </div>
+      </div>
+      
+      <div class="process-step">
+        <div class="step-num">4</div>
+        <div class="step-content">
+          <h4>Creation & delivery</h4>
+          <p>The artist creates your custom piece, shares progress updates, and delivers the final artwork to your doorstep.</p>
+        </div>
+      </div>
+    </div>
+    
+    <div class="info-box">
+      <h4>
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        What can I commission?
+      </h4>
+      <p>Pakistani artists specialize in a wide range of styles:</p>
+      <ul>
+        <li>🎨 Oil & acrylic paintings</li>
+        <li>✍️ Calligraphy & Islamic art</li>
+        <li>👤 Portraits (family, pet, personal)</li>
+        <li>🏞️ Landscapes & cityscapes</li>
+        <li>🖌️ Digital art & illustrations</li>
+        <li>🎭 Abstract & contemporary art</li>
+      </ul>
+    </div>
+  </div>
+  
+  <!-- RIGHT: FORM -->
+  <div class="form-card">
+    <div class="form-pane">
+      <h2 class="form-title">Request a custom artwork</h2>
+      <p class="form-sub">Fill out the form and we'll connect you with the perfect artist. We'll review your request and get back to you shortly.</p>
+      
+      <?php if ($commissionError): ?>
+        <div class="mmsg er"><?= htmlspecialchars($commissionError) ?></div>
+      <?php endif; ?>
+      
+      <form method="POST" enctype="multipart/form-data">
+        <input type="hidden" name="action" value="commission_request">
+        
+        <div class="frow">
+          <div class="fg">
+            <label>Your Name <span>*</span></label>
+            <input type="text" name="buyer_name" class="fi" placeholder="Full name" value="<?= $prefillName ?>" required>
+          </div>
+          <div class="fg">
+            <label>Email <span>*</span></label>
+            <input type="email" name="buyer_email" class="fi" placeholder="you@example.com" value="<?= $prefillEmail ?>" required>
+          </div>
+        </div>
+        
+        <div class="fg">
+          <label>Phone / WhatsApp</label>
+          <input type="tel" name="buyer_phone" class="fi" placeholder="+92 300 0000000" value="<?= $prefillPhone ?>">
+        </div>
+        
+        <div class="fg">
+          <label>Preferred Artist <span style="font-size:10px;color:var(--muted);font-weight:400;">(optional)</span></label>
+          <select name="requested_artist_id" class="fs">
+            <option value="">— Any artist (we'll find the best match) —</option>
+            <?php foreach ($availableArtists as $a): ?>
+              <option value="<?= $a['id'] ?>" <?= ($preSelectedArtistId == $a['id']) ? 'selected' : '' ?>>
+                <?= htmlspecialchars($a['name']) ?>
+                <?php if ($a['city']): ?> (<?= htmlspecialchars($a['city']) ?>)<?php endif; ?>
+                <?php if ($a['art_style']): ?> — <?= htmlspecialchars($a['art_style']) ?><?php endif; ?>
+              </option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+        
+        <div class="fr3">
+          <div class="fg">
+            <label>Artwork Type</label>
+            <select name="artwork_type" class="fs">
+              <option value="">Select type...</option>
+              <option value="painting">Painting</option>
+              <option value="portrait">Portrait</option>
+              <option value="digital_art">Digital Art</option>
+              <option value="calligraphy">Calligraphy</option>
+              <option value="abstract">Abstract</option>
+              <option value="landscape">Landscape</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div class="fg">
+            <label>Budget Min (PKR)</label>
+            <input type="number" name="budget_min" class="fi" placeholder="5000">
+          </div>
+          <div class="fg">
+            <label>Budget Max (PKR)</label>
+            <input type="number" name="budget_max" class="fi" placeholder="15000">
+          </div>
+        </div>
+        
+        <div class="fg">
+          <label>Desired Deadline</label>
+          <input type="date" name="deadline" class="fi">
+        </div>
+        
+        <div class="fg">
+          <label>Describe Your Request <span>*</span></label>
+          <textarea name="description" class="ft" placeholder="Tell us what you want — subject, colors, size, style preferences, any specific details that will help the artist understand your vision..." required></textarea>
+        </div>
+        
+        <div class="fg">
+          <label>Reference Image <span style="font-size:10px;color:var(--muted);font-weight:400;">(optional, max 2MB)</span></label>
+          <input type="file" name="reference_image" class="fi" accept="image/jpeg,image/png,image/webp,image/gif">
+          <p style="font-size:10px;color:var(--muted);margin-top:4px;">Upload a reference image to help the artist understand your idea better.</p>
+        </div>
+        
+        <button type="submit" class="msub">Submit Commission Request</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- FOOTER -->
+<footer class="footer">
+  <div class="fw">
+    <div class="fg-foot">
+      <div class="fb"><b>Art Bazaar</b><p>Pakistan's premier marketplace for original art. Connecting talented Pakistani artists with art lovers across the country.</p></div>
+      <div class="fc"><h4>Explore</h4><a href="artworks.php">All Artworks</a><a href="artists.php">All Artists</a><a href="artworks.php?featured=1">Featured</a></div>
+      <div class="fc"><h4>For Artists</h4><a href="sell.php">How to Sell</a><a href="register.php">Join as Artist</a><a href="login.php">Artist Login</a></div>
+      <div class="fc"><h4>Company</h4><a href="about.php">About Us</a><a href="contact.php">Contact</a><a href="commission.php">Commissions</a></div>
+    </div>
+    <div class="fbot"><span>© <?= date('Y') ?> Art Bazaar. Supporting Pakistani artists.</span><span>Made with care in Pakistan 🇵🇰</span></div>
+  </div>
+</footer>
+
+<!-- DRAWER & OVERLAY -->
+<div id="nav-overlay"></div>
+<div id="nav-drawer">
+  <div class="drawer-top">
+    <div class="drawer-logo"><b>Art Bazaar</b><small>Marketplace</small></div>
+    <button class="drawer-close" aria-label="Close menu">✕</button>
+  </div>
+  <div class="drawer-links">
+    <a href="artworks.php">Explore Art</a>
+    <a href="artists.php">Artists</a>
+    <a href="commission.php" class="active">Commission Art</a>
+    <a href="sell.php">Sell Your Art</a>
+    <a href="about.php">About Us</a>
+    <a href="contact.php">Contact</a>
+  </div>
+  <div class="drawer-actions">
+    <a href="cart.php" class="drawer-cart">🛒 Cart</a>
+    <?php if ($isLoggedIn): ?>
+      <a href="dashboard/buyer/account.php" class="drawer-btn-ghost">My Account</a>
+      <a href="logout.php" class="drawer-btn-dark">Logout</a>
+    <?php else: ?>
+      <a href="login.php" class="drawer-btn-ghost">Login</a>
+      <a href="register.php" class="drawer-btn-dark">Join as Artist</a>
+    <?php endif; ?>
+  </div>
+</div>
+
+<script>
+// Hamburger drawer
+const hamBtn = document.querySelector('.ham-btn');
+const navDrawer = document.getElementById('nav-drawer');
+const navOverlay = document.getElementById('nav-overlay');
+function openDrawer(){ navDrawer.classList.add('open'); navOverlay.classList.add('open'); document.body.style.overflow='hidden'; }
+function closeDrawer(){ navDrawer.classList.remove('open'); navOverlay.classList.remove('open'); document.body.style.overflow=''; }
+if(hamBtn) hamBtn.addEventListener('click', openDrawer);
+if(navOverlay) navOverlay.addEventListener('click', closeDrawer);
+document.querySelector('.drawer-close')?.addEventListener('click', closeDrawer);
+</script>
+</body>
+</html>

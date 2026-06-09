@@ -8,8 +8,8 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
     exit;
 }
 
-$adminName = $_SESSION['name'] ?? 'Admin';
-$toast = '';
+ $adminName = $_SESSION['name'] ?? 'Admin';
+ $toast = '';
 
 // ── Handle actions ──────────────────────────────────────
 
@@ -67,19 +67,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
             if (file_exists($filePath)) unlink($filePath);
         }
         $conn->query("DELETE FROM artwork_images WHERE artwork_id = $id");
-        $conn->query("DELETE FROM buyer_inquiries WHERE artwork_id = $id");
+        
+        // Delete from Orders (New Schema)
+        $conn->query("DELETE FROM order_items WHERE item_type = 'artwork' AND item_id = $id");
+        
+        // Delete Artwork
         $conn->query("DELETE FROM artworks WHERE id = $id");
         $toast = 'Artwork deleted permanently.';
     }
 }
 
 // ── Build query with filters ───────────────────────────
-$where   = ["1=1"];
-$params  = [];
-$types   = '';
+ $where   = ["1=1"];
+ $params  = [];
+ $types   = '';
 
 // Status filter
-$statusFilter = $_GET['status'] ?? '';
+ $statusFilter = $_GET['status'] ?? '';
 if (in_array($statusFilter, ['pending','approved','rejected','sold','hidden'])) {
     $where[] = "a.status = ?";
     $params[] = $statusFilter;
@@ -87,7 +91,7 @@ if (in_array($statusFilter, ['pending','approved','rejected','sold','hidden'])) 
 }
 
 // Category filter
-$catFilter = (int)($_GET['category'] ?? 0);
+ $catFilter = (int)($_GET['category'] ?? 0);
 if ($catFilter > 0) {
     $where[] = "a.category_id = ?";
     $params[] = $catFilter;
@@ -100,7 +104,7 @@ if (isset($_GET['featured']) && $_GET['featured'] === '1') {
 }
 
 // Search
-$search = trim($_GET['q'] ?? '');
+ $search = trim($_GET['q'] ?? '');
 if ($search) {
     $where[] = "(a.title LIKE ? OR u.name LIKE ?)";
     $like = "%$search%";
@@ -109,25 +113,25 @@ if ($search) {
     $types .= 'ss';
 }
 
-$whereSQL = implode(' AND ', $where);
+ $whereSQL = implode(' AND ', $where);
 
 // Sort
-$sortMap = [
+ $sortMap = [
     'newest'  => 'a.created_at DESC',
     'oldest'  => 'a.created_at ASC',
     'price_high' => 'a.price DESC',
     'price_low'  => 'a.price ASC',
     'title'   => 'a.title ASC',
 ];
-$sortBy = $sortMap[$_GET['sort'] ?? ''] ?? 'a.created_at DESC';
+ $sortBy = $sortMap[$_GET['sort'] ?? ''] ?? 'a.created_at DESC';
 
 // Pagination
-$page     = max(1, (int)($_GET['page'] ?? 1));
-$perPage  = 15;
-$offset   = ($page - 1) * $perPage;
+ $page     = max(1, (int)($_GET['page'] ?? 1));
+ $perPage  = 15;
+ $offset   = ($page - 1) * $perPage;
 
 // Count total
-$countSQL = "SELECT COUNT(*) FROM artworks a JOIN users u ON u.id = a.artist_id WHERE $whereSQL";
+ $countSQL = "SELECT COUNT(*) FROM artworks a JOIN users u ON u.id = a.artist_id WHERE $whereSQL";
 if ($params) {
     $stmt = $conn->prepare($countSQL);
     $stmt->bind_param($types, ...$params);
@@ -136,10 +140,10 @@ if ($params) {
 } else {
     $totalResults = (int)$conn->query($countSQL)->fetch_row()[0];
 }
-$totalPages = max(1, ceil($totalResults / $perPage));
+ $totalPages = max(1, ceil($totalResults / $perPage));
 
 // Fetch artworks
-$dataSQL = "
+ $dataSQL = "
     SELECT a.*, c.name AS category_name, u.name AS artist_name,
            (SELECT image_path FROM artwork_images WHERE artwork_id = a.id ORDER BY is_cover DESC, sort_order ASC LIMIT 1) AS cover_image
     FROM artworks a
@@ -149,7 +153,7 @@ $dataSQL = "
     ORDER BY $sortBy
     LIMIT $perPage OFFSET $offset
 ";
-$artworks = [];
+ $artworks = [];
 if ($params) {
     $stmt = $conn->prepare($dataSQL);
     $stmt->bind_param($types, ...$params);
@@ -161,17 +165,17 @@ if ($params) {
 while ($row = $res->fetch_assoc()) $artworks[] = $row;
 
 // Fetch categories for filter dropdown
-$categories = [];
-$catRes = $conn->query("SELECT id, name FROM categories ORDER BY name ASC");
+ $categories = [];
+ $catRes = $conn->query("SELECT id, name FROM categories ORDER BY name ASC");
 while ($row = $catRes->fetch_assoc()) $categories[] = $row;
 
 // Status counts for tabs
-$statusCounts = [];
+ $statusCounts = [];
 foreach (['pending','approved','rejected','sold','hidden'] as $s) {
     $r = $conn->query("SELECT COUNT(*) FROM artworks WHERE status='$s'");
     $statusCounts[$s] = (int)$r->fetch_row()[0];
 }
-$statusCounts['all'] = array_sum($statusCounts);
+ $statusCounts['all'] = array_sum($statusCounts);
 
 // Build query string helper
 function buildQS($overrides = []) {
@@ -194,55 +198,44 @@ function buildQS($overrides = []) {
 <style>
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 :root {
-    --black: #1E1B18;
-    --grey1: #F7F1E8;
-    --grey2: #E6DDD0;
-    --grey3: #D6CDBF;
-    --grey4: #8A7D72;
-    --grey5: #3D332A;
-    --white: #FFFDF8;
-    --red: #C96B4B;
-    --green: #6BA58D;
-    --amber: #E48A4A;
-    --blue: #0984e3;
-    --purple: #5e35b1;
-    --terracotta: #C96B4B;
+    --bg:#F6EDDE; --card:#F6EDDE; --sand:#DDCDAE; --border:#0C3F30;
+    --ink:#0C3F30; --body:#0C3F30; --muted:#0C3F30; --light:#0C3F30;
     --sidebar: 240px;
     --top: 60px;
 }
-html, body { height: 100%; background: var(--grey1); color: var(--black); font-family: 'DM Sans', sans-serif; }
+html, body { height: 100%; background: var(--bg); color: var(--ink); font-family: 'DM Sans', sans-serif; }
 
 /* ── Sidebar ─────────────────────────────────────────── */
 .sidebar {
     position: fixed; top: 0; left: 0;
     width: var(--sidebar); height: 100vh;
-    background: #EFE3D2;
-    border-right: 1px solid var(--grey2);
+    background: var(--ink);
+    border-right: 1px solid rgba(246,237,222,.1);
     display: flex; flex-direction: column;
     z-index: 100;
     overflow-y: auto;
 }
 .sidebar-brand {
     padding: 22px 24px 18px;
-    border-bottom: 1px solid var(--grey2);
+    border-bottom: 1px solid rgba(246,237,222,.1);
 }
 .sidebar-brand .logo-text {
     font-family: 'Playfair Display', serif;
     font-size: 18px;
     font-weight: 500;
-    color: var(--black);
+    color: var(--bg);
 }
 .sidebar-brand .logo-tag {
     font-size: 8px;
     letter-spacing: 2px;
-    color: var(--grey4);
+    color: var(--sand);
     margin-top: 2px;
 }
 .sidebar-brand .logo-badge {
     display: inline-block;
     margin-left: 6px;
-    background: var(--terracotta);
-    color: var(--white);
+    background: var(--sand);
+    color: var(--ink);
     font-size: 8px;
     letter-spacing: 2px;
     text-transform: uppercase;
@@ -254,7 +247,7 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
     font-size: 9px;
     letter-spacing: 2.5px;
     text-transform: uppercase;
-    color: var(--grey4);
+    color: var(--sand);
     font-weight: 500;
 }
 .nav-item {
@@ -263,7 +256,7 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
     gap: 10px;
     padding: 10px 20px;
     font-size: 12.5px;
-    color: var(--grey5);
+    color: var(--bg);
     text-decoration: none;
     font-weight: 400;
     border-left: 2px solid transparent;
@@ -271,29 +264,28 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
     position: relative;
 }
 .nav-item:hover {
-    color: var(--black);
-    background: rgba(255,255,255,0.3);
-    border-left-color: var(--grey3);
+    color: var(--bg);
+    background: rgba(255,255,255,0.05);
+    border-left-color: rgba(255,255,255,0.2);
 }
 .nav-item.active {
-    color: var(--black);
-    background: rgba(255,255,255,0.4);
-    border-left-color: var(--terracotta);
+    color: var(--ink);
+    background: var(--sand);
     font-weight: 500;
 }
 .nav-item .icon {
     width: 16px;
     height: 16px;
     flex-shrink: 0;
-    opacity: .55;
+    opacity: .7;
 }
 .nav-item.active .icon, .nav-item:hover .icon {
     opacity: 1;
 }
 .badge {
     margin-left: auto;
-    background: var(--terracotta);
-    color: #fff;
+    background: var(--sand);
+    color: var(--ink);
     font-size: 9px;
     font-weight: 600;
     padding: 1px 6px;
@@ -301,13 +293,11 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
     min-width: 18px;
     text-align: center;
 }
-.badge.amber {
-    background: var(--amber);
-}
+.badge.amber { background: #fff; color: var(--ink); }
 .sidebar-bottom {
     margin-top: auto;
     padding: 16px;
-    border-top: 1px solid var(--grey2);
+    border-top: 1px solid rgba(246,237,222,.1);
 }
 .signout-btn {
     display: flex;
@@ -315,7 +305,7 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
     gap: 8px;
     padding: 9px 12px;
     font-size: 12px;
-    color: var(--grey5);
+    color: var(--bg);
     text-decoration: none;
     border-radius: 8px;
     transition: all .15s;
@@ -326,15 +316,15 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
     font-family: 'DM Sans', sans-serif;
 }
 .signout-btn:hover {
-    background: rgba(255,255,255,0.3);
-    color: var(--terracotta);
+    background: rgba(255,255,255,0.1);
+    color: var(--bg);
 }
 
 /* ── Topbar ──────────────────────────────────────────── */
 .topbar {
     position: fixed; top: 0; left: var(--sidebar); right: 0; height: var(--top);
-    background: var(--white);
-    border-bottom: 1px solid var(--grey2);
+    background: var(--ink);
+    border-bottom: 1px solid rgba(246,237,222,.1);
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -345,19 +335,19 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
     font-family: 'Playfair Display', serif;
     font-size: 20px;
     font-weight: 400;
-    color: var(--black);
+    color: var(--bg);
 }
 .topbar-left .sub {
     font-size: 11px;
-    color: var(--grey4);
+    color: var(--sand);
     margin-top: 1px;
 }
 .admin-chip {
     display: flex;
     align-items: center;
     gap: 8px;
-    background: var(--grey1);
-    border: 1px solid var(--grey2);
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.2);
     padding: 5px 12px 5px 5px;
     border-radius: 30px;
 }
@@ -365,22 +355,22 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
     width: 26px;
     height: 26px;
     border-radius: 50%;
-    background: var(--terracotta);
+    background: var(--sand);
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 11px;
-    color: #fff;
+    color: var(--ink);
     font-weight: 600;
 }
 .admin-chip .name {
     font-size: 12px;
-    color: var(--black);
+    color: var(--bg);
     font-weight: 500;
 }
 .admin-chip .arrow {
     font-size: 12px;
-    color: var(--grey4);
+    color: var(--sand);
     margin-left: 4px;
 }
 
@@ -390,9 +380,9 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
 
 /* ── Toast ───────────────────────────────────────────── */
 .toast {
-    background: #FCEEE2;
-    color: var(--black);
-    border: 1px solid var(--grey2);
+    background: var(--sand);
+    color: var(--ink);
+    border: 1px solid var(--border);
     padding: 12px 20px;
     border-radius: 10px;
     font-size: 12.5px;
@@ -401,138 +391,154 @@ html, body { height: 100%; background: var(--grey1); color: var(--black); font-f
     align-items: center;
     justify-content: space-between;
 }
-.toast.error { background: #FDEAEA; color: #D46A6A; border-color: #F5C6C6; }
+.toast.error { background: var(--sand); border: 1px solid var(--border); }
 .toast.hidden { display: none; }
-.toast-close { background: none; border: none; color: var(--grey4); cursor: pointer; font-size: 16px; }
-.toast-close:hover { color: var(--black); }
+.toast-close { background: none; border: none; color: var(--ink); cursor: pointer; font-size: 16px; }
+.toast-close:hover { color: var(--ink); }
 
 /* ── Status tabs ─────────────────────────────────────── */
 .tabs { display: flex; gap: 4px; margin-bottom: 20px; flex-wrap: wrap; }
 .tab {
     display: flex; align-items: center; gap: 6px; padding: 8px 16px;
-    font-size: 11.5px; color: var(--grey5); text-decoration: none; border-radius: 10px;
-    border: 1px solid transparent; transition: all .15s; font-weight: 400;
+    font-size: 11.5px; color: var(--ink); text-decoration: none; border-radius: 10px;
+    border: 1px solid var(--border); transition: all .15s; font-weight: 400;
     background: none; cursor: pointer; font-family: 'DM Sans', sans-serif;
 }
-.tab:hover { background: var(--white); border-color: var(--grey2); color: var(--black); }
-.tab.active { background: var(--white); border-color: var(--black); color: var(--black); font-weight: 500; }
-.tab .count { font-size: 10px; font-weight: 600; background: var(--grey2); padding: 1px 7px; border-radius: 20px; color: var(--grey5); }
-.tab.active .count { background: var(--black); color: #fff; }
-.tab .count.hot { background: var(--amber); color: #fff; }
-.tab.active .count.hot { background: var(--amber); }
+.tab:hover { background: var(--sand); border-color: var(--border); color: var(--ink); }
+.tab.active { background: var(--ink); color: var(--bg); border-color: var(--ink); font-weight: 500; }
+.tab .count { font-size: 10px; font-weight: 600; background: var(--sand); padding: 1px 7px; border-radius: 20px; color: var(--ink); }
+.tab.active .count { background: var(--bg); color: var(--ink); }
+.tab .count.hot { background: var(--sand); color: var(--ink); }
+.tab.active .count.hot { background: var(--bg); }
 
 /* ── Filters bar ─────────────────────────────────────── */
 .filters { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
 .filters select, .filters input[type="text"] {
-    padding: 8px 14px; border: 1px solid var(--grey2); border-radius: 9px;
-    font-size: 12px; font-family: 'DM Sans', sans-serif; color: var(--black);
-    background: var(--white); outline: none; transition: border-color .15s;
+    padding: 8px 14px; border: 1.5px solid var(--sand); border-radius: 9px;
+    font-size: 12px; font-family: 'DM Sans', sans-serif; color: var(--ink);
+    background: var(--bg); outline: none; transition: border-color .15s;
 }
-.filters select:focus, .filters input:focus { border-color: var(--black); }
+.filters select:focus, .filters input:focus { border-color: var(--ink); }
 .filters select { min-width: 150px; cursor: pointer; }
 .filters input[type="text"] { width: 220px; }
-.filter-sep { width: 1px; height: 24px; background: var(--grey2); }
-.clear-link { font-size: 11px; color: var(--grey4); text-decoration: none; cursor: pointer; background: none; border: none; font-family: 'DM Sans', sans-serif; }
-.clear-link:hover { color: var(--terracotta); }
+.filter-sep { width: 1px; height: 24px; background: var(--border); }
+.clear-link { font-size: 11px; color: var(--muted); text-decoration: none; cursor: pointer; background: none; border: none; font-family: 'DM Sans', sans-serif; }
+.clear-link:hover { color: var(--ink); }
 
 /* ── Results info ────────────────────────────────────── */
 .results-info { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
-.results-info .left { font-size: 11px; color: var(--grey4); }
-.results-info .right { font-size: 11px; color: var(--grey4); }
+.results-info .left { font-size: 11px; color: var(--muted); }
+.results-info .right { font-size: 11px; color: var(--muted); }
 
 /* ── Table ───────────────────────────────────────────── */
-.card { background: var(--white); border: 1px solid var(--grey2); border-radius: 14px; overflow: hidden; }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
 .card table { border-radius: 0 0 14px 14px; overflow: hidden; }
 table { width: 100%; border-collapse: collapse; }
-th { font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--grey4); font-weight: 500; padding: 11px 16px; text-align: left; border-bottom: 1px solid var(--grey2); background: var(--grey1); white-space: nowrap; }
-td { font-size: 12.5px; color: var(--grey5); padding: 12px 16px; border-bottom: 1px solid var(--grey2); vertical-align: middle; }
+th { font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); font-weight: 500; padding: 11px 16px; text-align: left; border-bottom: 1px solid var(--border); background: var(--sand); white-space: nowrap; }
+td { font-size: 12.5px; color: var(--body); padding: 12px 16px; border-bottom: 1px solid var(--border); vertical-align: middle; }
 tr:last-child td { border-bottom: none; }
-tr:hover td { background: var(--grey1); }
+tr:hover td { background: var(--sand); box-shadow: 0 4px 12px rgba(12,63,48,.06); }
 
 /* ── Table cells ─────────────────────────────────────── */
-.td-img { width: 48px; height: 48px; border-radius: 8px; object-fit: cover; background: var(--grey2); border: 1px solid var(--grey2); }
-.td-title { color: var(--black); font-weight: 500; max-width: 160px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.td-artist { color: var(--grey5); }
-.td-price { font-weight: 600; color: var(--black); white-space: nowrap; font-size: 12px; }
-.td-city { font-size: 11px; color: var(--grey4); }
+.td-img { width: 48px; height: 48px; border-radius: 8px; object-fit: cover; background: var(--sand); border: 1px solid var(--border); }
+.td-title { color: var(--ink); font-weight: 500; max-width: 160px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.td-artist { color: var(--body); }
+.td-price { font-weight: 600; color: var(--ink); white-space: nowrap; font-size: 12px; }
+.td-city { font-size: 11px; color: var(--muted); }
 
 /* ── Pills ───────────────────────────────────────────── */
 .pill { display: inline-block; font-size: 9px; letter-spacing: .5px; text-transform: uppercase; font-weight: 600; padding: 3px 9px; border-radius: 20px; white-space: nowrap; }
-.pill.pending   { background: #FFF4E6; color: #E48A4A; }
-.pill.approved  { background: #E8F5EE; color: #6BA58D; }
-.pill.rejected  { background: #FDEAEA; color: #D46A6A; }
-.pill.sold      { background: #EEE8FF; color: #6B5CE6; }
-.pill.hidden    { background: #F4F4F4; color: #888; }
-.featured-star { color: #E48A4A; font-size: 13px; margin-left: 4px; }
+.pill.pending   { background: var(--sand); color: var(--ink); }
+.pill.approved  { background: var(--ink); color: var(--bg); }
+.pill.rejected  { background: var(--sand); color: var(--ink); border: 1px solid var(--border); }
+.pill.sold      { background: var(--ink); color: var(--bg); }
+.pill.hidden    { background: var(--sand); color: var(--ink); }
+.featured-star { color: var(--ink); font-size: 13px; margin-left: 4px; }
 
 /* ── Action buttons in table ─────────────────────────── */
 .td-actions { display: flex; gap: 4px; flex-wrap: wrap; }
 .act-btn {
     padding: 5px 10px; font-size: 10.5px; font-weight: 500; border-radius: 7px;
-    border: 1px solid var(--grey2); background: var(--white); color: var(--grey5);
+    border: 1px solid var(--border); background: var(--card); color: var(--ink);
     cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all .12s; white-space: nowrap;
 }
-.act-btn:hover { border-color: var(--black); color: var(--black); }
-.act-btn.green:hover { border-color: var(--green); color: var(--green); background: #EEF5F0; }
-.act-btn.red:hover { border-color: var(--terracotta); color: var(--terracotta); background: #FFF0EC; }
-.act-btn.blue:hover { border-color: var(--blue); color: var(--blue); background: #EEF2F8; }
-.act-btn.purple:hover { border-color: var(--purple); color: var(--purple); background: #EEE8FF; }
-.act-btn.amber:hover { border-color: var(--amber); color: var(--amber); background: #FFF4E6; }
+.act-btn:hover { border-color: var(--ink); color: var(--ink); }
+.act-btn.green:hover { border-color: var(--ink); color: var(--ink); background: var(--sand); }
+.act-btn.red:hover { border-color: var(--border); color: var(--ink); background: var(--sand); }
+.act-btn.blue:hover { border-color: var(--ink); color: var(--ink); background: var(--sand); }
+.act-btn.purple:hover { border-color: var(--ink); color: var(--ink); background: var(--sand); }
+.act-btn.amber:hover { border-color: var(--ink); color: var(--ink); background: var(--sand); }
 
 /* ── Empty state ─────────────────────────────────────── */
-.empty { text-align: center; padding: 48px 24px; color: var(--grey4); font-size: 13px; }
+.empty { text-align: center; padding: 48px 24px; color: var(--muted); font-size: 13px; }
 
 /* ── Pagination ──────────────────────────────────────── */
 .pagination { display: flex; align-items: center; justify-content: center; gap: 4px; margin-top: 20px; }
 .page-btn {
-    padding: 7px 13px; font-size: 11.5px; border: 1px solid var(--grey2); border-radius: 8px;
-    background: var(--white); color: var(--grey5); cursor: pointer; font-family: 'DM Sans', sans-serif;
+    padding: 7px 13px; font-size: 11.5px; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--card); color: var(--ink); cursor: pointer; font-family: 'DM Sans', sans-serif;
     text-decoration: none; transition: all .12s;
 }
-.page-btn:hover { border-color: var(--black); color: var(--black); }
-.page-btn.active { background: var(--black); color: #fff; border-color: var(--black); }
+.page-btn:hover { border-color: var(--ink); color: var(--ink); }
+.page-btn.active { background: var(--ink); color: var(--bg); border-color: var(--ink); }
 .page-btn.disabled { opacity: .35; pointer-events: none; }
 
 /* ── Modals (Delete & Reject) ────────────────────────── */
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 200; display: flex; align-items: center; justify-content: center; opacity: 0; pointer-events: none; transition: opacity .2s; }
 .modal-overlay.open { opacity: 1; pointer-events: auto; }
-.modal { background: var(--white); border-radius: 16px; width: 420px; max-width: 92vw; box-shadow: 0 24px 60px rgba(0,0,0,.15); transform: translateY(12px); transition: transform .2s; }
+.modal { background: var(--card); border-radius: 16px; width: 420px; max-width: 92vw; box-shadow: 0 24px 60px rgba(0,0,0,.15); transform: translateY(12px); transition: transform .2s; border: 1px solid var(--border); }
 .modal-overlay.open .modal { transform: translateY(0); }
 .modal-head { padding: 24px 28px 0; }
-.modal-head h3 { font-family: 'Playfair Display', serif; font-size: 20px; font-weight: 400; color: var(--black); }
+.modal-head h3 { font-family: 'Playfair Display', serif; font-size: 20px; font-weight: 400; color: var(--ink); }
 .modal-body { padding: 20px 28px; }
-.confirm-text { font-size: 13px; color: var(--grey5); line-height: 1.6; }
-.confirm-text strong { color: var(--black); }
+.confirm-text { font-size: 13px; color: var(--body); line-height: 1.6; }
+.confirm-text strong { color: var(--ink); }
 .modal-foot { padding: 0 28px 24px; display: flex; gap: 10px; justify-content: flex-end; }
 .btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 18px; font-size: 12px; font-weight: 500; border-radius: 10px; border: none; cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all .15s; text-decoration: none; }
-.btn-ghost { background: transparent; color: var(--grey5); border: 1px solid var(--grey2); }
-.btn-ghost:hover { border-color: var(--black); color: var(--black); }
-.btn-danger { background: var(--terracotta); color: #fff; }
-.btn-danger:hover { background: #B85C3D; }
+.btn-ghost { background: transparent; color: var(--ink); border: 1px solid var(--border); }
+.btn-ghost:hover { border-color: var(--ink); color: var(--ink); }
+.btn-danger { background: var(--ink); color: var(--bg); }
+.btn-danger:hover { background: #1a503f; }
 
 /* Modal Input */
-.modal-input { width: 100%; padding: 10px; border: 1px solid var(--grey2); border-radius: 8px; font-family: 'DM Sans', sans-serif; font-size: 13px; resize: vertical; }
-.modal-input:focus { outline: none; border-color: var(--black); }
+.modal-input { width: 100%; padding: 10px; border: 1.5px solid var(--sand); border-radius: 8px; font-family: 'DM Sans', sans-serif; font-size: 13px; resize: vertical; background: var(--bg); color: var(--ink); }
+.modal-input:focus { outline: none; border-color: var(--ink); }
 
 /* ── Footer ──────────────────────────────────────────── */
-.dash-footer { padding: 20px 32px; border-top: 1px solid var(--grey2); font-size: 11px; color: var(--grey4); margin-top: 12px; }
+.dash-footer { background: var(--ink); padding: 20px 32px; font-size: 11px; color: var(--bg); margin-top: 12px; text-align: center; }
+
+/* ── Drawer (Hamburger) ──────────────────────────────── */
+#nav-drawer{display:none; position:fixed; top:0; right:0; bottom:0; width:260px; background:var(--ink); z-index:200; padding:20px; transform:translateX(100%); transition:transform .3s ease; flex-direction:column; border-left:1px solid rgba(246,237,222,.1);}
+#nav-drawer.open{transform:translateX(0); display:flex;}
+#nav-overlay{display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:199;}
+#nav-overlay.open{display:block;}
+.ham-btn{display:none; flex-direction:column; gap:4px; background:none; border:none; cursor:pointer; padding:4px;}
+.ham-btn span{width:22px; height:2px; background:var(--bg); border-radius:2px; transition:.2s;}
+.drawer-top{display:flex; justify-content:space-between; align-items:center; margin-bottom:30px; border-bottom:1px solid rgba(246,237,222,.1); padding-bottom:15px;}
+.drawer-logo{font-family:'Playfair Display',serif; font-size:18px; color:var(--bg); font-weight:400;}
+.drawer-close{background:none; border:none; color:var(--bg); font-size:24px; cursor:pointer;}
+.drawer-links a{display:block; color:var(--bg); text-decoration:none; padding:12px 0; border-bottom:1px solid rgba(246,237,222,.05); font-size:14px;}
+.drawer-links a:hover{color:var(--sand);}
+.drawer-actions{margin-top:auto; padding-top:20px; border-top:1px solid rgba(246,237,222,.1);}
+.drawer-actions a{display:block; padding:10px 0; color:var(--bg); text-decoration:none; font-size:13px;}
 
 /* ── Responsive ──────────────────────────────────────── */
-@media (max-width: 900px) {
+@media (max-width: 1080px) {
+    /* Grid adjustments if needed */
+}
+
+@media (max-width: 768px) {
     :root { --sidebar: 0px; }
     .sidebar { display: none; }
-    .topbar { left: 0; }
+    .topbar { left: 0; padding: 0 16px; }
     .content { padding: 16px; }
     td, th { padding: 8px 10px; }
     .td-actions { flex-direction: column; }
     .filters input[type="text"] { width: 100%; }
     .hide-mobile { display: none !important; }
-}
-@media (max-width: 600px) {
-    .tabs { gap: 2px; }
-    .tab { padding: 6px 10px; font-size: 10.5px; }
-    .filters { flex-direction: column; align-items: stretch; }
-    .filter-sep { display: none; }
+    .card { overflow-x: auto; }
+    table { min-width: 600px; }
+    .ham-btn { display: flex; }
 }
 </style>
 </head>
@@ -593,6 +599,7 @@ tr:hover td { background: var(--grey1); }
         <div class="sub">Manage all submitted artworks</div>
     </div>
     <div class="topbar-right">
+        <button class="ham-btn" onclick="openDrawer()"><span></span><span></span><span></span></button>
         <div class="admin-chip">
             <div class="avatar"><?= strtoupper(substr($adminName, 0, 1)) ?></div>
             <span class="name"><?= htmlspecialchars($adminName) ?></span>
@@ -681,14 +688,14 @@ tr:hover td { background: var(--grey1); }
                         <?php if ($aw['cover_image']): ?>
                             <img class="td-img" src="../../<?= htmlspecialchars($aw['cover_image']) ?>" alt="">
                         <?php else: ?>
-                            <div class="td-img" style="display:flex;align-items:center;justify-content:center;color:var(--grey4);font-size:10px;">No img</div>
+                            <div class="td-img" style="display:flex;align-items:center;justify-content:center;color:var(--ink);font-size:10px;">No img</div>
                         <?php endif; ?>
                     </td>
                     <td>
                         <div class="td-title" title="<?= htmlspecialchars($aw['title']) ?>"><?= htmlspecialchars($aw['title']) ?></div>
                         <?php if ($aw['is_featured']): ?><span class="featured-star">★</span><?php endif; ?>
                     </td>
-                    <td><a href="artist-view.php?id=<?= $aw['artist_id'] ?>" style="color:var(--grey5);text-decoration:none;" class="td-artist"><?= htmlspecialchars($aw['artist_name']) ?></a></td>
+                    <td><a href="artist-view.php?id=<?= $aw['artist_id'] ?>" style="color:var(--body);text-decoration:none;" class="td-artist"><?= htmlspecialchars($aw['artist_name']) ?></a></td>
                     <td class="hide-mobile" style="font-size:12px"><?= htmlspecialchars($aw['category_name']) ?></td>
                     <td class="td-price">PKR <?= number_format($aw['price']) ?></td>
                     <td class="td-city hide-mobile"><?= htmlspecialchars($aw['city'] ?? '—') ?></td>
@@ -754,7 +761,7 @@ tr:hover td { background: var(--grey1); }
     <div class="modal">
         <div class="modal-head"><h3>Delete Artwork</h3></div>
         <div class="modal-body">
-            <p class="confirm-text">Are you sure you want to permanently delete <strong id="deleteName"></strong>? This will also remove all images and buyer inquiries for this artwork. This cannot be undone.</p>
+            <p class="confirm-text">Are you sure you want to permanently delete <strong id="deleteName"></strong>? This will also remove all images and orders for this artwork. This cannot be undone.</p>
         </div>
         <form method="POST">
             <input type="hidden" name="action" value="delete">
@@ -786,7 +793,37 @@ tr:hover td { background: var(--grey1); }
     </div>
 </div>
 
+<!-- NAV DRAWER (Mobile) -->
+<div id="nav-overlay" onclick="closeDrawer()"></div>
+<div id="nav-drawer">
+    <div class="drawer-top">
+        <div class="drawer-logo">Art Bazaar</div>
+        <button class="drawer-close" onclick="closeDrawer()">&times;</button>
+    </div>
+    <div class="drawer-links">
+        <a href="index.php">Dashboard</a>
+        <a href="artworks.php">Artworks</a>
+        <a href="artists.php">Artists</a>
+        <a href="categories.php">Categories</a>
+        <a href="inquiries.php">Orders & Inquiries</a>
+        <a href="commissions.php">Commissions</a>
+        <a href="messages.php">Messages</a>
+    </div>
+    <div class="drawer-actions">
+        <a href="../../logout.php">Logout</a>
+    </div>
+</div>
+
 <script>
+function openDrawer() {
+    document.getElementById('nav-drawer').classList.add('open');
+    document.getElementById('nav-overlay').classList.add('open');
+}
+function closeDrawer() {
+    document.getElementById('nav-drawer').classList.remove('open');
+    document.getElementById('nav-overlay').classList.remove('open');
+}
+
 // Filter triggers — apply on change with slight delay for search
 let searchTimer;
 document.getElementById('searchInput').addEventListener('keyup', function() {
