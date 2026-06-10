@@ -524,6 +524,7 @@ img{display:block;max-width:100%;}
     <div class="nlinks">
       <a href="artworks.php" class="active">Explore Art</a>
       <a href="artists.php">Artists</a>
+      <a href="blog.php">Blog</a>
       <a href="commission.php">Commission Art</a>
       <a href="sell.php">Sell Your Art</a>
       <a href="about.php">About Us</a>
@@ -722,6 +723,7 @@ img{display:block;max-width:100%;}
   <div class="drawer-links">
     <a href="artworks.php">Explore Art</a>
     <a href="artists.php">Artists</a>
+    <a href="blog.php">Blog</a>
     <a href="commission.php">Commission Art</a>
     <a href="sell.php">Sell Your Art</a>
     <a href="about.php">About Us</a>

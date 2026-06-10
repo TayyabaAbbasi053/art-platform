@@ -413,6 +413,7 @@ h1{font-family:'Playfair Display',serif;font-size:clamp(24px,2.5vw,32px);font-we
     <div class="nlinks">
       <a href="artworks.php">Explore Art</a>
       <a href="artists.php">Artists</a>
+      <a href="blog.php">Blog</a>
       <a href="commission.php">Commission Art</a>
       <a href="sell.php">Sell Your Art</a>
       <a href="about.php">About Us</a>
@@ -597,6 +598,7 @@ h1{font-family:'Playfair Display',serif;font-size:clamp(24px,2.5vw,32px);font-we
   <div class="drawer-links">
     <a href="artworks.php">Explore Art</a>
     <a href="artists.php">Artists</a>
+    <a href="blog.php">Blog</a>
     <a href="commission.php">Commission Art</a>
     <a href="sell.php">Sell Your Art</a>
     <a href="about.php">About Us</a>

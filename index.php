@@ -669,6 +669,7 @@ h1.htitle em{font-style:italic;color:var(--ink);}
     <div class="nlinks">
       <a href="artworks.php" class="dd">Explore Art</a>
       <a href="artists.php">Artists</a>
+      <a href="blog.php">Blog</a> 
       <a href="commission.php">Commission Art</a>
       <a href="sell.php">Sell Your Art</a>
       <a href="about.php">About Us</a>
@@ -933,6 +934,7 @@ h1.htitle em{font-style:italic;color:var(--ink);}
   <div class="drawer-links">
     <a href="artworks.php">Explore Art</a>
     <a href="artists.php">Artists</a>
+    <a href="blog.php">Blog</a> 
     <a href="commission.php">Commission Art</a>
     <a href="sell.php">Sell Your Art</a>
     <a href="about.php">About Us</a>
