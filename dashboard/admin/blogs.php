@@ -13,27 +13,29 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
 
 // ── Handle actions ──────────────────────────────────────
 
-// Approve
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'approve') {
+// Delete
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delete') {
     $id = (int)($_POST['id'] ?? 0);
     if ($id) {
-        $conn->query("UPDATE artworks SET status = 'approved', rejection_reason = NULL WHERE id = $id");
-        $toast = 'Artwork approved.';
+        // Delete featured image file
+        $imgRow = $conn->query("SELECT featured_image FROM blog_posts WHERE id = $id");
+        if ($imgRow && $img = $imgRow->fetch_assoc()) {
+            if ($img['featured_image']) {
+                $filePath = __DIR__ . '/../../' . $img['featured_image'];
+                if (file_exists($filePath)) unlink($filePath);
+            }
+        }
+        $conn->query("DELETE FROM blog_posts WHERE id = $id");
+        $toast = 'Blog post deleted permanently.';
     }
 }
 
-// Reject (Now with Reason)
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'reject') {
+// Toggle published/draft
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'toggle_status') {
     $id = (int)($_POST['id'] ?? 0);
-    $reason = trim($_POST['rejection_reason'] ?? '');
-    
-    if ($id && !empty($reason)) {
-        $stmt = $conn->prepare("UPDATE artworks SET status = 'rejected', rejection_reason = ? WHERE id = ?");
-        $stmt->bind_param('si', $reason, $id);
-        $stmt->execute();
-        $toast = 'Artwork rejected. Artist will be notified.';
-    } elseif (empty($reason)) {
-        $toast = 'Please provide a rejection reason.';
+    if ($id) {
+        $conn->query("UPDATE blog_posts SET status = IF(status='published','draft','published'), published_at = IF(status='draft', NOW(), published_at) WHERE id = $id");
+        $toast = 'Post status updated.';
     }
 }
 
@@ -41,39 +43,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'rejec
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'feature') {
     $id = (int)($_POST['id'] ?? 0);
     if ($id) {
-        $conn->query("UPDATE artworks SET is_featured = IF(is_featured=1, 0, 1) WHERE id = $id");
+        $conn->query("UPDATE blog_posts SET is_featured = IF(is_featured=1, 0, 1) WHERE id = $id");
         $toast = 'Featured status updated.';
-    }
-}
-
-// Hide
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'hide') {
-    $id = (int)($_POST['id'] ?? 0);
-    if ($id) {
-        $conn->query("UPDATE artworks SET status = 'hidden' WHERE id = $id");
-        $toast = 'Artwork hidden.';
-    }
-}
-
-// Delete
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delete') {
-    $id = (int)($_POST['id'] ?? 0);
-    if ($id) {
-        // Delete images first
-        $imgs = $conn->query("SELECT image_path FROM artwork_images WHERE artwork_id = $id");
-        $uploadDir = __DIR__ . '/../../uploads/artworks/';
-        while ($img = $imgs->fetch_assoc()) {
-            $filePath = __DIR__ . '/../../' . $img['image_path'];
-            if (file_exists($filePath)) unlink($filePath);
-        }
-        $conn->query("DELETE FROM artwork_images WHERE artwork_id = $id");
-        
-        // Delete from Orders (New Schema)
-        $conn->query("DELETE FROM order_items WHERE item_type = 'artwork' AND item_id = $id");
-        
-        // Delete Artwork
-        $conn->query("DELETE FROM artworks WHERE id = $id");
-        $toast = 'Artwork deleted permanently.';
     }
 }
 
@@ -84,29 +55,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
 
 // Status filter
  $statusFilter = $_GET['status'] ?? '';
-if (in_array($statusFilter, ['pending','approved','rejected','sold','hidden'])) {
-    $where[] = "a.status = ?";
+if (in_array($statusFilter, ['draft','published'])) {
+    $where[] = "bp.status = ?";
     $params[] = $statusFilter;
     $types .= 's';
 }
 
-// Category filter
- $catFilter = (int)($_GET['category'] ?? 0);
-if ($catFilter > 0) {
-    $where[] = "a.category_id = ?";
-    $params[] = $catFilter;
-    $types .= 'i';
-}
-
 // Featured filter
 if (isset($_GET['featured']) && $_GET['featured'] === '1') {
-    $where[] = "a.is_featured = 1";
+    $where[] = "bp.is_featured = 1";
 }
 
 // Search
  $search = trim($_GET['q'] ?? '');
 if ($search) {
-    $where[] = "(a.title LIKE ? OR u.name LIKE ?)";
+    $where[] = "(bp.title LIKE ? OR u.name LIKE ?)";
     $like = "%$search%";
     $params[] = $like;
     $params[] = $like;
@@ -117,13 +80,13 @@ if ($search) {
 
 // Sort
  $sortMap = [
-    'newest'  => 'a.created_at DESC',
-    'oldest'  => 'a.created_at ASC',
-    'price_high' => 'a.price DESC',
-    'price_low'  => 'a.price ASC',
-    'title'   => 'a.title ASC',
+    'newest'      => 'bp.created_at DESC',
+    'oldest'      => 'bp.created_at ASC',
+    'views_high'  => 'bp.views DESC',
+    'views_low'   => 'bp.views ASC',
+    'title'       => 'bp.title ASC',
 ];
- $sortBy = $sortMap[$_GET['sort'] ?? ''] ?? 'a.created_at DESC';
+ $sortBy = $sortMap[$_GET['sort'] ?? ''] ?? 'bp.created_at DESC';
 
 // Pagination
  $page     = max(1, (int)($_GET['page'] ?? 1));
@@ -131,7 +94,7 @@ if ($search) {
  $offset   = ($page - 1) * $perPage;
 
 // Count total
- $countSQL = "SELECT COUNT(*) FROM artworks a JOIN users u ON u.id = a.artist_id WHERE $whereSQL";
+ $countSQL = "SELECT COUNT(*) FROM blog_posts bp JOIN users u ON u.id = bp.author_id WHERE $whereSQL";
 if ($params) {
     $stmt = $conn->prepare($countSQL);
     $stmt->bind_param($types, ...$params);
@@ -142,18 +105,16 @@ if ($params) {
 }
  $totalPages = max(1, ceil($totalResults / $perPage));
 
-// Fetch artworks
+// Fetch blog posts
  $dataSQL = "
-    SELECT a.*, c.name AS category_name, u.name AS artist_name,
-           (SELECT image_path FROM artwork_images WHERE artwork_id = a.id ORDER BY is_cover DESC, sort_order ASC LIMIT 1) AS cover_image
-    FROM artworks a
-    JOIN users u ON u.id = a.artist_id
-    JOIN categories c ON c.id = a.category_id
+    SELECT bp.*, u.name AS author_name
+    FROM blog_posts bp
+    JOIN users u ON u.id = bp.author_id
     WHERE $whereSQL
     ORDER BY $sortBy
     LIMIT $perPage OFFSET $offset
 ";
- $artworks = [];
+ $posts = [];
 if ($params) {
     $stmt = $conn->prepare($dataSQL);
     $stmt->bind_param($types, ...$params);
@@ -162,17 +123,12 @@ if ($params) {
 } else {
     $res = $conn->query($dataSQL);
 }
-while ($row = $res->fetch_assoc()) $artworks[] = $row;
-
-// Fetch categories for filter dropdown
- $categories = [];
- $catRes = $conn->query("SELECT id, name FROM categories ORDER BY name ASC");
-while ($row = $catRes->fetch_assoc()) $categories[] = $row;
+while ($row = $res->fetch_assoc()) $posts[] = $row;
 
 // Status counts for tabs
  $statusCounts = [];
-foreach (['pending','approved','rejected','sold','hidden'] as $s) {
-    $r = $conn->query("SELECT COUNT(*) FROM artworks WHERE status='$s'");
+foreach (['draft','published'] as $s) {
+    $r = $conn->query("SELECT COUNT(*) FROM blog_posts WHERE status='$s'");
     $statusCounts[$s] = (int)$r->fetch_row()[0];
 }
  $statusCounts['all'] = array_sum($statusCounts);
@@ -193,7 +149,7 @@ function buildQS($overrides = []) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Artworks — Art Bazaar Admin</title>
+<title>Blog Posts — Art Bazaar Admin</title>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -293,7 +249,6 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
     min-width: 18px;
     text-align: center;
 }
-.badge.amber { background: #fff; color: var(--ink); }
 .sidebar-bottom {
     margin-top: auto;
     padding: 16px;
@@ -391,7 +346,6 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
     align-items: center;
     justify-content: space-between;
 }
-.toast.error { background: var(--sand); border: 1px solid var(--border); }
 .toast.hidden { display: none; }
 .toast-close { background: none; border: none; color: var(--ink); cursor: pointer; font-size: 16px; }
 .toast-close:hover { color: var(--ink); }
@@ -408,8 +362,6 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
 .tab.active { background: var(--ink); color: var(--bg); border-color: var(--ink); font-weight: 500; }
 .tab .count { font-size: 10px; font-weight: 600; background: var(--sand); padding: 1px 7px; border-radius: 20px; color: var(--ink); }
 .tab.active .count { background: var(--bg); color: var(--ink); }
-.tab .count.hot { background: var(--sand); color: var(--ink); }
-.tab.active .count.hot { background: var(--bg); }
 
 /* ── Filters bar ─────────────────────────────────────── */
 .filters { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
@@ -425,6 +377,17 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
 .clear-link { font-size: 11px; color: var(--muted); text-decoration: none; cursor: pointer; background: none; border: none; font-family: 'DM Sans', sans-serif; }
 .clear-link:hover { color: var(--ink); }
 
+/* ── Create button ───────────────────────────────────── */
+.create-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 9px 20px; font-size: 12px; font-weight: 500;
+    border-radius: 10px; border: 1.5px solid var(--border);
+    background: var(--ink); color: var(--bg); text-decoration: none;
+    font-family: 'DM Sans', sans-serif; transition: all .15s;
+    cursor: pointer;
+}
+.create-btn:hover { background: #1a503f; border-color: #1a503f; }
+
 /* ── Results info ────────────────────────────────────── */
 .results-info { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
 .results-info .left { font-size: 11px; color: var(--muted); }
@@ -435,25 +398,22 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
 .card table { border-radius: 0 0 14px 14px; overflow: hidden; }
 table { width: 100%; border-collapse: collapse; }
 th { font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); font-weight: 500; padding: 11px 16px; text-align: left; border-bottom: 1px solid var(--border); background: var(--sand); white-space: nowrap; }
-td { font-size: 12.5px; color: var(--body); padding: 12px 16px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+td { font-size: 12.5px; color: var(--body); padding: 12px 16px; border-bottom: 1px solid var(--sand); vertical-align: middle; }
 tr:last-child td { border-bottom: none; }
 tr:hover td { background: var(--sand); box-shadow: 0 4px 12px rgba(12,63,48,.06); }
 
 /* ── Table cells ─────────────────────────────────────── */
 .td-img { width: 48px; height: 48px; border-radius: 8px; object-fit: cover; background: var(--sand); border: 1px solid var(--border); }
-.td-title { color: var(--ink); font-weight: 500; max-width: 160px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.td-artist { color: var(--body); }
-.td-price { font-weight: 600; color: var(--ink); white-space: nowrap; font-size: 12px; }
-.td-city { font-size: 11px; color: var(--muted); }
+.td-title { color: var(--ink); font-weight: 500; max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.td-author { color: var(--body); }
+.td-views { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.td-date { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.featured-star { color: var(--ink); font-size: 13px; margin-left: 4px; }
 
 /* ── Pills ───────────────────────────────────────────── */
 .pill { display: inline-block; font-size: 9px; letter-spacing: .5px; text-transform: uppercase; font-weight: 600; padding: 3px 9px; border-radius: 20px; white-space: nowrap; }
-.pill.pending   { background: var(--sand); color: var(--ink); }
-.pill.approved  { background: var(--ink); color: var(--bg); }
-.pill.rejected  { background: var(--sand); color: var(--ink); border: 1px solid var(--border); }
-.pill.sold      { background: var(--ink); color: var(--bg); }
-.pill.hidden    { background: var(--sand); color: var(--ink); }
-.featured-star { color: var(--ink); font-size: 13px; margin-left: 4px; }
+.pill.published { background: var(--ink); color: var(--bg); }
+.pill.draft     { background: var(--sand); color: var(--ink); }
 
 /* ── Action buttons in table ─────────────────────────── */
 .td-actions { display: flex; gap: 4px; flex-wrap: wrap; }
@@ -461,13 +421,14 @@ tr:hover td { background: var(--sand); box-shadow: 0 4px 12px rgba(12,63,48,.06)
     padding: 5px 10px; font-size: 10.5px; font-weight: 500; border-radius: 7px;
     border: 1px solid var(--border); background: var(--card); color: var(--ink);
     cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all .12s; white-space: nowrap;
+    text-decoration: none; display: inline-block;
 }
 .act-btn:hover { border-color: var(--ink); color: var(--ink); }
-.act-btn.green:hover { border-color: var(--ink); color: var(--ink); background: var(--sand); }
-.act-btn.red:hover { border-color: var(--border); color: var(--ink); background: var(--sand); }
-.act-btn.blue:hover { border-color: var(--ink); color: var(--ink); background: var(--sand); }
-.act-btn.purple:hover { border-color: var(--ink); color: var(--ink); background: var(--sand); }
-.act-btn.amber:hover { border-color: var(--ink); color: var(--ink); background: var(--sand); }
+.act-btn.green:hover { background: var(--sand); }
+.act-btn.amber:hover { background: var(--sand); }
+.act-btn.blue:hover { background: var(--sand); }
+.act-btn.red { color: var(--ink); }
+.act-btn.red:hover { background: var(--sand); border-color: var(--border); }
 
 /* ── Empty state ─────────────────────────────────────── */
 .empty { text-align: center; padding: 48px 24px; color: var(--muted); font-size: 13px; }
@@ -483,7 +444,7 @@ tr:hover td { background: var(--sand); box-shadow: 0 4px 12px rgba(12,63,48,.06)
 .page-btn.active { background: var(--ink); color: var(--bg); border-color: var(--ink); }
 .page-btn.disabled { opacity: .35; pointer-events: none; }
 
-/* ── Modals (Delete & Reject) ────────────────────────── */
+/* ── Modal ───────────────────────────────────────────── */
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 200; display: flex; align-items: center; justify-content: center; opacity: 0; pointer-events: none; transition: opacity .2s; }
 .modal-overlay.open { opacity: 1; pointer-events: auto; }
 .modal { background: var(--card); border-radius: 16px; width: 420px; max-width: 92vw; box-shadow: 0 24px 60px rgba(0,0,0,.15); transform: translateY(12px); transition: transform .2s; border: 1px solid var(--border); }
@@ -499,10 +460,6 @@ tr:hover td { background: var(--sand); box-shadow: 0 4px 12px rgba(12,63,48,.06)
 .btn-ghost:hover { border-color: var(--ink); color: var(--ink); }
 .btn-danger { background: var(--ink); color: var(--bg); }
 .btn-danger:hover { background: #1a503f; }
-
-/* Modal Input */
-.modal-input { width: 100%; padding: 10px; border: 1.5px solid var(--sand); border-radius: 8px; font-family: 'DM Sans', sans-serif; font-size: 13px; resize: vertical; background: var(--bg); color: var(--ink); }
-.modal-input:focus { outline: none; border-color: var(--ink); }
 
 /* ── Footer ──────────────────────────────────────────── */
 .dash-footer { background: var(--ink); padding: 20px 32px; font-size: 11px; color: var(--bg); margin-top: 12px; text-align: center; }
@@ -523,10 +480,6 @@ tr:hover td { background: var(--sand); box-shadow: 0 4px 12px rgba(12,63,48,.06)
 .drawer-actions a{display:block; padding:10px 0; color:var(--bg); text-decoration:none; font-size:13px;}
 
 /* ── Responsive ──────────────────────────────────────── */
-@media (max-width: 1080px) {
-    /* Grid adjustments if needed */
-}
-
 @media (max-width: 768px) {
     :root { --sidebar: 0px; }
     .sidebar { display: none; }
@@ -558,19 +511,18 @@ tr:hover td { background: var(--sand); box-shadow: 0 4px 12px rgba(12,63,48,.06)
         Overview
     </a>
     <div class="sidebar-section">Content</div>
-    <a href="artworks.php" class="nav-item active">
+    <a href="artworks.php" class="nav-item">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9l4-4 4 4 4-4 4 4"/><circle cx="8.5" cy="14.5" r="1.5"/></svg>
         Artworks
-        <?php if ($statusCounts['pending'] > 0): ?><span class="badge"><?= $statusCounts['pending'] ?></span><?php endif; ?>
     </a>
     <a href="artists.php" class="nav-item">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
         Artists
     </a>
-    <a href="blogs.php" class="nav-item">
-    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16a1 1 0 011 1v14a1 1 0 01-1 1H4a1 1 0 01-1-1V5a1 1 0 011-1z"/><path d="M7 8h10M7 12h6"/></svg>
-    Blog Posts
-</a>
+    <a href="blogs.php" class="nav-item active">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16a1 1 0 011 1v14a1 1 0 01-1 1H4a1 1 0 01-1-1V5a1 1 0 011-1z"/><path d="M7 8h10M7 12h6"/><path d="M17 16l2 2"/></svg>
+        Blog Posts
+    </a>
     <a href="categories.php" class="nav-item">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h10M4 18h7"/></svg>
         Categories
@@ -599,8 +551,8 @@ tr:hover td { background: var(--sand); box-shadow: 0 4px 12px rgba(12,63,48,.06)
 <!-- ══════════════ TOPBAR ══════════════ -->
 <header class="topbar">
     <div class="topbar-left">
-        <h1>Artworks</h1>
-        <div class="sub">Manage all submitted artworks</div>
+        <h1>Blog Posts</h1>
+        <div class="sub">Manage all blog content</div>
     </div>
     <div class="topbar-right">
         <button class="ham-btn" onclick="openDrawer()"><span></span><span></span><span></span></button>
@@ -618,108 +570,96 @@ tr:hover td { background: var(--sand); box-shadow: 0 4px 12px rgba(12,63,48,.06)
 
     <!-- Toast -->
     <?php if ($toast): ?>
-    <div class="toast <?= strpos($toast, 'provide') !== false ? 'error' : '' ?>">
+    <div class="toast">
         <span><?= htmlspecialchars($toast) ?></span>
         <button class="toast-close" onclick="this.parentElement.classList.add('hidden')">&times;</button>
     </div>
     <?php endif; ?>
 
-    <!-- Status tabs -->
-    <div class="tabs">
-        <a href="?<?= buildQS(['status' => null]) ?>" class="tab <?= !$statusFilter ? 'active' : '' ?>">
-            All <span class="count"><?= $statusCounts['all'] ?></span>
-        </a>
-        <?php foreach (['pending','approved','rejected','sold','hidden'] as $s): ?>
-        <a href="?<?= buildQS(['status' => $s]) ?>" class="tab <?= $statusFilter === $s ? 'active' : '' ?>">
-            <?= ucfirst($s) ?>
-            <span class="count <?= ($s === 'pending' && $statusCounts[$s] > 0) ? 'hot' : '' ?>"><?= $statusCounts[$s] ?></span>
-        </a>
-        <?php endforeach; ?>
-        <a href="?<?= buildQS(['featured' => '1', 'status' => null]) ?>" class="tab <?= (isset($_GET['featured']) && $_GET['featured'] === '1' && !$statusFilter) ? 'active' : '' ?>">
-            ★ Featured
+    <!-- Status tabs + Create button -->
+    <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px;">
+        <div class="tabs" style="margin-bottom:0;">
+            <a href="?<?= buildQS(['status' => null]) ?>" class="tab <?= !$statusFilter ? 'active' : '' ?>">
+                All <span class="count"><?= $statusCounts['all'] ?></span>
+            </a>
+            <?php foreach (['draft','published'] as $s): ?>
+            <a href="?<?= buildQS(['status' => $s]) ?>" class="tab <?= $statusFilter === $s ? 'active' : '' ?>">
+                <?= ucfirst($s) ?>
+                <span class="count"><?= $statusCounts[$s] ?></span>
+            </a>
+            <?php endforeach; ?>
+            <a href="?<?= buildQS(['featured' => '1', 'status' => null]) ?>" class="tab <?= (isset($_GET['featured']) && $_GET['featured'] === '1' && !$statusFilter) ? 'active' : '' ?>">
+                ★ Featured
+            </a>
+        </div>
+        <a href="blog-create.php" class="create-btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Create New Post
         </a>
     </div>
 
     <!-- Filters -->
     <div class="filters">
-        <input type="text" name="q" placeholder="Search title or artist..." value="<?= htmlspecialchars($search) ?>" id="searchInput">
-        <select id="catSelect">
-            <option value="">All Categories</option>
-            <?php foreach ($categories as $cat): ?>
-            <option value="<?= $cat['id'] ?>" <?= $catFilter === $cat['id'] ? 'selected' : '' ?>><?= htmlspecialchars($cat['name']) ?></option>
-            <?php endforeach; ?>
-        </select>
+        <input type="text" name="q" placeholder="Search title or author..." value="<?= htmlspecialchars($search) ?>" id="searchInput">
         <select id="sortSelect">
             <option value="newest" <?= ($_GET['sort'] ?? '') === 'newest' || !isset($_GET['sort']) ? 'selected' : '' ?>>Newest first</option>
             <option value="oldest" <?= ($_GET['sort'] ?? '') === 'oldest' ? 'selected' : '' ?>>Oldest first</option>
-            <option value="price_high" <?= ($_GET['sort'] ?? '') === 'price_high' ? 'selected' : '' ?>>Price: high to low</option>
-            <option value="price_low" <?= ($_GET['sort'] ?? '') === 'price_low' ? 'selected' : '' ?>>Price: low to high</option>
+            <option value="views_high" <?= ($_GET['sort'] ?? '') === 'views_high' ? 'selected' : '' ?>>Most views</option>
+            <option value="views_low" <?= ($_GET['sort'] ?? '') === 'views_low' ? 'selected' : '' ?>>Fewest views</option>
             <option value="title" <?= ($_GET['sort'] ?? '') === 'title' ? 'selected' : '' ?>>Title: A–Z</option>
         </select>
-        <?php if ($statusFilter || $catFilter || $search || isset($_GET['featured'])): ?>
-            <button class="clear-link" onclick="window.location.href='artworks.php'">Clear all</button>
+        <?php if ($statusFilter || $search || isset($_GET['featured'])): ?>
+            <button class="clear-link" onclick="window.location.href='blogs.php'">Clear all</button>
         <?php endif; ?>
     </div>
 
     <!-- Results info -->
     <div class="results-info">
-        <div class="left">Showing <?= count($artworks) ?> of <?= $totalResults ?> artworks</div>
+        <div class="left">Showing <?= count($posts) ?> of <?= $totalResults ?> posts</div>
         <div class="right">Page <?= $page ?> of <?= $totalPages ?></div>
     </div>
 
     <!-- Table -->
     <div class="card">
-        <?php if (empty($artworks)): ?>
-            <div class="empty">No artworks found matching your filters.</div>
+        <?php if (empty($posts)): ?>
+            <div class="empty">No blog posts found matching your filters.</div>
         <?php else: ?>
         <table>
             <thead>
                 <tr>
                     <th></th>
                     <th>Title</th>
-                    <th>Artist</th>
-                    <th class="hide-mobile">Category</th>
-                    <th>Price</th>
-                    <th class="hide-mobile">City</th>
+                    <th class="hide-mobile">Author</th>
                     <th>Status</th>
+                    <th class="hide-mobile">Views</th>
+                    <th>Date</th>
                     <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
-            <?php foreach ($artworks as $aw): ?>
+            <?php foreach ($posts as $p): ?>
                 <tr>
                     <td>
-                        <?php if ($aw['cover_image']): ?>
-                            <img class="td-img" src="../../<?= htmlspecialchars($aw['cover_image']) ?>" alt="">
+                        <?php if ($p['featured_image']): ?>
+                            <img class="td-img" src="../../<?= htmlspecialchars($p['featured_image']) ?>" alt="">
                         <?php else: ?>
                             <div class="td-img" style="display:flex;align-items:center;justify-content:center;color:var(--ink);font-size:10px;">No img</div>
                         <?php endif; ?>
                     </td>
                     <td>
-                        <div class="td-title" title="<?= htmlspecialchars($aw['title']) ?>"><?= htmlspecialchars($aw['title']) ?></div>
-                        <?php if ($aw['is_featured']): ?><span class="featured-star">★</span><?php endif; ?>
+                        <div class="td-title" title="<?= htmlspecialchars($p['title']) ?>"><?= htmlspecialchars($p['title']) ?></div>
+                        <?php if ($p['is_featured']): ?><span class="featured-star">★</span><?php endif; ?>
                     </td>
-                    <td><a href="artist-view.php?id=<?= $aw['artist_id'] ?>" style="color:var(--body);text-decoration:none;" class="td-artist"><?= htmlspecialchars($aw['artist_name']) ?></a></td>
-                    <td class="hide-mobile" style="font-size:12px"><?= htmlspecialchars($aw['category_name']) ?></td>
-                    <td class="td-price">PKR <?= number_format($aw['price']) ?></td>
-                    <td class="td-city hide-mobile"><?= htmlspecialchars($aw['city'] ?? '—') ?></td>
-                    <td><span class="pill <?= $aw['status'] ?>"><?= ucfirst($aw['status']) ?></span></td>
+                    <td class="hide-mobile td-author"><?= htmlspecialchars($p['author_name']) ?></td>
+                    <td><span class="pill <?= $p['status'] ?>"><?= ucfirst($p['status']) ?></span></td>
+                    <td class="td-views hide-mobile"><?= number_format($p['views']) ?></td>
+                    <td class="td-date"><?= date('M j, Y', strtotime($p['created_at'])) ?></td>
                     <td>
                         <div class="td-actions">
-                            <?php if ($aw['status'] === 'pending'): ?>
-                                <form method="POST" style="display:inline"><input type="hidden" name="action" value="approve"><input type="hidden" name="id" value="<?= $aw['id'] ?>"><button type="submit" class="act-btn green" title="Approve">Approve</button></form>
-                                <button type="button" class="act-btn red" onclick="openRejectModal(<?= $aw['id'] ?>)" title="Reject">Reject</button>
-                            <?php elseif ($aw['status'] === 'approved'): ?>
-                                <form method="POST" style="display:inline"><input type="hidden" name="action" value="feature"><input type="hidden" name="id" value="<?= $aw['id'] ?>"><button type="submit" class="act-btn amber" title="Toggle featured"><?= $aw['is_featured'] ? 'Unfeature' : 'Feature' ?></button></form>
-                                <form method="POST" style="display:inline"><input type="hidden" name="action" value="hide"><input type="hidden" name="id" value="<?= $aw['id'] ?>"><button type="submit" class="act-btn" title="Hide">Hide</button></form>
-                            <?php elseif ($aw['status'] === 'rejected' || $aw['status'] === 'hidden'): ?>
-                                <form method="POST" style="display:inline"><input type="hidden" name="action" value="approve"><input type="hidden" name="id" value="<?= $aw['id'] ?>"><button type="submit" class="act-btn green" title="Re-approve">Approve</button></form>
-                            <?php else: ?>
-    <form method="POST" style="display:inline"><input type="hidden" name="action" value="approve"><input type="hidden" name="id" value="<?= $aw['id'] ?>"><button type="submit" class="act-btn green">Approve</button></form>
-    <button type="button" class="act-btn red" onclick="openRejectModal(<?= $aw['id'] ?>)">Reject</button>
-<?php endif; ?>
-                            <a href="artwork-edit.php?id=<?= $aw['id'] ?>" class="act-btn blue" title="Edit details">Edit</a>
-                            <button type="button" class="act-btn red" onclick="openDelete(<?= $aw['id'] ?>, '<?= htmlspecialchars(addslashes($aw['title'])) ?>')" title="Delete permanently">Delete</button>
+                            <form method="POST" style="display:inline"><input type="hidden" name="action" value="toggle_status"><input type="hidden" name="id" value="<?= $p['id'] ?>"><button type="submit" class="act-btn green" title="<?= $p['status'] === 'published' ? 'Unpublish' : 'Publish' ?>"><?= $p['status'] === 'published' ? 'Unpublish' : 'Publish' ?></button></form>
+                            <form method="POST" style="display:inline"><input type="hidden" name="action" value="feature"><input type="hidden" name="id" value="<?= $p['id'] ?>"><button type="submit" class="act-btn amber" title="Toggle featured"><?= $p['is_featured'] ? 'Unfeature' : 'Feature' ?></button></form>
+                            <a href="blog-edit.php?id=<?= $p['id'] ?>" class="act-btn blue" title="Edit post">Edit</a>
+                            <button type="button" class="act-btn red" onclick="openDelete(<?= $p['id'] ?>, '<?= htmlspecialchars(addslashes($p['title'])) ?>')" title="Delete permanently">Delete</button>
                         </div>
                     </td>
                 </tr>
@@ -763,9 +703,9 @@ tr:hover td { background: var(--sand); box-shadow: 0 4px 12px rgba(12,63,48,.06)
 <!-- ══════════════ DELETE MODAL ══════════════ -->
 <div class="modal-overlay" id="deleteModal">
     <div class="modal">
-        <div class="modal-head"><h3>Delete Artwork</h3></div>
+        <div class="modal-head"><h3>Delete Blog Post</h3></div>
         <div class="modal-body">
-            <p class="confirm-text">Are you sure you want to permanently delete <strong id="deleteName"></strong>? This will also remove all images and orders for this artwork. This cannot be undone.</p>
+            <p class="confirm-text">Are you sure you want to permanently delete <strong id="deleteName"></strong>? This will also remove the featured image. This cannot be undone.</p>
         </div>
         <form method="POST">
             <input type="hidden" name="action" value="delete">
@@ -775,25 +715,6 @@ tr:hover td { background: var(--sand); box-shadow: 0 4px 12px rgba(12,63,48,.06)
                 <button type="submit" class="btn btn-danger">Yes, Delete</button>
             </div>
         </form>
-    </div>
-</div>
-
-<!-- ══════════════ REJECT MODAL ══════════════ -->
-<div class="modal-overlay" id="rejectModal">
-    <div class="modal">
-        <div class="modal-head"><h3>Reject Artwork</h3></div>
-        <div class="modal-body">
-            <p class="confirm-text" style="margin-bottom:12px;">Please provide a reason for rejection. The artist will see this message.</p>
-            <form method="POST">
-                <input type="hidden" name="action" value="reject">
-                <input type="hidden" name="id" id="rejectId">
-                <textarea name="rejection_reason" class="modal-input" rows="4" required placeholder="e.g. Low quality images, Wrong category, Copyright issue..."></textarea>
-                <div class="modal-foot" style="padding-top:16px;">
-                    <button type="button" class="btn btn-ghost" onclick="closeReject()">Cancel</button>
-                    <button type="submit" class="btn btn-danger">Reject Artwork</button>
-                </div>
-            </form>
-        </div>
     </div>
 </div>
 
@@ -807,6 +728,7 @@ tr:hover td { background: var(--sand); box-shadow: 0 4px 12px rgba(12,63,48,.06)
     <div class="drawer-links">
         <a href="index.php">Dashboard</a>
         <a href="artworks.php">Artworks</a>
+        <a href="blogs.php">Blog Posts</a>
         <a href="artists.php">Artists</a>
         <a href="categories.php">Categories</a>
         <a href="inquiries.php">Orders & Inquiries</a>
@@ -828,26 +750,23 @@ function closeDrawer() {
     document.getElementById('nav-overlay').classList.remove('open');
 }
 
-// Filter triggers — apply on change with slight delay for search
+// Filter triggers
 let searchTimer;
 document.getElementById('searchInput').addEventListener('keyup', function() {
     clearTimeout(searchTimer);
     searchTimer = setTimeout(() => applyFilters(), 400);
 });
-document.getElementById('catSelect').addEventListener('change', applyFilters);
 document.getElementById('sortSelect').addEventListener('change', applyFilters);
 
 function applyFilters() {
     let params = new URLSearchParams(window.location.search);
     let q = document.getElementById('searchInput').value.trim();
-    let cat = document.getElementById('catSelect').value;
     let sort = document.getElementById('sortSelect').value;
 
     if (q) params.set('q', q); else params.delete('q');
-    if (cat) params.set('category', cat); else params.delete('category');
     if (sort) params.set('sort', sort); else params.delete('sort');
     params.delete('page');
-    window.location.href = 'artworks.php?' + params.toString();
+    window.location.href = 'blogs.php?' + params.toString();
 }
 
 // Delete modal
@@ -860,30 +779,14 @@ function closeDelete() {
     document.getElementById('deleteModal').classList.remove('open');
 }
 
-// Reject modal
-function openRejectModal(id) {
-    document.getElementById('rejectId').value = id;
-    document.getElementById('rejectModal').classList.add('open');
-}
-function closeReject() {
-    document.getElementById('rejectModal').classList.remove('open');
-}
-
-// Close modals on overlay click
-document.querySelectorAll('.modal-overlay').forEach(overlay => {
-    overlay.addEventListener('click', function(e) {
-        if (e.target === this) {
-            this.classList.remove('open');
-        }
-    });
+// Close modal on overlay click
+document.getElementById('deleteModal').addEventListener('click', function(e) {
+    if (e.target === this) closeDelete();
 });
 
 // Close on Escape
 document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') {
-        closeDelete();
-        closeReject();
-    }
+    if (e.key === 'Escape') closeDelete();
 });
 </script>
 </body>

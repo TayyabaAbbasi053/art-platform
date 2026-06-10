@@ -485,6 +485,10 @@ function buildQS($overrides = []) {
         <div class="sidebar-section">Content</div>
         <a href="artworks.php" class="nav-item"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="14.5" r="1.5"/></svg> Artworks</a>
         <a href="artists.php" class="nav-item"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg> Artists</a>
+        <a href="blogs.php" class="nav-item">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16a1 1 0 011 1v14a1 1 0 01-1 1H4a1 1 0 01-1-1V5a1 1 0 011-1z"/><path d="M7 8h10M7 12h6"/></svg>
+    Blog Posts
+</a>
         <a href="categories.php" class="nav-item"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h10M4 18h7"/></svg> Categories</a>
         <div class="sidebar-section">Requests</div>
         <a href="inquiries.php" class="nav-item active"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg> Orders & Inquiries<?php if (($statusCounts['pending'] ?? 0) > 0): ?><span class="badge"><?= $statusCounts['pending'] ?></span><?php endif; ?></a>
@@ -638,6 +642,7 @@ function buildQS($overrides = []) {
         <a href="index.php">Overview</a>
         <a href="artworks.php">Artworks</a>
         <a href="artists.php">Artists</a>
+        <a href="blogs.php">Blog Posts</a> 
         <a href="categories.php">Categories</a>
         <a href="inquiries.php">Orders & Inquiries</a>
         <a href="commissions.php">Commissions</a>

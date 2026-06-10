@@ -310,6 +310,10 @@ tr.unread:hover td { background: var(--sand); }
     <div class="sidebar-section">Content</div>
     <a href="artworks.php" class="nav-item"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9l4-4 4 4 4-4 4 4"/><circle cx="8.5" cy="14.5" r="1.5"/></svg> Artworks</a>
     <a href="artists.php" class="nav-item"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg> Artists</a>
+    <a href="blogs.php" class="nav-item">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16a1 1 0 011 1v14a1 1 0 01-1 1H4a1 1 0 01-1-1V5a1 1 0 011-1z"/><path d="M7 8h10M7 12h6"/></svg>
+    Blog Posts
+</a>
     <a href="categories.php" class="nav-item"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h10M4 18h7"/></svg> Categories</a>
     <div class="sidebar-section">Requests</div>
     <a href="inquiries.php" class="nav-item"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg> Buyer Inquiries</a>
@@ -465,6 +469,7 @@ tr.unread:hover td { background: var(--sand); }
   <a href="index.php" class="d-link">Overview</a>
   <a href="artworks.php" class="d-link">Artworks</a>
   <a href="artists.php" class="d-link">Artists</a>
+  <a href="blogs.php" class="d-link">Blog Posts</a>
   <a href="categories.php" class="d-link">Categories</a>
   <a href="inquiries.php" class="d-link">Buyer Inquiries</a>
   <a href="commissions.php" class="d-link">Commissions</a>
