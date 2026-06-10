@@ -266,7 +266,7 @@ img{display:block;max-width:100%;}
 <!-- NAV -->
 <nav class="nav">
   <div class="nw">
-    <a href="index.php" class="nlogo"><b>Art Bazaar</b><small>Marketplace</small></a>
+    <a href="index.php" class="nlogo"><img src="logo.png" alt="Art Bazaar" style="height:36px;width:auto;display:block;"></a>
     <div class="nlinks">
       <a href="artworks.php" class="dd">Explore Art</a>
       <a href="artists.php">Artists</a>
@@ -398,7 +398,7 @@ img{display:block;max-width:100%;}
 <div id="nav-overlay"></div>
 <div id="nav-drawer">
   <div class="drawer-top">
-    <div class="drawer-logo"><b>Art Bazaar</b><small>Marketplace</small></div>
+    <div class="drawer-logo"><img src="logo.png" alt="Art Bazaar" style="height:36px;width:auto;display:block;"></div>
     <button class="drawer-close" aria-label="Close menu">✕</button>
   </div>
   <div class="drawer-links">

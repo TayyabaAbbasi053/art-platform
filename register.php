@@ -119,7 +119,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 ?>
 <div class="wrap">
     <div class="left">
-        <span class="left-tag">Art Bazaar</span>
+        <a href="index.php"><img src="logo.png" alt="Art Bazaar" style="height:60px;width:auto;display:block;"></a>
         <div class="left-content">
             <p class="left-headline">Join the<br>community.</p>
             <p class="left-sub">Whether you create or collect — there's a place for you here.</p>

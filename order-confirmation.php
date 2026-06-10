@@ -354,7 +354,7 @@ img{max-width:100%;display:block;}
 <!-- NAV -->
 <nav class="nav">
   <div class="nw">
-    <a href="index.php" class="nlogo"><b>Art Bazaar</b><small>Marketplace</small></a>
+    <a href="index.php" class="nlogo"><img src="logo.png" alt="Art Bazaar" style="height:36px;width:auto;display:block;"></a>
     <div class="nlinks">
       <a href="artworks.php">Explore Art</a>
       <a href="artists.php">Artists</a>

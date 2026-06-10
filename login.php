@@ -233,7 +233,7 @@ button[type=submit]:hover{background:#333;}
 <body>
 <div class="wrap">
   <div class="left">
-    <span class="left-tag">Art Bazaar</span>
+    <a href="index.php"><img src="logo.png" alt="Art Bazaar" style="height:60px;width:auto;display:block;"></a>
     <div class="left-content">
       <?php if ($step === 'login'): ?>
         <p class="left-headline">Welcome<br>back.</p>

@@ -445,7 +445,7 @@ h1.htitle em{font-style:italic;color:var(--ink);}
 .htrust{display:flex;align-items:center;gap:18px;}
 .trust-i{display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--ink);}
 .trust-i svg{color:var(--ink);}
-.himg{position:relative;border-radius:14px;overflow:hidden;background:#F6EDDE;}
+.himg{position:relative;border-radius:0;overflow:hidden;background:#F6EDDE;}
 .himg img{width:100%;height:auto;object-fit:contain;object-position:center;}
 .himg-ph{width:100%;height:100%;display:flex;align-items:center;justify-content:center;}
 .himg-ph svg{opacity:.18;color:var(--ink);}
@@ -665,7 +665,7 @@ h1.htitle em{font-style:italic;color:var(--ink);}
 <!-- NAV -->
 <nav class="nav">
   <div class="nw">
-    <a href="index.php" class="nlogo"><b>Art Bazaar</b><small>Marketplace</small></a>
+    <a href="index.php" class="nlogo"><img src="logo.png" alt="Art Bazaar" style="height:36px;width:auto;display:block;"></a>
     <div class="nlinks">
       <a href="artworks.php" class="dd">Explore Art</a>
       <a href="artists.php">Artists</a>
@@ -721,13 +721,8 @@ h1.htitle em{font-style:italic;color:var(--ink);}
     </div>
   </div>
   <div class="himg">
-    <?php if ($heroArt && getImgUrl($heroArt['cover_image'])): ?>
-      <img src="<?= htmlspecialchars(getImgUrl($heroArt['cover_image'])) ?>" alt="">
-      <div class="hbadge"><div class="hbadge-l">Featured Artwork</div><div class="hbadge-v"><?= htmlspecialchars($heroArt['title']) ?></div></div>
-    <?php else: ?>
-      <div class="himg-ph"><svg width="56" height="56" fill="none" stroke="currentColor" stroke-width="1" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div>
-    <?php endif; ?>
-  </div>
+    <img src="indexhero.jpeg" alt="Art Bazaar Hero">
+</div>
 </section>
 
 <div class="wrap"><hr class="divhr"></div>

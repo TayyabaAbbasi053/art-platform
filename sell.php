@@ -193,7 +193,7 @@ img{max-width:100%;display:block;}
 <!-- NAV -->
 <nav class="nav">
   <div class="nw">
-    <a href="index.php" class="nlogo"><b>Art Bazaar</b><small>Marketplace</small></a>
+    <a href="index.php" class="nlogo"><img src="logo.png" alt="Art Bazaar" style="height:36px;width:auto;display:block;"></a>
     <div class="nlinks">
       <a href="artworks.php">Explore Art</a>
       <a href="artists.php">Artists</a>
@@ -232,11 +232,14 @@ img{max-width:100%;display:block;}
 </nav>
 
 <!-- HERO -->
-<section class="hero">
-  <div class="hero-inner">
-    <div class="hero-tag">FOR ARTISTS</div>
-    <h1>Share your art with the world.<br><em>Start selling</em> on Art Bazaar.</h1>
-    <p class="hero-desc">Join a growing community of Pakistani artists who are reaching collectors across the country — with zero upfront cost and fair commission rates.</p>
+<section class="hero" style="padding:0;position:relative;">
+  <img src="sellhero.jpeg" alt="Sell Your Art" style="width:100%;max-height:480px;object-fit:cover;display:block;">
+  <div style="position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(12,63,48,0.55);display:flex;align-items:center;">
+    <div class="hero-inner" style="padding:0 28px;">
+      <div class="hero-tag">FOR ARTISTS</div>
+      <h1>Share your art with the world.<br><em>Start selling</em> on Art Bazaar.</h1>
+      <p class="hero-desc">Join a growing community of Pakistani artists who are reaching collectors across the country — with zero upfront cost and fair commission rates.</p>
+    </div>
   </div>
 </section>
 
