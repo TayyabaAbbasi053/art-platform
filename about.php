@@ -291,8 +291,8 @@ img{max-width:100%;display:block;}
   <!-- STORY TWO COLUMN -->
   <div class="two-col">
     <div class="col-img">
-      <svg width="180" height="180" fill="none" stroke="currentColor" stroke-width="1" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9l4-4 4 4 4-4 4 4"/><circle cx="8.5" cy="14.5" r="1.5"/></svg>
-    </div>
+  <img src="about1.jpeg" alt="How Art Bazaar started" style="width:100%;height:100%;object-fit:cover;">
+</div>
     <div class="col-content">
       <h3>How Art Bazaar started</h3>
       <p>Art Bazaar was born from a simple observation: talented Pakistani artists had limited ways to reach buyers, and art lovers struggled to find authentic local art. Galleries took high commissions, online marketplaces were impersonal, and shipping was complicated.</p>
@@ -307,8 +307,8 @@ img{max-width:100%;display:block;}
       <p>We also offer personalized support for every commission request, connecting buyers with the perfect artist for their vision. Whether you're looking for a contemporary painting or a traditional calligraphy piece, we're here to help.</p>
     </div>
     <div class="col-img">
-      <svg width="180" height="180" fill="none" stroke="currentColor" stroke-width="1" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
-    </div>
+  <img src="about2.jpeg" alt="What makes us different" style="width:100%;height:100%;object-fit:cover;">
+</div>
   </div>
 
   <!-- CTA SECTION -->
