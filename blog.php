@@ -222,6 +222,7 @@ img{display:block;max-width:100%;}
   .drawer-btn-ghost:hover{border-color:var(--sand);background:rgba(246,237,222,0.08);}
   .drawer-btn-dark{font-size:13px;color:var(--ink);padding:9px 14px;border-radius:6px;background:var(--sand);text-align:center;font-weight:500;transition:background 0.12s;}
   .drawer-btn-dark:hover{background:#c4b69e;}
+  section[style*="grid-template-columns:1fr 1fr"]{grid-template-columns:1fr!important;}
 }
 </style>
 </head>
@@ -230,7 +231,7 @@ img{display:block;max-width:100%;}
 <!-- NAV -->
 <nav class="nav">
   <div class="nw">
-    <a href="index.php" class="nlogo"><b>Art Bazaar</b><small>Marketplace</small></a>
+    <a href="index.php" class="nlogo"><img src="logo.png" alt="Art Bazaar" style="height:36px;width:auto;display:block;"></a>
     <div class="nlinks">
       <a href="artworks.php" class="dd">Explore Art</a>
       <a href="artists.php">Artists</a>
@@ -264,9 +265,14 @@ img{display:block;max-width:100%;}
 </nav>
 
 <!-- HERO -->
-<section class="blog-hero">
-  <h1>From Our Blog</h1>
-  <p>Stories, insights, and inspiration from Pakistani artists and the local art community.</p>
+<section style="position:relative;min-height:280px;display:flex;align-items:center;">
+  <img src="bloghero.jpeg" alt="Blog" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;display:block;">
+  <div style="position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(12,63,48,0.65);"></div>
+  <div style="position:relative;z-index:1;padding:52px 48px;">
+    <div style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--sand);margin-bottom:12px;">OUR BLOG</div>
+    <h1 style="font-family:'Playfair Display',serif;font-size:clamp(28px,3.2vw,42px);font-weight:400;color:var(--bg);margin-bottom:12px;">From Our Blog</h1>
+    <p style="font-size:14px;color:rgba(246,237,222,.55);max-width:420px;line-height:1.6;">Stories, insights, and inspiration from Pakistani artists and the local art community.</p>
+  </div>
 </section>
 
 <!-- POSTS -->
@@ -357,7 +363,7 @@ img{display:block;max-width:100%;}
 <div id="nav-overlay"></div>
 <div id="nav-drawer">
   <div class="drawer-top">
-    <div class="drawer-logo"><b>Art Bazaar</b><small>Marketplace</small></div>
+    <div class="drawer-logo"><img src="logo.png" alt="Art Bazaar" style="height:36px;width:auto;display:block;"></div>
     <button class="drawer-close" aria-label="Close menu">✕</button>
   </div>
   <div class="drawer-links">

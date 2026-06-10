@@ -215,7 +215,7 @@ img{max-width:100%;display:block;}
 <!-- NAV -->
 <nav class="nav">
   <div class="nw">
-    <a href="index.php" class="nlogo"><b>Art Bazaar</b><small>Marketplace</small></a>
+    <a href="index.php" class="nlogo"><img src="logo.png" alt="Art Bazaar" style="height:36px;width:auto;display:block;"></a>
     <div class="nlinks">
       <a href="artworks.php">Explore Art</a>
       <a href="artists.php">Artists</a>
@@ -254,11 +254,14 @@ img{max-width:100%;display:block;}
 </nav>
 
 <!-- HERO -->
-<section class="hero">
-  <div class="hero-inner">
-    <div class="hero-tag">GET IN TOUCH</div>
-    <h1>We'd love to <em>hear from you</em>.</h1>
-    <p class="hero-desc">Have questions about buying, selling, or commissions? Our team is here to help.</p>
+<section class="hero" style="padding:0;position:relative;">
+  <img src="contacthero.jpeg" alt="Contact Us" style="width:100%;height:auto;object-fit:contain;display:block;">
+  <div style="position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(12,63,48,0.45);display:flex;align-items:flex-end;padding-bottom:40px;">
+    <div class="hero-inner" style="padding:0 28px;">
+      <div class="hero-tag">GET IN TOUCH</div>
+      <h1>We'd love to <em>hear from you</em>.</h1>
+      <p class="hero-desc">Have questions about buying, selling, or commissions? Our team is here to help.</p>
+    </div>
   </div>
 </section>
 
@@ -360,7 +363,7 @@ img{max-width:100%;display:block;}
 <div id="nav-overlay"></div>
 <div id="nav-drawer">
   <div class="drawer-top">
-    <div class="drawer-logo"><b>Art Bazaar</b><small>Marketplace</small></div>
+    <div class="drawer-logo"><img src="logo.png" alt="Art Bazaar" style="height:36px;width:auto;display:block;"></div>
     <button class="drawer-close" aria-label="Close menu">✕</button>
   </div>
   <div class="drawer-links">
