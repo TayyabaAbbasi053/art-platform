@@ -676,7 +676,7 @@ h1.htitle em{font-style:italic;color:var(--ink);}
     </div>
     <div class="nsearch">
       <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-      <input type="text" placeholder="Search artworks, artists...">
+      <input type="text" placeholder="Search artworks, artists..." onkeydown="if(event.key==='Enter'){window.location='artworks.php?q='+encodeURIComponent(this.value);}">
     </div>
     <div class="nend">
       <a href="cart.php" class="cart-icon">

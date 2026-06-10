@@ -156,11 +156,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'ajax_
  $types = '';
 
 if ($search) {
-    $where[] = "(a.title LIKE ? OR u.name LIKE ?)";
+    $where[] = "(a.title LIKE ? OR u.name LIKE ? OR a.description LIKE ? OR a.tags LIKE ? OR c.name LIKE ?)";
     $s = "%$search%";
     $params[] = $s;
     $params[] = $s;
-    $types .= 'ss';
+    $params[] = $s;
+    $params[] = $s;
+    $params[] = $s;
+    $types .= 'sssss';
 }
 if ($catFilter) {
     $where[] = "a.category_id = ?";
@@ -208,7 +211,7 @@ if ($featured) {
  $whereSQL = implode(' AND ', $where);
 
 // Count total
- $countSQL = "SELECT COUNT(*) FROM artworks a JOIN users u ON a.artist_id = u.id WHERE $whereSQL";
+ $countSQL = "SELECT COUNT(*) FROM artworks a JOIN users u ON a.artist_id = u.id JOIN categories c ON a.category_id = c.id WHERE $whereSQL";
 if ($params) {
     $cs = $conn->prepare($countSQL);
     $cs->bind_param($types, ...$params);

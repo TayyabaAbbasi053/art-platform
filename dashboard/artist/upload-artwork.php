@@ -39,6 +39,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $price                  = (float) ($_POST['price'] ?? 0);
     $city                   = trim($_POST['city'] ?? '');
     $description            = trim($_POST['description'] ?? '');
+    $tags                   = trim($_POST['tags'] ?? '');
     $delivery_available     = isset($_POST['delivery_available']) ? 1 : 0;
     $similar_work_available = isset($_POST['similar_work_available']) ? 1 : 0;
 
@@ -52,10 +53,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // 1. Insert Artwork
         $stmt = $conn->prepare("
             INSERT INTO artworks 
-            (artist_id, category_id, title, description, medium, size, price, city, delivery_available, similar_work_available, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
+            (artist_id, category_id, title, description, tags, medium, size, price, city, delivery_available, similar_work_available, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
         ");
-        $stmt->bind_param('iisssddsii', $artistId, $categoryId, $title, $description, $medium, $size, $price, $city, $delivery_available, $similar_work_available);
+        // FIX: Type string changed from 'iissssddsii' to 'iisssssdsii' (added 6th 's' for $tags)
+        $stmt->bind_param('iisssssdsii', $artistId, $categoryId, $title, $description, $tags, $medium, $size, $price, $city, $delivery_available, $similar_work_available);
         
         if ($stmt->execute()) {
             $artworkId = $conn->insert_id;
@@ -475,6 +477,14 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
                 </div>
             </div>
 
+            <div class="form-grid full">
+                <div class="field-group">
+                    <label>Tags <small style="text-transform:none;letter-spacing:0;font-weight:400;opacity:.7;">(optional)</small></label>
+                    <input type="text" name="tags" class="field-input" placeholder="e.g. floral, abstract, blue, Lahore, miniature, portrait, gift">
+                    <p style="font-size:11px;color:var(--muted);margin-top:6px;">Separate keywords with commas. These help buyers find your artwork through search.</p>
+                </div>
+            </div>
+
             <!-- ── Toggles ───────────────────────────── -->
             <div class="toggle-row">
                 <div>
@@ -560,7 +570,7 @@ fileInput.addEventListener('change', function(e) {
     // Check max file limit (5)
     if (currentFiles.length + newFiles.length > 5) {
         alert('You can only upload up to 5 images. Please remove some before adding more.');
-        fileInput.value = ''; // Reset input to allow re-selection if needed, though currentFiles holds state
+        fileInput.value = ''; // Reset input to allow re-selection if needed, although currentFiles holds state
         return;
     }
     
