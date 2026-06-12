@@ -88,7 +88,7 @@ function containsContactInfo(string $text): bool {
 }
 
 // ── Valid enums matching new DB schema ──────────────────
- $validStatuses = ['pending','price_proposed','confirmed','processing','shipped','delivered','cancelled'];
+ $validStatuses = ['pending','price_proposed','assigned','payment_review','payment_confirmed','processing','shipped','delivered','cancelled'];
  $validDeliveryStatuses = ['pending','quote_pending','deposit_paid','in_progress','ready_to_ship','shipped','delivered','cancelled'];
  $validPaymentMethods = ['cod','bank_transfer','easypaisa','jazzcash'];
  $validPaymentStatuses = ['pending','paid','failed','refunded'];
@@ -165,7 +165,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
         'shipped' => 'shipped',
         'delivered' => 'delivered',
         'cancelled' => 'cancelled',
-        'deposit_paid' => 'confirmed'
+        'deposit_paid' => 'assigned'
     ];
     $targetStatus = $map[$deliveryStatus] ?? $deliveryStatus;
     
@@ -187,14 +187,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'assig
         if ($check->num_rows > 0) {
             if ($artistId > 0) {
                 $conn->query("UPDATE commission_requests SET artist_id = $artistId WHERE order_id = $id");
+                $conn->query("UPDATE orders SET order_status = 'assigned' WHERE id = $id AND order_status = 'pending'");
+                $adminId = (int)$_SESSION['user_id'];
+                $stmtH = $conn->prepare("INSERT INTO order_status_history (order_id, status_from, status_to, changed_by_role, changed_by_id, notes) VALUES (?, 'pending', 'assigned', 'admin', ?, 'Artist assigned')");
+                $stmtH->bind_param('ii', $id, $adminId);
+                $stmtH->execute();
                 $toast = 'Artist assigned successfully.';
             } else {
                 $conn->query("UPDATE commission_requests SET artist_id = NULL WHERE order_id = $id");
+                $conn->query("UPDATE orders SET order_status = 'pending' WHERE id = $id AND order_status = 'assigned'");
                 $toast = 'Artist unassigned.';
             }
         } else {
             if ($artistId > 0) {
                 $conn->query("INSERT INTO commission_requests (order_id, artist_id) VALUES ($id, $artistId)");
+                $conn->query("UPDATE orders SET order_status = 'assigned' WHERE id = $id AND order_status = 'pending'");
+                $adminId = (int)$_SESSION['user_id'];
+                $stmtH = $conn->prepare("INSERT INTO order_status_history (order_id, status_from, status_to, changed_by_role, changed_by_id, notes) VALUES (?, 'pending', 'assigned', 'admin', ?, 'Artist assigned')");
+                $stmtH->bind_param('ii', $id, $adminId);
+                $stmtH->execute();
                 $toast = 'Artist assigned successfully.';
             }
         }
@@ -214,10 +225,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'forwa
             $conn->query("INSERT INTO commission_requests (order_id, artist_id) VALUES ($id, $artistId)");
         }
         
-        $conn->query("UPDATE orders SET order_status = 'confirmed' WHERE id = $id");
+        $conn->query("UPDATE orders SET order_status = 'assigned' WHERE id = $id");
         
         $adminId = (int)$_SESSION['user_id'];
-        $stmtH = $conn->prepare("INSERT INTO order_status_history (order_id, status_from, status_to, changed_by_role, changed_by_id, notes) VALUES (?, 'pending', 'confirmed', 'admin', ?, 'Forwarded to artist')");
+        $stmtH = $conn->prepare("INSERT INTO order_status_history ... VALUES (?, 'pending', 'assigned', 'admin', ?, 'Forwarded to artist')");
         $stmtH->bind_param('ii', $id, $adminId);
         $stmtH->execute();
 
@@ -244,10 +255,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'mark_paid') {
     $id = (int)($_POST['id'] ?? 0);
     if ($id) {
-        $stmt = $conn->prepare("UPDATE orders SET payment_status = 'paid' WHERE id = ?");
+        $stmt = $conn->prepare("UPDATE orders SET payment_status = 'paid', order_status = 'payment_confirmed' WHERE id = ? AND order_status = 'payment_review'");
         $stmt->bind_param('i', $id);
         $stmt->execute();
-        $toast = 'Payment marked as verified/paid.';
+        $adminId = (int)$_SESSION['user_id'];
+        $stmtH = $conn->prepare("INSERT INTO order_status_history (order_id, status_from, status_to, changed_by_role, changed_by_id, notes) VALUES (?, 'payment_review', 'payment_confirmed', 'admin', ?, 'Admin verified payment. Artist notified to begin work.')");
+        $stmtH->bind_param('ii', $id, $adminId);
+        $stmtH->execute();
+        $toast = 'Payment confirmed. Artist has been notified to begin work.';
+    }
+}
+
+// Send chat message (Inserts into order_messages)
+// Approve Payment — moves commission from payment_review → processing, notifies artist
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'approve_payment') {
+    $id = (int)($_POST['id'] ?? 0);
+    if ($id) {
+        $conn->query("UPDATE orders SET order_status = 'payment_confirmed', payment_status = 'paid' WHERE id = $id AND order_status = 'payment_review'");
+        $adminId = (int)$_SESSION['user_id'];
+        $stmtH = $conn->prepare("INSERT INTO order_status_history (order_id, status_from, status_to, changed_by_role, changed_by_id, notes) VALUES (?, 'payment_review', 'payment_confirmed', 'admin', ?, 'Admin verified payment. Artist should now begin work.')");
+        $stmtH->bind_param('ii', $id, $adminId);
+        $stmtH->execute();
+        $toast = 'Payment confirmed. Artist has been notified to begin work.';
     }
 }
 
@@ -438,7 +467,9 @@ function getProfileImageUrl($imagePath) {
 function getDeliveryStatusFromOrderStatus($status) {
     $map = [
         'pending' => 'pending',
-        'confirmed' => 'deposit_paid',
+        'assigned' => 'deposit_paid',
+        'payment_review' => 'deposit_paid',
+        'payment_confirmed' => 'deposit_paid',
         'processing' => 'in_progress',
         'shipped' => 'shipped',
         'delivered' => 'delivered',
@@ -456,30 +487,30 @@ function getDeliveryStatusFromOrderStatus($status) {
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
-:root{--black:#1E1B18;--grey1:#F7F1E8;--grey2:#E6DDD0;--grey3:#D6CDBF;--grey4:#8A7D72;--grey5:#3D332A;--white:#FFFDF8;--red:#C96B4B;--green:#6BA58D;--amber:#E48A4A;--blue:#0984e3;--purple:#5e35b1;--terracotta:#C96B4B;--gold:#C9A96E;--sidebar:240px;--top:60px}
+:root{--black:#0C3F30;--grey1:#F6EDDE;--grey2:#DDCDAE;--grey3:#DDCDAE;--grey4:#0C3F30;--grey5:#0C3F30;--white:#F6EDDE;--red:#0C3F30;--green:#0C3F30;--amber:#0C3F30;--blue:#0C3F30;--purple:#0C3F30;--terracotta:#0C3F30;--gold:#DDCDAE;--sidebar:240px;--top:60px}
 html,body{height:100%;background:var(--grey1);color:var(--black);font-family:'DM Sans',sans-serif}
-.sidebar{position:fixed;top:0;left:0;width:var(--sidebar);height:100vh;background:#EFE3D2;border-right:1px solid var(--grey2);display:flex;flex-direction:column;z-index:100;overflow-y:auto}
+.sidebar{position:fixed;top:0;left:0;width:var(--sidebar);height:100vh;background:#0C3F30;border-right:1px solid var(--grey2);display:flex;flex-direction:column;z-index:100;overflow-y:auto}
 .sidebar-brand{padding:22px 24px 18px;border-bottom:1px solid var(--grey2)}
-.sidebar-brand .logo-tag{font-size:10px;letter-spacing:3px;text-transform:uppercase;color:var(--grey4)}
-.sidebar-brand .logo-name{font-family:'Playfair Display',serif;font-size:20px;color:var(--black);margin-top:2px}
-.sidebar-brand .logo-badge{display:inline-block;margin-top:6px;background:var(--terracotta);color:var(--white);font-size:8px;letter-spacing:2px;text-transform:uppercase;padding:2px 7px;border-radius:20px}
+.sidebar-brand .logo-tag{font-size:10px;letter-spacing:3px;text-transform:uppercase;color:#DDCDAE}
+.sidebar-brand .logo-name{font-family:'Playfair Display',serif;font-size:20px;color:#F6EDDE;margin-top:2px}
+.sidebar-brand .logo-badge{display:inline-block;margin-top:6px;background:#DDCDAE;color:#0C3F30;font-size:8px;letter-spacing:2px;text-transform:uppercase;padding:2px 7px;border-radius:20px}
 .sidebar-section{padding:18px 16px 6px;font-size:9px;letter-spacing:2.5px;text-transform:uppercase;color:var(--grey4);font-weight:500}
-.nav-item{display:flex;align-items:center;gap:10px;padding:10px 20px;font-size:12.5px;color:var(--grey5);text-decoration:none;font-weight:400;border-left:2px solid transparent;transition:all .15s}
-.nav-item:hover{color:var(--black);background:rgba(255,255,255,0.3);border-left-color:var(--grey3)}
-.nav-item.active{color:var(--black);background:rgba(255,255,255,0.4);border-left-color:var(--terracotta);font-weight:500}
-.nav-item .icon{width:16px;height:16px;flex-shrink:0;opacity:.55}
-.nav-item.active .icon,.nav-item:hover .icon{opacity:1}
+.nav-item{display:flex;align-items:center;gap:10px;padding:10px 20px;font-size:12.5px;color:#F6EDDE;text-decoration:none;font-weight:400;border-left:2px solid transparent;transition:all .15s}
+.nav-item:hover{color:#0C3F30;background:#DDCDAE;border-left-color:#DDCDAE}
+.nav-item.active{color:#0C3F30;background:#DDCDAE;border-left-color:#0C3F30;font-weight:500}
+.nav-item .icon{width:16px;height:16px;flex-shrink:0;opacity:.8;stroke:#F6EDDE}
+.nav-item.active .icon,.nav-item:hover .icon{stroke:#0C3F30;opacity:1}
 .badge{margin-left:auto;background:var(--terracotta);color:#fff;font-size:9px;font-weight:600;padding:1px 6px;border-radius:20px;min-width:18px;text-align:center}
 .sidebar-bottom{margin-top:auto;padding:16px;border-top:1px solid var(--grey2)}
-.signout-btn{display:flex;align-items:center;gap:8px;padding:9px 12px;font-size:12px;color:var(--grey5);text-decoration:none;border-radius:8px;transition:all .15s;width:100%;background:none;border:none;cursor:pointer;font-family:'DM Sans',sans-serif}
-.signout-btn:hover{background:#FFF0EC;color:var(--terracotta)}
-.topbar{position:fixed;top:0;left:var(--sidebar);right:0;height:var(--top);background:var(--white);border-bottom:1px solid var(--grey2);display:flex;align-items:center;justify-content:space-between;padding:0 32px;z-index:99}
-.topbar-left h1{font-family:'Playfair Display',serif;font-size:20px;font-weight:400;color:var(--black)}
-.topbar-left .sub{font-size:11px;color:var(--grey4);margin-top:1px}
-.admin-chip{display:flex;align-items:center;gap:8px;background:var(--grey1);border:1px solid var(--grey2);padding:5px 12px 5px 5px;border-radius:30px}
-.admin-chip .avatar{width:26px;height:26px;border-radius:50%;background:var(--terracotta);display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff;font-weight:600}
-.admin-chip .name{font-size:12px;color:var(--black);font-weight:500}
-.admin-chip .arrow{font-size:12px;color:var(--grey4);margin-left:4px}
+.signout-btn{display:flex;align-items:center;gap:8px;padding:9px 12px;font-size:12px;color:#F6EDDE;text-decoration:none;border-radius:8px;transition:all .15s;width:100%;background:none;border:none;cursor:pointer;font-family:'DM Sans',sans-serif}
+.signout-btn:hover{background:#DDCDAE;color:#0C3F30}
+.topbar{position:fixed;top:0;left:var(--sidebar);right:0;height:var(--top);background:#0C3F30;border-bottom:1px solid #0C3F30;display:flex;align-items:center;justify-content:space-between;padding:0 32px;z-index:99}
+.topbar-left h1{font-family:'Playfair Display',serif;font-size:20px;font-weight:400;color:#F6EDDE}
+.topbar-left .sub{font-size:11px;color:#DDCDAE;margin-top:1px;opacity:0.8}
+.admin-chip{display:flex;align-items:center;gap:8px;background:#DDCDAE;border:1px solid #0C3F30;padding:5px 12px 5px 5px;border-radius:30px}
+.admin-chip .avatar{width:26px;height:26px;border-radius:50%;background:#F6EDDE;display:flex;align-items:center;justify-content:center;font-size:11px;color:#0C3F30;font-weight:600}
+.admin-chip .name{font-size:12px;color:#0C3F30;font-weight:500}
+.admin-chip .arrow{font-size:12px;color:#0C3F30;margin-left:4px;opacity:0.6}
 .main{margin-left:var(--sidebar);padding-top:var(--top);min-height:100vh}
 .content{padding:28px 32px}
 .toast{background:#FCEEE2;color:var(--black);border:1px solid var(--grey2);padding:12px 20px;border-radius:10px;font-size:12.5px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between}
@@ -525,7 +556,8 @@ tr:hover td{background:var(--grey1)}
 .pill.processing{background:#EEF2F8;color:#3B7DD8}
 .pill.shipped{background:#F3E5F5;color:#7B1FA2}
 .pill.delivered{background:#E8F5EE;color:var(--green)}
-.pill.cancelled{background:#F4F4F4;color:#888}
+.pill.payment_confirmed{background:#E8F5EE;color:#2E7D32;border:1px solid #A5D6A7;font-weight:700}
+.pill.assigned{background:#FFF4E6;color:#E48A4A}
 .ref-icon{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:5px;background:var(--grey1);border:1px solid var(--grey2);cursor:pointer;transition:all .12s;flex-shrink:0}
 .ref-icon:hover{border-color:var(--blue);background:#EEF2F8}
 .ref-icon svg{width:12px;height:12px;color:var(--grey4)}
@@ -635,7 +667,7 @@ tr:hover td{background:var(--grey1)}
 .assign-row label{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--grey4);font-weight:500;white-space:nowrap}
 .assign-btn{background:var(--blue);color:white;border:none;padding:8px 16px;border-radius:8px;font-size:11px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-family:'DM Sans',sans-serif}
 .assign-btn:hover{background:#0770c2}
-.dash-footer{padding:20px 32px;border-top:1px solid var(--grey2);font-size:11px;color:var(--grey4);margin-top:12px}
+.dash-footer{padding:20px 32px;border-top:1px solid #0C3F30;font-size:11px;color:#F6EDDE;margin-top:12px;background:#0C3F30}
 .artist-selector-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .2s}
 .artist-selector-overlay.open{opacity:1;pointer-events:auto}
 .artist-selector-modal{background:var(--white);border-radius:20px;width:800px;max-width:95vw;max-height:85vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,.2)}
@@ -905,7 +937,7 @@ function openDetail(id){
     if (cr.payment_screenshot) {
         screenshotHtml = `
             <div class="screenshot-box">
-                <img src="../../${cr.payment_screenshot}" class="screenshot-thumb" alt="Payment SS">
+                <img src="../../${cr.payment_screenshot}" class="screenshot-thumb" alt="Payment SS" style="cursor:pointer;" onclick="window.open('../../${cr.payment_screenshot}', '_blank')">
                 <div class="screenshot-info">
                     <strong>Payment Screenshot Uploaded</strong>
                     <div>${cr.payment_method ? esc(cr.payment_method).replace(/_/g, ' ').toUpperCase() : ''}</div>
@@ -935,18 +967,18 @@ function openDetail(id){
             <div class="order-details-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg> Order Details</div>
             <div class="order-details-grid">
                 <div class="order-detail-item">
-                    <div class="odl">Minimum Budget (PKR)</div>
+                    <div class="odl">Estimated Minimum Budget (PKR)</div>
                     <div style="display:flex;align-items:center;">
                         <input type="number" id="budget_min_${cr.id}" value="${cr.budget_min || ''}" placeholder="e.g. 5000" min="0" step="0.01" onkeyup="triggerBudgetSave(${cr.id})" onblur="triggerBudgetSave(${cr.id})">
                         <span class="saving-indicator" id="saving_indicator_${cr.id}">Saving...</span>
                     </div>
                 </div>
                 <div class="order-detail-item">
-                    <div class="odl">Maximum Budget (PKR)</div>
+                    <div class="odl">Estimated Maximum Budget (PKR)</div>
                     <input type="number" id="budget_max_${cr.id}" value="${cr.budget_max || ''}" placeholder="e.g. 15000" min="0" step="0.01" onkeyup="triggerBudgetSave(${cr.id})" onblur="triggerBudgetSave(${cr.id})">
                 </div>
                 <div class="order-detail-item">
-                    <div class="odl">Deadline</div>
+                    <div class="odl">Preferred Deadline</div>
                     <div class="odv ${!cr.commission_deadline ? 'muted' : ''}" style="${isOverdue ? 'color:var(--terracotta);font-weight:600;' : ''}">${deadlineDisplay}${isOverdue ? ' <span style="font-size:11px;font-weight:700;">(OVERDUE)</span>' : ''}</div>
                 </div>
                 <div class="order-detail-item"><div class="odl">Delivery Status</div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
@@ -956,6 +988,8 @@ function openDetail(id){
                 <div class="order-detail-actions">
                      ${!cr.artist_id?`<button type="button" class="forward-btn" style="background:var(--amber);" onclick="openArtistSelector(${cr.id})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg> Browse &amp; Assign Artist</button>`:''}
                     ${cr.artist_id?`<button type="button" class="forward-btn" style="background:var(--terracotta);" onclick="unassignArtist(${cr.id})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> Unassign Artist</button>`:''}
+${cr.status==='payment_review'?`<form method="POST" style="display:inline;" onsubmit="return confirm('Confirm payment and notify artist to begin work?')"><input type="hidden" name="action" value="approve_payment"><input type="hidden" name="id" value="${cr.id}"><button type="submit" class="forward-btn" style="background:var(--green);">✓ Confirm Payment & Notify Artist</button></form>`:''}
+${cr.status==='payment_confirmed'?`<div style="background:#E8F5EE;border:1px solid #A5D6A7;border-radius:8px;padding:8px 14px;font-size:12px;color:#2E7D32;font-weight:500;">✓ Payment confirmed — artist notified</div>`:''}
                 </div>
             </div>
         </div>
@@ -986,7 +1020,7 @@ function openDetail(id){
         ${cr.commission_reference_image?`<div class="detail-full" style="margin-top:18px;"><div class="dl">Reference Image</div><div class="ref-preview"><img src="../../uploads/commissions/${esc(cr.commission_reference_image)}" alt="Reference"></div></div>`:''}
         <div class="detail-full" style="margin-top:18px;">
             <form method="POST"><input type="hidden" name="action" value="save_notes"><input type="hidden" name="id" value="${cr.id}">
-                <div class="dl" style="margin-bottom:6px;">Admin Notes</div>
+                <div class="dl" style="margin-bottom:6px;">Admin Notes <span style="font-size:9px;background:#DDCDAE;color:#0C3F30;padding:2px 7px;border-radius:20px;letter-spacing:1px;font-weight:600;margin-left:6px;">PRIVATE</span></div>
                 <textarea class="notes-area" name="admin_notes" placeholder="Track progress, conversations, payment status...">${esc(cr.admin_notes||'')}</textarea>
                 <div style="margin-top:10px;text-align:right;"><button type="submit" class="btn btn-primary btn-sm">Save Notes</button></div>
             </form>

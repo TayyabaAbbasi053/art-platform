@@ -7,6 +7,14 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'artist') {
     header('Location: ../../login.php');
     exit;
 }
+$__userStatus = $conn->query("SELECT status, status_reason FROM users WHERE id = {$_SESSION['user_id']}")->fetch_assoc();
+if ($__userStatus['status'] === 'blocked') {
+    session_destroy();
+    header('Location: ../../login.php?blocked=1&reason=' . urlencode($__userStatus['status_reason'] ?? ''));
+    exit;
+}
+
+$artistId = (int) $_SESSION['user_id'];  // ← whatever comes next in the file
 
  $artistId   = (int) $_SESSION['user_id'];
  $artistName = $_SESSION['name'] ?? 'Artist';
@@ -52,8 +60,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         $errorMsg = 'Invalid commission request.';
     } elseif ($proposedPrice === '' || $proposedPrice === null || !is_numeric($proposedPrice) || floatval($proposedPrice) <= 0) {
         $errorMsg = 'Please enter a valid price greater than 0.';
-    } elseif (!in_array($orderRow['order_status'], ['pending', 'price_proposed'])) {
-        $errorMsg = 'Price can only be suggested while the commission is pending or awaiting buyer response.';
+    } elseif (!in_array($orderRow['order_status'], ['assigned', 'price_proposed'])) {
+    $errorMsg = 'Price can only be suggested while the commission is assigned or awaiting buyer response.';
     } elseif (($orderRow['price_status'] ?? 'none') === 'accepted') {
         $errorMsg = 'Price has already been accepted by the buyer. No further changes allowed.';
     } else {
@@ -92,7 +100,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'update_status') {
     $orderId = (int)($_POST['order_id'] ?? 0);
     $newStatus = $_POST['new_status'] ?? '';
-    $allowedStatuses = ['confirmed', 'processing', 'shipped', 'delivered', 'cancelled'];
+    // Change 6: Remove 'confirmed' from allowed statuses (security)
+    $allowedStatuses = ['processing', 'shipped', 'delivered', 'cancelled', 'payment_confirmed'];
     
     // Verify this commission belongs to the artist
     $check = $conn->prepare("
@@ -159,6 +168,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
            o.buyer_id, o.guest_name, o.guest_email, o.guest_phone,
            o.commission_category_id, o.budget_min, o.budget_max, o.commission_deadline AS deadline,
            o.commission_description AS description, o.commission_reference_image AS reference_image, 
+           o.commission_size,
+           o.commission_framed,
+           o.commission_quantity,
+           o.commission_delivery_city,
            o.admin_notes, o.total AS agreed_price,
            o.proposed_price, o.price_status,
            o.shipping_address, o.shipping_city, o.shipping_phone, 
@@ -169,17 +182,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     JOIN orders o ON cr.order_id = o.id
     LEFT JOIN users u ON o.buyer_id = u.id
     LEFT JOIN categories c ON o.commission_category_id = c.id
-    WHERE cr.artist_id = ? AND o.order_type = 'commission'
+    WHERE cr.artist_id = ? AND o.order_type = 'commission' AND o.order_status NOT IN ('pending')
     ORDER BY
         CASE o.order_status
-            WHEN 'pending'         THEN 1
-            WHEN 'price_proposed'  THEN 2
-            WHEN 'confirmed'       THEN 3
-            WHEN 'processing'      THEN 4
-            WHEN 'shipped'         THEN 5
-            WHEN 'delivered'       THEN 6
-            WHEN 'cancelled'       THEN 7
-        END,
+    WHEN 'payment_confirmed' THEN 1
+    WHEN 'pending'           THEN 2
+    WHEN 'price_proposed'    THEN 3
+    WHEN 'assigned'          THEN 4
+    WHEN 'payment_review'    THEN 5
+    WHEN 'processing'        THEN 6
+    WHEN 'shipped'           THEN 7
+    WHEN 'delivered'         THEN 8
+    WHEN 'cancelled'         THEN 9
+END,
         o.created_at DESC
 ";
  $stmt = $conn->prepare($sql);
@@ -278,8 +293,9 @@ tr:hover td { background: var(--bg); box-shadow: 0 4px 12px rgba(12,63,48,.06); 
 .pill { display: inline-block; font-size: 9px; letter-spacing: .5px; text-transform: uppercase; font-weight: 600; padding: 4px 10px; border-radius: 20px; }
 .pill.pending         { background: var(--sand); color: var(--ink); border: 1px solid var(--border); }
 .pill.price_proposed  { background: var(--sand); color: var(--ink); }
-.pill.confirmed       { background: var(--sand); color: var(--ink); }
-.pill.processing      { background: var(--sand); color: var(--ink); }
+.pill.price_proposed { background: #FFF8E1; color: #856404; border: 1px solid #E8D5A0; }
+.pill.payment_confirmed { background: #d4edda; color: #155724; border: 1px solid #28a745; font-weight: 700; }
+.pill.processing       { background: #d4edda; color: #155724; border: 1px solid #28a745; }
 .pill.shipped         { background: var(--sand); color: var(--ink); }
 .pill.delivered       { background: var(--ink); color: var(--bg); }
 .pill.cancelled       { background: var(--sand); color: var(--ink); }
@@ -477,15 +493,19 @@ tr:hover td { background: var(--bg); box-shadow: 0 4px 12px rgba(12,63,48,.06); 
 
 <?php if ($viewRequest): 
     // ── FIX 1: Lock price suggestion once accepted ──
-    $canSuggestPrice = in_array($viewRequest['status'], ['pending', 'price_proposed'])
+    $canSuggestPrice = in_array($viewRequest['status'], ['assigned', 'price_proposed'])
                        && ($viewRequest['price_status'] ?? 'none') !== 'accepted';
+    
+    // Change 3: Logic for Payment Approved / Awaiting Review
+    $isPaymentApproved = $viewRequest['status'] === 'payment_confirmed';
+$isAwaitingPaymentReview = $viewRequest['status'] === 'payment_review';
 
     // ── FIX 2: Derive display price-status from order_status when it's moved past negotiation ──
     $currentPriceStatus = $viewRequest['price_status'] ?? 'none';
-    if (in_array($viewRequest['status'], ['confirmed', 'processing', 'shipped', 'delivered'])
-        && $currentPriceStatus !== 'rejected') {
-        $currentPriceStatus = 'accepted';
-    }
+    if (in_array($viewRequest['status'], ['assigned', 'payment_confirmed', 'processing', 'shipped', 'delivered', 'payment_review'])
+    && $currentPriceStatus !== 'rejected') {
+    $currentPriceStatus = 'accepted';
+}
 ?>
 <div class="modal-overlay active" id="modalOverlay">
     <div class="modal">
@@ -501,6 +521,14 @@ tr:hover td { background: var(--bg); box-shadow: 0 4px 12px rgba(12,63,48,.06); 
                 <div class="detail-label">Budget Range</div><div class="detail-value"><?= ($viewRequest['budget_min'] || $viewRequest['budget_max']) ? 'PKR '.number_format($viewRequest['budget_min'] ?? 0).' – '.number_format($viewRequest['budget_max'] ?? 0) : 'Not specified' ?></div>
                 <div class="detail-label">Agreed Price</div><div class="detail-value"><?= !empty($viewRequest['agreed_price']) ? '<strong style="color:var(--ink)">PKR '.number_format($viewRequest['agreed_price']).'</strong>' : 'Not set yet' ?></div>
                 <div class="detail-label">Deadline</div><div class="detail-value"><?= $viewRequest['deadline'] ? date('F j, Y', strtotime($viewRequest['deadline'])) : 'No specific deadline' ?></div>
+                
+                <!-- NEW FIELDS -->
+                <div class="detail-label">Artwork Size</div><div class="detail-value"><?= !empty($viewRequest['commission_size']) ? htmlspecialchars($viewRequest['commission_size']) : 'Not specified' ?></div>
+                <div class="detail-label">Framed / Unframed</div><div class="detail-value"><?= !empty($viewRequest['commission_framed']) && $viewRequest['commission_framed'] !== 'not_specified' ? ucfirst(htmlspecialchars($viewRequest['commission_framed'])) : 'Not specified' ?></div>
+                <div class="detail-label">Quantity</div><div class="detail-value"><?= !empty($viewRequest['commission_quantity']) ? (int)$viewRequest['commission_quantity'] : 1 ?></div>
+                <div class="detail-label">Delivery City</div><div class="detail-value"><?= !empty($viewRequest['commission_delivery_city']) ? htmlspecialchars($viewRequest['commission_delivery_city']) : 'Not specified' ?></div>
+                <!-- END NEW FIELDS -->
+
                 <div class="detail-label">Payment Method</div><div class="detail-value"><?= !empty($viewRequest['payment_method']) ? ucfirst(str_replace('_', ' ', $viewRequest['payment_method'])) : 'Not set' ?></div>
                 <div class="detail-label">Payment Status</div><div class="detail-value"><?= !empty($viewRequest['payment_status']) ? ucfirst($viewRequest['payment_status']) : 'Pending' ?></div>
                 <div class="detail-label">Submitted On</div><div class="detail-value"><?= date('F j, Y \a\t g:i A', strtotime($viewRequest['created_at'])) ?></div>
@@ -509,17 +537,35 @@ tr:hover td { background: var(--bg); box-shadow: 0 4px 12px rgba(12,63,48,.06); 
             <?php 
             $shippingAddress = $viewRequest['shipping_address'] ?? '';
             $shippingCity = $viewRequest['shipping_city'] ?? '';
-            $shippingPhone = $viewRequest['shipping_phone'] ?? '';
             $trackingNumber = $viewRequest['tracking_number'] ?? '';
-            if ($shippingAddress || $shippingCity || $shippingPhone): 
+            // $shippingPhone removed from variables as requested
+            if ($shippingAddress || $shippingCity): 
             ?>
             <div class="checkout-box">
                 <h5>📦 Checkout & Shipping Details</h5>
                 <div class="checkout-grid">
                     <?php if ($shippingAddress): ?><div class="checkout-item"><div class="cl">Address</div><div class="cv"><?= htmlspecialchars($shippingAddress) ?></div></div><?php endif; ?>
                     <?php if ($shippingCity): ?><div class="checkout-item"><div class="cl">City</div><div class="cv"><?= htmlspecialchars($shippingCity) ?></div></div><?php endif; ?>
-                    <?php if ($shippingPhone): ?><div class="checkout-item"><div class="cl">Phone</div><div class="cv"><?= htmlspecialchars($shippingPhone) ?></div></div><?php endif; ?>
+                    <!-- PHONE BLOCK REMOVED -->
                     <div class="checkout-item"><div class="cl">Tracking</div><div class="cv"><?= $trackingNumber ? htmlspecialchars($trackingNumber) : 'Not available' ?></div></div>
+                </div>
+            </div>
+            <?php endif; ?>
+
+            <?php if ($isPaymentApproved): ?>
+            <div style="background:#d4edda;border:1px solid #28a745;border-radius:12px;padding:16px 20px;margin-bottom:20px;display:flex;gap:12px;align-items:center;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#155724" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                <div>
+                    <strong style="color:#155724;font-size:13px;">Payment Approved — Start Working!</strong>
+                    <div style="font-size:12px;color:#155724;margin-top:2px;">The admin has verified the buyer's payment. You can now begin this commission.</div>
+                </div>
+            </div>
+            <?php elseif ($isAwaitingPaymentReview): ?>
+            <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:12px;padding:16px 20px;margin-bottom:20px;display:flex;gap:12px;align-items:center;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#856404" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                <div>
+                    <strong style="color:#856404;font-size:13px;">Buyer Has Paid — Awaiting Admin Approval</strong>
+                    <div style="font-size:12px;color:#856404;margin-top:2px;">The buyer submitted their payment screenshot. Wait for the admin to verify and approve before starting work.</div>
                 </div>
             </div>
             <?php endif; ?>
@@ -589,15 +635,27 @@ tr:hover td { background: var(--bg); box-shadow: 0 4px 12px rgba(12,63,48,.06); 
 
             <div class="status-update-box">
                 <h5>⚙️ Update Commission Status</h5>
+                <?php if (in_array($viewRequest['status'], ['pending', 'price_proposed', 'assigned', 'payment_review'])): ?>
+    <p style="font-size:12px;color:var(--muted);">Status updates are available once payment is approved by admin.</p>
+<?php elseif ($viewRequest['status'] === 'payment_confirmed'): ?>
+    <p style="font-size:12px;color:#2E7D32;font-weight:500;">✓ Payment confirmed! Move this to <strong>Processing</strong> when you begin work.</p>
+    <form method="POST" class="status-select-group" style="margin-top:10px;">
+        <input type="hidden" name="action" value="update_status">
+        <input type="hidden" name="order_id" value="<?= $viewRequest['id'] ?>">
+        <input type="hidden" name="new_status" value="processing">
+        <button type="submit" class="status-btn" style="background:#2E7D32;">▶ Start Working (Mark as Processing)</button>
+    </form>
+<?php else: ?>
                 <form method="POST" class="status-select-group">
                     <input type="hidden" name="action" value="update_status"><input type="hidden" name="order_id" value="<?= $viewRequest['id'] ?>">
                     <select name="new_status">
-                        <?php foreach (['confirmed', 'processing', 'shipped', 'delivered', 'cancelled'] as $s): ?>
+                        <?php foreach (['processing', 'shipped', 'delivered', 'cancelled'] as $s): ?>
                             <option value="<?= $s ?>" <?= $viewRequest['status'] === $s ? 'selected' : '' ?>><?= ucfirst(str_replace('_', ' ', $s)) ?></option>
                         <?php endforeach; ?>
                     </select>
                     <button type="submit" class="status-btn">Update</button>
                 </form>
+                <?php endif; ?>
             </div>
 
             <div class="chat-section">

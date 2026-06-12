@@ -16,7 +16,7 @@ if (!$id) { header('Location: artists.php'); exit; }
 // Fetch artist
  $stmt = $conn->prepare("
     SELECT u.*, ap.bio, ap.city, ap.instagram_url, ap.contact_email, ap.contact_phone,
-           ap.art_style, ap.accepts_commissions, ap.is_featured
+           ap.art_style, ap.accepts_commissions, ap.is_featured, u.status_reason
     FROM users u
     LEFT JOIN artist_profiles ap ON ap.user_id = u.id
     WHERE u.id = ? AND u.role = 'artist'
@@ -27,6 +27,14 @@ if (!$id) { header('Location: artists.php'); exit; }
  $artist = $result->fetch_assoc();
 
 if (!$artist) { header('Location: artists.php'); exit; }
+
+// Change 1: Add completeness calculation after fetching the artist
+ $missingFields = [];
+if (empty($artist['bio']))            $missingFields[] = 'Bio';
+if (empty($artist['city']))           $missingFields[] = 'City';
+if (empty($artist['art_style']))      $missingFields[] = 'Art Style';
+if (empty($artist['profile_picture'])) $missingFields[] = 'Profile Picture';
+ $isComplete = empty($missingFields);
 
 // Fetch artworks
  $artworks = [];
@@ -69,14 +77,24 @@ foreach ($artworks as $aw) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
     if ($action === 'approve') {
-        $conn->query("UPDATE users SET status = 'active' WHERE id = $id");
-        $artist['status'] = 'active'; $toast = 'Artist approved.';
+        // Change 3: Clear reason on approve
+        $conn->query("UPDATE users SET status = 'active', status_reason = NULL WHERE id = $id");
+        $artist['status'] = 'active';
+        $artist['status_reason'] = null;
+        $toast = 'Artist approved.';
     } elseif ($action === 'block') {
-        $conn->query("UPDATE users SET status = 'blocked' WHERE id = $id");
-        $artist['status'] = 'blocked'; $toast = 'Artist blocked.';
+        // Change 2: Update the block action to save the reason
+        $reason = $conn->real_escape_string(trim($_POST['status_reason'] ?? ''));
+        $conn->query("UPDATE users SET status = 'blocked', status_reason = '$reason' WHERE id = $id");
+        $artist['status'] = 'blocked';
+        $artist['status_reason'] = $reason;
+        $toast = 'Artist blocked.';
     } elseif ($action === 'unblock') {
-        $conn->query("UPDATE users SET status = 'active' WHERE id = $id");
-        $artist['status'] = 'active'; $toast = 'Artist unblocked.';
+        // Change 3: Clear reason on unblock
+        $conn->query("UPDATE users SET status = 'active', status_reason = NULL WHERE id = $id");
+        $artist['status'] = 'active';
+        $artist['status_reason'] = null;
+        $toast = 'Artist unblocked.';
     } elseif ($action === 'toggle_featured') {
         $conn->query("UPDATE artist_profiles SET is_featured = IF(is_featured=1, 0, 1) WHERE user_id = $id");
         $artist['is_featured'] = $artist['is_featured'] ? 0 : 1;
@@ -370,7 +388,13 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
                 <h2>
                     <?= htmlspecialchars($artist['name']) ?>
                     <?php if ($artist['is_featured']): ?><span class="featured-tag">★ Featured</span><?php endif; ?>
+                    <!-- Change 4: Add Complete/Incomplete badge -->
                     <span class="pill <?= $artist['status'] ?>"><?= ucfirst($artist['status']) ?></span>
+                    <?php if ($isComplete): ?>
+                        <span class="pill" style="background:var(--ink);color:var(--bg);">✓ Complete</span>
+                    <?php else: ?>
+                        <span class="pill" style="background:var(--sand);color:var(--ink);">⚠ Incomplete</span>
+                    <?php endif; ?>
                 </h2>
                 <div class="profile-meta">
                     <span>📍 <?= htmlspecialchars($artist['city'] ?? 'No city set') ?></span>
@@ -382,11 +406,13 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
         <div class="profile-actions">
             <?php if ($artist['status'] === 'pending'): ?>
                 <form method="POST" style="display:inline"><input type="hidden" name="action" value="approve"><button type="submit" class="btn btn-green btn-sm">Approve</button></form>
-                <form method="POST" style="display:inline"><input type="hidden" name="action" value="block"><button type="submit" class="btn btn-red btn-sm">Block</button></form>
+                <!-- Change 6: Replace pending block button with modal trigger -->
+                <button type="button" class="btn btn-red btn-sm" onclick="openBlock()">Block</button>
             <?php elseif ($artist['status'] === 'active'): ?>
                 <form method="POST" style="display:inline"><input type="hidden" name="action" value="toggle_featured"><button type="submit" class="btn btn-amber btn-sm"><?= $artist['is_featured'] ? 'Unfeature' : 'Feature' ?></button></form>
                 <form method="POST" style="display:inline"><input type="hidden" name="action" value="toggle_commissions"><button type="submit" class="btn btn-blue btn-sm"><?= $artist['accepts_commissions'] ? 'Disable Commissions' : 'Enable Commissions' ?></button></form>
-                <form method="POST" style="display:inline"><input type="hidden" name="action" value="block"><button type="submit" class="btn btn-red btn-sm">Block</button></form>
+                <!-- Change 6: Replace active block button with modal trigger -->
+                <button type="button" class="btn btn-red btn-sm" onclick="openBlock()">Block</button>
             <?php elseif ($artist['status'] === 'blocked'): ?>
                 <form method="POST" style="display:inline"><input type="hidden" name="action" value="unblock"><button type="submit" class="btn btn-green btn-sm">Unblock</button></form>
             <?php endif; ?>
@@ -422,6 +448,20 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
                 <div class="info-row"><span class="label">Instagram</span><span class="value <?= !$artist['instagram_url'] ? 'muted' : '' ?>"><?= $artist['instagram_url'] ? '<a href="' . htmlspecialchars($artist['instagram_url']) . '" target="_blank">' . htmlspecialchars($artist['instagram_url']) . '</a>' : 'Not set' ?></span></div>
                 <div class="info-row"><span class="label">Bio</span></div>
                 <div class="bio-text"><?= $artist['bio'] ? nl2br(htmlspecialchars($artist['bio'])) : '<span style="opacity:0.5">No bio written.</span>' ?></div>
+                
+                <!-- Change 5: Show missing fields and current block reason -->
+                <?php if (!$isComplete): ?>
+                <div class="info-row">
+                    <span class="label">Missing Fields</span>
+                    <span class="value" style="color:#b45309;"><?= implode(', ', $missingFields) ?></span>
+                </div>
+                <?php endif; ?>
+                <?php if (!empty($artist['status_reason'])): ?>
+                <div class="info-row">
+                    <span class="label">Block Reason</span>
+                    <span class="value" style="color:#b45309;"><?= htmlspecialchars($artist['status_reason']) ?></span>
+                </div>
+                <?php endif; ?>
             </div>
         </div>
     </div>
@@ -496,6 +536,25 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
     </div>
 </div>
 
+<!-- Change 7: Add Block Modal -->
+<div class="modal-overlay" id="blockModal">
+    <div class="modal">
+        <div class="modal-head"><h3>Block Artist</h3></div>
+        <div class="modal-body">
+            <p class="confirm-text" style="margin-bottom:14px;">Optionally provide a reason. The artist will see this in their dashboard.</p>
+            <textarea name="status_reason" id="blockReason" placeholder="e.g. Profile incomplete — please add a bio and profile picture." style="width:100%;padding:10px 14px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--ink);resize:vertical;min-height:90px;outline:none;"></textarea>
+        </div>
+        <form method="POST" id="blockForm">
+            <input type="hidden" name="action" value="block">
+            <input type="hidden" name="status_reason" id="blockReasonHidden">
+            <div class="modal-foot">
+                <button type="button" class="btn btn-ghost" onclick="closeBlock()">Cancel</button>
+                <button type="submit" class="btn btn-red">Block Artist</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <script>
 // Drawer Logic
 const hamBtn = document.getElementById('hamBtn');
@@ -517,6 +576,14 @@ function openDelete() { document.getElementById('deleteModal').classList.add('op
 function closeDelete() { document.getElementById('deleteModal').classList.remove('open'); }
 document.getElementById('deleteModal').addEventListener('click', function(e) { if (e.target === this) closeDelete(); });
 document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeDelete(); });
+
+// Change 8: Add JS for block modal
+function openBlock() { document.getElementById('blockModal').classList.add('open'); }
+function closeBlock() { document.getElementById('blockModal').classList.remove('open'); }
+document.getElementById('blockModal').addEventListener('click', function(e) { if (e.target === this) closeBlock(); });
+document.getElementById('blockForm').addEventListener('submit', function() {
+    document.getElementById('blockReasonHidden').value = document.getElementById('blockReason').value;
+});
 </script>
 </body>
 </html>

@@ -513,6 +513,7 @@ h1{font-family:'Playfair Display',serif;font-size:clamp(24px,2.5vw,32px);font-we
       <div class="meta-item"><div class="label">Medium</div><div class="value"><?= htmlspecialchars($artwork['medium'] ?? 'Not specified') ?></div></div>
       <div class="meta-item"><div class="label">Size</div><div class="value"><?= htmlspecialchars($artwork['size'] ?? 'Not specified') ?></div></div>
       <div class="meta-item"><div class="label">Location</div><div class="value"><?= htmlspecialchars($artwork['city'] ?? 'Not specified') ?></div></div>
+      <div class="meta-item"><div class="label">Framing</div><div class="value"><?= $artwork['is_framed'] ? 'Framed' : 'Unframed' ?></div></div>
     </div>
 
     <?php if ($artwork['description']): ?>

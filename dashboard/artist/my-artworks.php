@@ -7,6 +7,14 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'artist') {
     header('Location: ../../login.php');
     exit;
 }
+$__userStatus = $conn->query("SELECT status, status_reason FROM users WHERE id = {$_SESSION['user_id']}")->fetch_assoc();
+if ($__userStatus['status'] === 'blocked') {
+    session_destroy();
+    header('Location: ../../login.php?blocked=1&reason=' . urlencode($__userStatus['status_reason'] ?? ''));
+    exit;
+}
+
+$artistId = (int) $_SESSION['user_id'];  // ← whatever comes next in the file
 
  $artistId   = (int) $_SESSION['user_id'];
  $artistName = $_SESSION['name'] ?? 'Artist';

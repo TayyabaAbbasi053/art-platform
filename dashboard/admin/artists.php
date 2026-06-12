@@ -24,8 +24,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'appro
 // Block artist
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'block') {
     $id = (int)($_POST['id'] ?? 0);
+    $reason = $conn->real_escape_string(trim($_POST['status_reason'] ?? ''));
     if ($id) {
-        $conn->query("UPDATE users SET status = 'blocked' WHERE id = $id AND role = 'artist'");
+        $conn->query("UPDATE users SET status = 'blocked', status_reason = '$reason' WHERE id = $id AND role = 'artist'");
         $toast = 'Artist blocked.';
     }
 }
@@ -133,10 +134,12 @@ if ($params) {
 // Fetch
  $dataSQL = "
     SELECT u.id, u.name, u.email, u.phone, u.status, u.profile_picture, u.created_at,
-           ap.city, ap.art_style, ap.accepts_commissions, ap.is_featured,
+           ap.city, ap.art_style, ap.bio, ap.accepts_commissions, ap.is_featured,
            (SELECT COUNT(*) FROM artworks WHERE artist_id = u.id) AS art_count,
            (SELECT COUNT(*) FROM artworks WHERE artist_id = u.id AND status = 'approved') AS approved_count,
-           (SELECT COUNT(*) FROM artworks WHERE artist_id = u.id AND status = 'sold') AS sold_count
+           (SELECT COUNT(*) FROM artworks WHERE artist_id = u.id AND status = 'sold') AS sold_count,
+           (SELECT COUNT(*) FROM artworks WHERE artist_id = u.id AND status = 'pending') AS pending_count,
+           (SELECT COUNT(*) FROM artworks WHERE artist_id = u.id AND status IN ('rejected','hidden')) AS rejected_count
     FROM users u
     LEFT JOIN artist_profiles ap ON ap.user_id = u.id
     WHERE $whereSQL
@@ -168,7 +171,9 @@ function buildQS($overrides = []) {
         if ($v === null) unset($q[$k]);
         else $q[$k] = $v;
     }
-    unset($q['page']);
+    if (!array_key_exists('page', $overrides)) {
+        unset($q['page']);
+    }
     return http_build_query($q);
 }
 ?>
@@ -452,7 +457,7 @@ tr:hover td { background: var(--bg); box-shadow: 0 4px 12px rgba(12,63,48,.06); 
     cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all .12s; white-space: nowrap;
 }
 .act-btn:hover { border-color: var(--ink); color: var(--ink); }
-.act-btn.green:hover { border-color: var(--ink); color: var(--ink); background: #e0e0e0; } /* Fallback hover, acting as approve */
+.act-btn.green:hover { border-color: var(--ink); color: var(--ink); background: #e0e0e0; }
 .act-btn.approve { background: var(--ink); color: var(--bg); border: 1px solid var(--ink); }
 .act-btn.approve:hover { background: #1a4d3e; }
 
@@ -684,19 +689,32 @@ tr:hover td { background: var(--bg); box-shadow: 0 4px 12px rgba(12,63,48,.06); 
                         <div class="td-stats">
                             <span><span class="num"><?= $a['approved_count'] ?></span> approved</span>
                             <span><span class="num"><?= $a['sold_count'] ?></span> sold</span>
-                            <span><span class="num"><?= $a['art_count'] - $a['approved_count'] - $a['sold_count'] ?></span> other</span>
+                            <?php if ($a['pending_count'] > 0): ?>
+                            <span><span class="num"><?= $a['pending_count'] ?></span> pending</span>
+                            <?php endif; ?>
+                            <?php if ($a['rejected_count'] > 0): ?>
+                            <span><span class="num"><?= $a['rejected_count'] ?></span> rejected</span>
+                            <?php endif; ?>
                         </div>
                     </td>
                     <td class="hide-mobile" style="font-size:11px;color:var(--muted);white-space:nowrap" data-label="Joined"><?= date('d M Y', strtotime($a['created_at'])) ?></td>
-                    <td data-label="Status"><span class="pill <?= $a['status'] ?>"><?= ucfirst($a['status']) ?></span></td>
+                    <td data-label="Status">
+                        <span class="pill <?= $a['status'] ?>"><?= ucfirst($a['status']) ?></span>
+                        <?php
+                        $incomplete = empty($a['profile_picture']) || empty($a['city']) || empty($a['art_style']) || empty($a['bio']);
+                        if ($incomplete):
+                        ?>
+                            <span class="pill" style="background:var(--sand);color:var(--ink);margin-top:4px;display:inline-block;">⚠ Incomplete</span>
+                        <?php endif; ?>
+                    </td>
                     <td data-label="Actions">
                         <div class="td-actions">
                             <?php if ($a['status'] === 'pending'): ?>
                                 <form method="POST" style="display:inline"><input type="hidden" name="action" value="approve"><input type="hidden" name="id" value="<?= $a['id'] ?>"><button type="submit" class="act-btn approve">Approve</button></form>
-                                <form method="POST" style="display:inline"><input type="hidden" name="action" value="block"><input type="hidden" name="id" value="<?= $a['id'] ?>"><button type="submit" class="act-btn red">Block</button></form>
+                                <button type="button" class="act-btn red" onclick="openBlock(<?= $a['id'] ?>, '<?= htmlspecialchars(addslashes($a['name'])) ?>')">Block</button>
                             <?php elseif ($a['status'] === 'active'): ?>
                                 <form method="POST" style="display:inline"><input type="hidden" name="action" value="feature"><input type="hidden" name="id" value="<?= $a['id'] ?>"><button type="submit" class="act-btn amber"><?= $a['is_featured'] ? 'Unfeature' : 'Feature' ?></button></form>
-                                <form method="POST" style="display:inline"><input type="hidden" name="action" value="block"><input type="hidden" name="id" value="<?= $a['id'] ?>"><button type="submit" class="act-btn red">Block</button></form>
+                                <button type="button" class="act-btn red" onclick="openBlock(<?= $a['id'] ?>, '<?= htmlspecialchars(addslashes($a['name'])) ?>')">Block</button>
                             <?php elseif ($a['status'] === 'blocked'): ?>
                                 <form method="POST" style="display:inline"><input type="hidden" name="action" value="unblock"><input type="hidden" name="id" value="<?= $a['id'] ?>"><button type="submit" class="act-btn approve">Unblock</button></form>
                             <?php endif; ?>
@@ -754,6 +772,26 @@ tr:hover td { background: var(--bg); box-shadow: 0 4px 12px rgba(12,63,48,.06); 
     </div>
 </div>
 
+<!-- ══════════════ BLOCK MODAL ══════════════ -->
+<div class="modal-overlay" id="blockModal">
+    <div class="modal">
+        <div class="modal-head"><h3>Block Artist</h3></div>
+        <div class="modal-body">
+            <p class="confirm-text" style="margin-bottom:14px;">Optionally provide a reason. The artist will see this in their dashboard.</p>
+            <textarea name="status_reason" id="blockReason" placeholder="e.g. Profile incomplete — please add a bio and profile picture." style="width:100%;padding:10px 14px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--ink);resize:vertical;min-height:90px;outline:none;"></textarea>
+        </div>
+        <form method="POST" id="blockForm">
+            <input type="hidden" name="action" value="block">
+            <input type="hidden" name="id" id="blockId">
+            <input type="hidden" name="status_reason" id="blockReasonHidden">
+            <div class="modal-foot">
+                <button type="button" class="btn btn-ghost" onclick="closeBlock()">Cancel</button>
+                <button type="submit" class="btn btn-danger">Block Artist</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <!-- MOBILE DRAWER & OVERLAY -->
 <div id="nav-drawer">
     <div style="margin-bottom: 30px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 20px;">
@@ -774,7 +812,7 @@ tr:hover td { background: var(--bg); box-shadow: 0 4px 12px rgba(12,63,48,.06); 
 
 <script>
 let searchTimer;
-document.getElementById('searchInput').addEventListener('keyup', function() {
+document.getElementById('searchInput').addEventListener('change', function() {
     clearTimeout(searchTimer);
     searchTimer = setTimeout(applyFilters, 400);
 });
@@ -790,6 +828,7 @@ function applyFilters() {
     window.location.href = 'artists.php?' + params.toString();
 }
 
+// Delete Modal Logic
 function openDelete(id, name, count) {
     document.getElementById('deleteId').value = id;
     document.getElementById('deleteName').textContent = name;
@@ -799,6 +838,22 @@ function openDelete(id, name, count) {
 function closeDelete() { document.getElementById('deleteModal').classList.remove('open'); }
 document.getElementById('deleteModal').addEventListener('click', function(e) { if (e.target === this) closeDelete(); });
 document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeDelete(); });
+
+// Block Modal Logic
+function openBlock(id, name) {
+    document.getElementById('blockId').value = id;
+    document.getElementById('blockReason').value = '';
+    document.getElementById('blockModal').classList.add('open');
+}
+function closeBlock() { 
+    document.getElementById('blockModal').classList.remove('open'); 
+}
+document.getElementById('blockModal').addEventListener('click', function(e) { 
+    if (e.target === this) closeBlock(); 
+});
+document.getElementById('blockForm').addEventListener('submit', function() {
+    document.getElementById('blockReasonHidden').value = document.getElementById('blockReason').value;
+});
 
 // ── Drawer Logic ───────────────────────────────────────
 const drawer = document.querySelector('body');

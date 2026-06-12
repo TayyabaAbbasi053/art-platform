@@ -144,7 +144,7 @@ if ($params) {
 
 // Fetch artworks
  $dataSQL = "
-    SELECT a.*, c.name AS category_name, u.name AS artist_name,
+    SELECT a.*, c.name AS category_name, u.name AS artist_name, u.status AS artist_status,
            (SELECT image_path FROM artwork_images WHERE artwork_id = a.id ORDER BY is_cover DESC, sort_order ASC LIMIT 1) AS cover_image
     FROM artworks a
     JOIN users u ON u.id = a.artist_id
@@ -689,8 +689,25 @@ tr:hover td { background: var(--sand); box-shadow: 0 4px 12px rgba(12,63,48,.06)
             <?php foreach ($artworks as $aw): ?>
                 <tr>
                     <td>
+                        <?php
+                        $awData = json_encode([
+                            'title'         => $aw['title'],
+                            'artist'        => $aw['artist_name'],
+                            'category'      => $aw['category_name'],
+                            'price'         => $aw['price'],
+                            'city'          => $aw['city'] ?? '',
+                            'dimensions'    => ($aw['width'] ?? '') && ($aw['height'] ?? '') ? $aw['width'].' × '.$aw['height'].' cm' : ($aw['dimensions'] ?? ''),
+                            'framed'        => $aw['is_framed'] ?? $aw['framed'] ?? 0,
+                            'status'        => $aw['status'],
+                            'created_at'    => date('d M Y', strtotime($aw['created_at'])),
+                            'artist_status' => ucfirst($aw['artist_status'] ?? ''),
+                            'description'   => $aw['description'] ?? '',
+                            'cover_image'   => $aw['cover_image'] ?? '',
+                        ]);
+                        ?>
                         <?php if ($aw['cover_image']): ?>
-                            <img class="td-img" src="../../<?= htmlspecialchars($aw['cover_image']) ?>" alt="">
+                            <img class="td-img" src="../../<?= htmlspecialchars($aw['cover_image']) ?>" alt=""
+                                 style="cursor:zoom-in;" onclick='openView(<?= htmlspecialchars($awData, ENT_QUOTES) ?>)'>
                         <?php else: ?>
                             <div class="td-img" style="display:flex;align-items:center;justify-content:center;color:var(--ink);font-size:10px;">No img</div>
                         <?php endif; ?>
@@ -718,6 +735,7 @@ tr:hover td { background: var(--sand); box-shadow: 0 4px 12px rgba(12,63,48,.06)
     <form method="POST" style="display:inline"><input type="hidden" name="action" value="approve"><input type="hidden" name="id" value="<?= $aw['id'] ?>"><button type="submit" class="act-btn green">Approve</button></form>
     <button type="button" class="act-btn red" onclick="openRejectModal(<?= $aw['id'] ?>)">Reject</button>
 <?php endif; ?>
+                            <button type="button" class="act-btn blue" onclick='openView(<?= htmlspecialchars($awData, ENT_QUOTES) ?>)'>View</button>
                             <a href="artwork-edit.php?id=<?= $aw['id'] ?>" class="act-btn blue" title="Edit details">Edit</a>
                             <button type="button" class="act-btn red" onclick="openDelete(<?= $aw['id'] ?>, '<?= htmlspecialchars(addslashes($aw['title'])) ?>')" title="Delete permanently">Delete</button>
                         </div>
@@ -759,6 +777,79 @@ tr:hover td { background: var(--sand); box-shadow: 0 4px 12px rgba(12,63,48,.06)
 </div>
 <div class="dash-footer">Art Bazaar Admin Panel &mdash; <?= date('Y') ?></div>
 </main>
+
+<!-- ══════════════ VIEW DETAILS MODAL ══════════════ -->
+<div class="modal-overlay" id="viewModal" style="align-items:center;">
+    <div class="modal" style="width:620px;max-width:95vw;max-height:90vh;overflow-y:auto;">
+        <div class="modal-head" style="display:flex;justify-content:space-between;align-items:center;padding:24px 28px 16px;">
+            <h3 id="viewTitle" style="font-family:'Playfair Display',serif;font-size:20px;font-weight:400;color:var(--ink);">Artwork Details</h3>
+            <button onclick="closeView()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--ink);">&times;</button>
+        </div>
+        <div class="modal-body" style="padding:0 28px 24px;">
+
+            <!-- Image with zoom -->
+            <div style="position:relative;margin-bottom:20px;">
+                <img id="viewImage" src="" alt=""
+                     style="width:100%;max-height:320px;object-fit:contain;border-radius:10px;border:1px solid var(--border);cursor:zoom-in;background:var(--sand);"
+                     onclick="openZoom(this.src)">
+                <span style="position:absolute;bottom:8px;right:10px;font-size:10px;background:rgba(12,63,48,.6);color:#fff;padding:3px 8px;border-radius:20px;">Click to zoom</span>
+            </div>
+
+            <!-- Details grid -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px 20px;">
+                <div>
+                    <div style="font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:3px;">Artist</div>
+                    <div id="viewArtist" style="font-size:13px;font-weight:500;color:var(--ink);"></div>
+                </div>
+                <div>
+                    <div style="font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:3px;">Category</div>
+                    <div id="viewCategory" style="font-size:13px;color:var(--ink);"></div>
+                </div>
+                <div>
+                    <div style="font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:3px;">Price</div>
+                    <div id="viewPrice" style="font-size:13px;font-weight:600;color:var(--ink);"></div>
+                </div>
+                <div>
+                    <div style="font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:3px;">City</div>
+                    <div id="viewCity" style="font-size:13px;color:var(--ink);"></div>
+                </div>
+                <div>
+                    <div style="font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:3px;">Dimensions</div>
+                    <div id="viewDimensions" style="font-size:13px;color:var(--ink);"></div>
+                </div>
+                <div>
+                    <div style="font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:3px;">Framed</div>
+                    <div id="viewFramed" style="font-size:13px;color:var(--ink);"></div>
+                </div>
+                <div>
+                    <div style="font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:3px;">Status</div>
+                    <div id="viewStatus" style="font-size:13px;color:var(--ink);"></div>
+                </div>
+                <div>
+                    <div style="font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:3px;">Uploaded</div>
+                    <div id="viewDate" style="font-size:13px;color:var(--ink);"></div>
+                </div>
+                <div style="grid-column:1/-1;">
+                    <div style="font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:3px;">Artist Account Status</div>
+                    <div id="viewArtistStatus" style="font-size:13px;color:var(--ink);"></div>
+                </div>
+            </div>
+
+            <!-- Description -->
+            <div style="margin-top:16px;">
+                <div style="font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;">Description</div>
+                <div id="viewDesc" style="font-size:13px;color:var(--ink);line-height:1.7;background:var(--sand);padding:12px 14px;border-radius:8px;border:1px solid var(--border);"></div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════ ZOOM OVERLAY ══════════════ -->
+<div id="zoomOverlay" onclick="closeZoom()"
+     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:300;align-items:center;justify-content:center;cursor:zoom-out;">
+    <img id="zoomImg" src="" alt="" style="max-width:92vw;max-height:92vh;object-fit:contain;border-radius:10px;box-shadow:0 20px 60px rgba(0,0,0,.5);">
+</div>
 
 <!-- ══════════════ DELETE MODAL ══════════════ -->
 <div class="modal-overlay" id="deleteModal">
@@ -868,6 +959,39 @@ function openRejectModal(id) {
 function closeReject() {
     document.getElementById('rejectModal').classList.remove('open');
 }
+
+// View Details modal
+function openView(data) {
+    document.getElementById('viewTitle').textContent    = data.title;
+    document.getElementById('viewArtist').textContent   = data.artist;
+    document.getElementById('viewCategory').textContent = data.category;
+    document.getElementById('viewPrice').textContent    = 'PKR ' + Number(data.price).toLocaleString();
+    document.getElementById('viewCity').textContent     = data.city || '—';
+    document.getElementById('viewDimensions').textContent = data.dimensions || '—';
+    document.getElementById('viewFramed').textContent   = data.framed == 1 ? 'Yes' : 'No';
+    document.getElementById('viewStatus').innerHTML     = `<span class="pill ${data.status}">${data.status.charAt(0).toUpperCase()+data.status.slice(1)}</span>`;
+    document.getElementById('viewDate').textContent     = data.created_at;
+    document.getElementById('viewArtistStatus').textContent = data.artist_status || '—';
+    document.getElementById('viewDesc').textContent     = data.description || 'No description provided.';
+    document.getElementById('viewImage').src            = data.cover_image ? '../../' + data.cover_image : '';
+    document.getElementById('viewModal').classList.add('open');
+}
+function closeView() {
+    document.getElementById('viewModal').classList.remove('open');
+}
+
+// Zoom
+function openZoom(src) {
+    const z = document.getElementById('zoomOverlay');
+    document.getElementById('zoomImg').src = src;
+    z.style.display = 'flex';
+}
+function closeZoom() {
+    document.getElementById('zoomOverlay').style.display = 'none';
+}
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') { closeView(); closeZoom(); }
+});
 
 // Close modals on overlay click
 document.querySelectorAll('.modal-overlay').forEach(overlay => {

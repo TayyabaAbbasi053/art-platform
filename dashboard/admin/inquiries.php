@@ -24,14 +24,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'mark_
     $id = (int)($_POST['id'] ?? 0);
     if ($id) {
         // Update payment status and move order to confirmed
-        $stmt = $conn->prepare("UPDATE orders SET payment_status = 'paid', order_status = 'confirmed' WHERE id = ?");
+        $stmt = $conn->prepare("UPDATE orders SET payment_status = 'paid', order_status = 'payment_confirmed' WHERE id = ?");
         $stmt->bind_param('i', $id);
         $stmt->execute();
         
         // Add status history
         $adminId = (int)$_SESSION['user_id'];
         $note = 'Payment verified by admin. Order confirmed.';
-        $stmtH = $conn->prepare("INSERT INTO order_status_history (order_id, status_from, status_to, changed_by_role, changed_by_id, notes) VALUES (?, 'pending', 'confirmed', 'admin', ?, ?)");
+        $stmtH = $conn->prepare("INSERT INTO order_status_history (order_id, status_from, status_to, changed_by_role, changed_by_id, notes) VALUES (?, 'pending', 'payment_confirmed', 'admin', ?, ?)");
         $stmtH->bind_param('iis', $id, $adminId, $note);
         $stmtH->execute();
         
@@ -43,7 +43,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'mark_
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'update_status') {
     $id = (int)($_POST['id'] ?? 0);
     $newStatus = $_POST['new_status'] ?? '';
-    $validStatuses = ['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'];
+    $validStatuses = ['pending', 'payment_confirmed', 'processing', 'shipped', 'delivered', 'cancelled'];
     
     if ($id && in_array($newStatus, $validStatuses)) {
         $oldRes = $conn->query("SELECT order_status, buyer_id FROM orders WHERE id = $id");
@@ -158,7 +158,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
  $perPage = 15;
  $offset = ($page - 1) * $perPage;
 
- $validStatuses = ['pending','confirmed','processing','shipped','delivered','cancelled'];
+ $validStatuses = ['pending','payment_confirmed','processing','shipped','delivered','cancelled'];
 if (!in_array($statusFilter, $validStatuses)) $statusFilter = '';
 
  $where = ["o.order_type = 'artwork'"];
@@ -365,8 +365,7 @@ function buildQS($overrides = []) {
         
         /* ── Pills ───────────────────────────────────────────── */
         .pill { display: inline-block; font-size: 9px; letter-spacing: .5px; text-transform: uppercase; font-weight: 600; padding: 3px 9px; border-radius: 20px; white-space: nowrap; background: var(--sand); color: var(--ink); }
-        .pill.delivered { background: var(--ink); color: var(--bg); }
-        
+        .pill.payment_confirmed { background: #d4edda; color: #155724; border: 1px solid #28a745; font-weight: 700; }        
         /* ── Actions ─────────────────────────────────────────── */
         .td-actions { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
         .status-select { padding: 5px 8px; font-size: 10px; border: 1.5px solid var(--sand); border-radius: 7px; background: var(--bg); color: var(--ink); font-family: 'DM Sans', sans-serif; cursor: pointer; outline: none; }
@@ -509,7 +508,7 @@ function buildQS($overrides = []) {
             <!-- Status tabs -->
             <div class="tabs">
                 <a href="?<?= buildQS(['status' => null]) ?>" class="tab <?= !$statusFilter ? 'active' : '' ?>">All <span class="count"><?= $statusCounts['all'] ?></span></a>
-                <?php foreach (['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'] as $s): ?>
+                <?php foreach (['pending', 'payment_confirmed', 'processing', 'shipped', 'delivered', 'cancelled'] as $s): ?>
                 <a href="?<?= buildQS(['status' => $s]) ?>" class="tab <?= $statusFilter === $s ? 'active' : '' ?>"><?= ucfirst($s) ?> <span class="count <?= ($s === 'pending' && ($statusCounts[$s] ?? 0) > 0) ? 'hot' : '' ?>"><?= $statusCounts[$s] ?? 0 ?></span></a>
                 <?php endforeach; ?>
             </div>
@@ -587,7 +586,7 @@ function buildQS($overrides = []) {
                                     <input type="hidden" name="id" value="<?= $item['id'] ?>">
                                     <select name="new_status" class="status-select" onchange="this.form.submit()">
                                         <?php 
-                                        $statuses = ['pending','confirmed','processing','shipped','delivered','cancelled'];
+                                        $statuses = ['pending','payment_confirmed','processing','shipped','delivered','cancelled'];
                                         foreach ($statuses as $s): ?>
                                             <option value="<?= $s ?>" <?= $item['item_status'] === $s ? 'selected' : '' ?>><?= ucfirst($s) ?></option>
                                         <?php endforeach; ?>
@@ -695,7 +694,7 @@ function buildQS($overrides = []) {
             if (item.payment_screenshot) {
                 html += `
                     <div class="screenshot-box">
-                        <img src="../../${item.payment_screenshot}" class="screenshot-thumb" alt="Payment SS">
+                        <img src="../../${item.payment_screenshot}" class="screenshot-thumb" alt="Payment SS" style="cursor:pointer;" onclick="window.open('../../${item.payment_screenshot}', '_blank')">
                         <div class="screenshot-info">
                             <strong>Payment Screenshot</strong>
                             <div>${item.payment_method ? esc(item.payment_method).replace(/_/g, ' ').toUpperCase() : ''}</div>
@@ -764,7 +763,7 @@ function buildQS($overrides = []) {
             }
 
             // Forward to Artist (Only if confirmed)
-            if (item.item_status === 'confirmed') {
+            if (item.item_status === 'payment_confirmed') {
                 const currentDeliveryStatus = item.delivery_status || 'not_applicable';
                 html += `
                     <form method="POST" class="forward-form">

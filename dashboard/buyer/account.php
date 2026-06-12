@@ -27,12 +27,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['commission_action']))
         if ($checkOrder) {
             if ($actionType === 'accept_price') {
                 // Move to confirmed — buyer will be redirected to checkout
-                $upd = $conn->prepare("UPDATE orders SET order_status = 'confirmed', price_status = 'accepted', updated_at = NOW() WHERE id = ?");
+                $upd = $conn->prepare("UPDATE orders SET order_status = 'assigned', price_status = 'accepted', updated_at = NOW() WHERE id = ?");
                 $upd->bind_param('i', $actionOrderId);
                 $upd->execute();
 
                 // Log status change
-                $hist = $conn->prepare("INSERT INTO order_status_history (order_id, status_from, status_to, changed_by_role, changed_by_id, notes) VALUES (?, 'price_proposed', 'confirmed', 'buyer', ?, 'Buyer accepted proposed price')");
+                $hist = $conn->prepare("INSERT INTO order_status_history (order_id, status_from, status_to, changed_by_role, changed_by_id, notes) VALUES (?, 'price_proposed', 'assigned', 'buyer', ?, 'Buyer accepted proposed price')");
                 $hist->bind_param('ii', $actionOrderId, $buyerId);
                 $hist->execute();
 
@@ -42,12 +42,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['commission_action']))
 
             } elseif ($actionType === 'reject_price') {
                 // Reset back to pending, clear proposed price
-                $upd = $conn->prepare("UPDATE orders SET order_status = 'pending', price_status = 'none', proposed_price = NULL, updated_at = NOW() WHERE id = ?");
+                $upd = $conn->prepare("UPDATE orders SET order_status = 'assigned', price_status = 'rejected', proposed_price = NULL, updated_at = NOW() WHERE id = ?");
                 $upd->bind_param('i', $actionOrderId);
                 $upd->execute();
 
                 // Log status change
-                $hist = $conn->prepare("INSERT INTO order_status_history (order_id, status_from, status_to, changed_by_role, changed_by_id, notes) VALUES (?, 'price_proposed', 'pending', 'buyer', ?, 'Buyer rejected proposed price — renegotiation requested')");
+                $hist = $conn->prepare("INSERT INTO order_status_history (order_id, status_from, status_to, changed_by_role, changed_by_id, notes) VALUES (?, 'price_proposed', 'assigned', 'buyer', ?, 'Buyer rejected proposed price — renegotiation requested')");
                 $hist->bind_param('ii', $actionOrderId, $buyerId);
                 $hist->execute();
 
@@ -109,7 +109,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     'total' => 0,
     'pending' => 0,
     'price_proposed' => 0,
-    'confirmed' => 0,
+    'assigned' => 0,
     'processing' => 0,
     'shipped' => 0,
     'delivered' => 0,

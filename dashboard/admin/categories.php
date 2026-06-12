@@ -70,7 +70,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
         if ($count > 0) {
             $toast = "Cannot delete — {$count} artwork" . ($count > 1 ? 's' : '') . " use this category.";
         } else {
-            $conn->prepare("DELETE FROM categories WHERE id = ?")->bind_param('i', $id)->execute();
+            $stmt = $conn->prepare("DELETE FROM categories WHERE id = ?");
+$stmt->bind_param('i', $id);
+$stmt->execute();
+$toast = 'Category deleted.';
             $toast = 'Category deleted.';
         }
     }

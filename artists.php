@@ -35,7 +35,14 @@ function getCartCount() {
  $offset = ($page - 1) * $perPage;
 
 // Build query
- $where = ["u.role = 'artist'", "u.status = 'active'"];
+ $where = [
+    "u.role = 'artist'",
+    "u.status = 'active'",
+    "ap.bio IS NOT NULL AND ap.bio != ''",
+    "ap.city IS NOT NULL AND ap.city != ''",
+    "ap.art_style IS NOT NULL AND ap.art_style != ''",
+    "u.profile_picture IS NOT NULL AND u.profile_picture != ''"
+];
  $params = [];
  $types = '';
 

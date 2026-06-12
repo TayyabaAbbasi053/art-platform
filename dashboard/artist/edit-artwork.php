@@ -7,7 +7,14 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'artist') {
     header('Location: ../../login.php');
     exit;
 }
+$__userStatus = $conn->query("SELECT status, status_reason FROM users WHERE id = {$_SESSION['user_id']}")->fetch_assoc();
+if ($__userStatus['status'] === 'blocked') {
+    session_destroy();
+    header('Location: ../../login.php?blocked=1&reason=' . urlencode($__userStatus['status_reason'] ?? ''));
+    exit;
+}
 
+$artistId = (int) $_SESSION['user_id'];  // ← whatever comes next in the file
  $artistId   = (int) $_SESSION['user_id'];
  $artistName = $_SESSION['name'] ?? 'Artist';
  $successMsg = '';
@@ -85,6 +92,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $description            = trim($_POST['description'] ?? '');
     $delivery_available     = isset($_POST['delivery_available']) ? 1 : 0;
     $similar_work_available = isset($_POST['similar_work_available']) ? 1 : 0;
+    $weight_kg = (float)($_POST['weight_kg'] ?? $artwork['weight_kg'] ?? 1.00);
 
     if ($title === '' || $price <= 0 || $categoryId === 0) {
         $errorMsg = 'Please fill in all required fields.';
@@ -94,16 +102,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // If it was rejected, maybe we should reset it to pending? Yes, allow re-submission.
         $status = ($artwork['status'] === 'rejected') ? 'pending' : $artwork['status'];
 
-        // FIXED: bind_param type string now correctly has 12 characters (i s s s s d s s i i s i)
+        // FIXED: bind_param type string now correctly has 13 characters (i s s s s d d s i i s i)
         // Variables: $categoryId(i), $title(s), $description(s), $medium(s), $size(s), 
-        //            $price(d), $city(s), $delivery_available(i), $similar_work_available(i), 
+        //            $weight_kg(d), $price(d), $city(s), $delivery_available(i), $similar_work_available(i), 
         //            $status(s), $artworkId(i), $artistId(i)
         $stmt = $conn->prepare("
             UPDATE artworks 
-            SET category_id = ?, title = ?, description = ?, medium = ?, size = ?, price = ?, city = ?, delivery_available = ?, similar_work_available = ?, status = ?, rejection_reason = NULL
+            SET category_id = ?, title = ?, description = ?, medium = ?, size = ?, weight_kg = ?, price = ?, city = ?, delivery_available = ?, similar_work_available = ?, status = ?, rejection_reason = NULL
             WHERE id = ? AND artist_id = ?
         ");
-        $stmt->bind_param('issssdsiiisi', $categoryId, $title, $description, $medium, $size, $price, $city, $delivery_available, $similar_work_available, $status, $artworkId, $artistId);
+        $stmt->bind_param('issssddsiiisi', $categoryId, $title, $description, $medium, $size, $weight_kg, $price, $city, $delivery_available, $similar_work_available, $status, $artworkId, $artistId);
         $stmt->execute();
 
         // 2. Handle New Image Uploads
@@ -299,7 +307,7 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
     .open #nav-overlay{display:block;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;}
     
     /* Mobile Image Grid */
-    .image-list { grid-template-columns: 1fr 1fr; }
+    .image-list { grid-template-columns: 1fr 2fr; }
     
     /* Drawer Links */
     #nav-drawer a { display: block; padding: 15px 0; color: var(--bg); font-size: 16px; border-bottom: 1px solid rgba(255,255,255,0.1); }
@@ -459,6 +467,17 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
                 <div class="field-group">
                     <label>Price (PKR) <span>*</span></label>
                     <input type="number" name="price" class="field-input" value="<?= $artwork['price'] ?>" min="1" required>
+                </div>
+            </div>
+
+            <div class="form-grid">
+                <div class="field-group">
+                    <label>Weight (kg) <span>*</span></label>
+                    <input type="number" name="weight_kg" class="field-input" value="<?= $artwork['weight_kg'] ?? 1.00 ?>" min="0.1" step="0.1" required>
+                    <p style="font-size:11px;color:var(--muted);margin-top:6px;">Used to calculate shipping fee. +100 PKR per kg above 1 kg.</p>
+                </div>
+                <div class="field-group">
+                    <!-- Spacer -->
                 </div>
             </div>
 

@@ -7,6 +7,14 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'artist') {
     header('Location: ../../login.php');
     exit;
 }
+$__userStatus = $conn->query("SELECT status, status_reason FROM users WHERE id = {$_SESSION['user_id']}")->fetch_assoc();
+if ($__userStatus['status'] === 'blocked') {
+    session_destroy();
+    header('Location: ../../login.php?blocked=1&reason=' . urlencode($__userStatus['status_reason'] ?? ''));
+    exit;
+}
+
+$artistId = (int) $_SESSION['user_id'];  // ← whatever comes next in the file
 
  $artistId   = (int) $_SESSION['user_id'];
  $artistName = $_SESSION['name'] ?? 'Artist';
@@ -229,6 +237,49 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
 .alert-btn.ghost:hover { border-color: var(--ink); color: var(--ink); }
 .alert-btn:hover { opacity: .85; }
 
+/* ── PROFILE BANNER (NEW ADDED STYLE) ─────────────────────────────── */
+.profile-banner {
+    background: #FDF8F2; 
+    border: 1px solid #EADDCB;
+    border-radius: 14px;
+    padding: 20px 24px;
+    display: flex; 
+    align-items: center; 
+    justify-content: space-between;
+    margin-bottom: 32px; 
+    gap: 16px;
+    box-shadow: 0 4px 12px rgba(12,63,48,0.05);
+}
+.banner-left { display: flex; align-items: center; gap: 16px; }
+.banner-icon { 
+    width: 44px; height: 44px; 
+    background: var(--sand); 
+    border-radius: 50%; 
+    display: flex; align-items: center; justify-content: center;
+    color: var(--ink);
+    flex-shrink: 0;
+}
+.banner-content h3 { 
+    font-family: 'Playfair Display', serif; 
+    font-size: 18px; color: var(--ink); 
+    margin-bottom: 4px; 
+}
+.banner-content p { font-size: 13px; color: var(--muted); line-height: 1.4; }
+.banner-right-btn {
+    background: var(--ink); color: var(--bg); 
+    padding: 10px 20px; border-radius: 8px; 
+    font-size: 12px; font-weight: 500; 
+    text-decoration: none; border: none;
+    cursor: pointer;
+    transition: background 0.2s; display: flex; align-items: center; gap: 8px;
+    white-space: nowrap;
+}
+.banner-right-btn:hover { background: #082e23; }
+.banner-close {
+    background: none; border: none; font-size: 18px; color: var(--muted); cursor: pointer; opacity: 0.6; margin-left: 10px;
+}
+.banner-close:hover { opacity: 1; color: var(--ink); }
+
 /* ── Stat cards ──────────────────────────────────────── */
 .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 32px; }
 .stat-card {
@@ -354,6 +405,11 @@ tr:hover td { background: var(--sand); color: var(--ink); }
     
     /* Hide non-essential topbar items */
     .topbar-left .date { display: none; }
+
+    /* Banner responsive */
+    .profile-banner { flex-direction: column; align-items: stretch; text-align: left; padding: 16px; }
+    .banner-left { align-items: flex-start; }
+    .banner-right-btn { width: 100%; justify-content: center; }
 }
 </style>
 </head>
@@ -439,17 +495,34 @@ tr:hover td { background: var(--sand); color: var(--ink); }
 <main class="main">
 <div class="content">
 
-    <!-- Profile incomplete alert -->
+    <!-- ══════════════ PROFILE COMPLETION BANNER ══════════════ -->
     <?php if (!$profileComplete): ?>
-    <div class="alert-strip">
-        <div class="alert-text">
-            Your profile is incomplete. Add a bio, city, and profile picture so buyers can find and trust you.
+    <div class="profile-banner">
+        <div class="banner-left">
+            <div class="banner-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                </svg>
+            </div>
+            <div class="banner-content">
+                <h3>Complete Your Profile</h3>
+                <p>Please complete your profile details to start selling and build trust with buyers.</p>
+            </div>
         </div>
-        <div class="alert-actions">
-            <a href="profile.php" class="alert-btn primary">Complete Profile</a>
+        <div style="display:flex; align-items:center;">
+            <a href="profile.php" class="banner-right-btn">
+                Complete Profile
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M5 12h14M12 5l7 7-7 7"/>
+                </svg>
+            </a>
+            <button onclick="this.parentElement.parentElement.style.display='none'" class="banner-close">
+                &times;
+            </button>
         </div>
     </div>
     <?php endif; ?>
+    <!-- ══════════════ END PROFILE BANNER ══════════════ -->
 
     <!-- Rejected artworks alert -->
     <?php if ($stats['rejected_artworks'] > 0): ?>

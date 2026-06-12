@@ -7,6 +7,14 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'artist') {
     header('Location: ../../login.php');
     exit;
 }
+$__userStatus = $conn->query("SELECT status, status_reason FROM users WHERE id = {$_SESSION['user_id']}")->fetch_assoc();
+if ($__userStatus['status'] === 'blocked') {
+    session_destroy();
+    header('Location: ../../login.php?blocked=1&reason=' . urlencode($__userStatus['status_reason'] ?? ''));
+    exit;
+}
+
+$artistId = (int) $_SESSION['user_id'];  // ← whatever comes next in the file
 
  $artistId = (int) $_SESSION['user_id'];
  $artistName = $_SESSION['name'] ?? 'Artist';
@@ -16,7 +24,7 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'artist') {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'update_status') {
     $orderId = (int) ($_POST['order_id'] ?? 0);
     $newStatus = $_POST['new_status'] ?? '';
-    $allowedUpdates = ['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'];
+    $allowedUpdates = ['processing', 'shipped', 'delivered', 'cancelled'];
     
     if ($orderId && in_array($newStatus, $allowedUpdates)) {
         // Verify this order belongs to the artist's artwork
@@ -52,7 +60,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
 
 // ── Filter and pagination ────────────────────────────────
  $statusFilter = $_GET['status'] ?? '';
- $allowedStatuses = ['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'];
+ $allowedStatuses = ['payment_confirmed', 'processing', 'shipped', 'delivered', 'cancelled'];
 if (!in_array($statusFilter, $allowedStatuses)) {
     $statusFilter = '';
 }
@@ -63,8 +71,7 @@ if (!in_array($statusFilter, $allowedStatuses)) {
 
 function getStatusBadgeClass($status) {
     $classes = [
-        'pending' => 'pending',
-        'confirmed' => 'confirmed',
+        'payment_confirmed' => 'payment_confirmed',
         'processing' => 'processing',
         'shipped' => 'shipped',
         'delivered' => 'delivered',
@@ -75,8 +82,7 @@ function getStatusBadgeClass($status) {
 
 function getStatusLabel($status) {
     $labels = [
-        'pending' => 'Pending',
-        'confirmed' => 'Confirmed',
+        'payment_confirmed' => 'Payment Confirmed',
         'processing' => 'Processing',
         'shipped' => 'Shipped',
         'delivered' => 'Delivered',
@@ -91,7 +97,8 @@ function getStatusLabel($status) {
     FROM orders o
     JOIN order_items oi ON o.id = oi.order_id
     JOIN artworks a ON oi.item_id = a.id AND oi.item_type = 'artwork'
-    WHERE a.artist_id = ? AND o.order_type = 'artwork'
+    WHERE a.artist_id = ? AND o.order_type = 'artwork' AND o.order_status NOT IN ('pending', 'payment_review')
+
 ";
  $params = [$artistId];
  $types = 'i';
@@ -123,7 +130,7 @@ if ($statusFilter) {
     JOIN order_items oi ON o.id = oi.order_id
     JOIN artworks a ON oi.item_id = a.id AND oi.item_type = 'artwork'
     LEFT JOIN users u ON o.buyer_id = u.id
-    WHERE a.artist_id = ? AND o.order_type = 'artwork'
+    WHERE a.artist_id = ? AND o.order_type = 'artwork' AND o.order_status NOT IN ('pending', 'payment_review')
 ";
 
  $params = [$artistId];
@@ -147,7 +154,7 @@ if ($statusFilter) {
 
 // ── Status counts for tabs ───────────────────────────────
  $statusCounts = [
-    'all' => 0, 'pending' => 0, 'confirmed' => 0, 
+    'all' => 0, 'payment_confirmed' => 0,
     'processing' => 0, 'shipped' => 0, 'delivered' => 0, 'cancelled' => 0
 ];
 
@@ -264,7 +271,7 @@ tr:hover td{background:var(--sand);box-shadow: 0 4px 12px rgba(12,63,48,.06);}
 .status-badge.processing{background:var(--sand);color:var(--ink);}
 .status-badge.shipped{background:var(--sand);color:var(--ink);}
 .status-badge.delivered{background:var(--ink);color:var(--bg);}
-.status-badge.cancelled{background:var(--sand);color:var(--ink);}
+.status-badge.payment_confirmed{background:#d4edda;color:#155724;border:1px solid #28a745;font-weight:700;}
 
 /* Action Buttons */
 .action-btn{padding:6px 14px;border-radius:6px;font-size:11px;font-weight:500;border:1px solid var(--border);background:var(--sand);cursor:pointer;transition:all .15s;display:inline-block;color:var(--ink);}
@@ -408,7 +415,7 @@ tr:hover td{background:var(--sand);box-shadow: 0 4px 12px rgba(12,63,48,.06);}
   <a href="orders.php" class="nav-item active">
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 7H4a2 2 0 00-2 2v6a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>
     Orders
-    <?php if ($statusCounts['pending'] + $statusCounts['confirmed'] > 0): ?><span class="badge"><?= $statusCounts['pending'] + $statusCounts['confirmed'] ?></span><?php endif; ?>
+    <?php if ($statusCounts['payment_confirmed'] > 0): ?><span class="badge"><?= $statusCounts['payment_confirmed'] ?></span><?php endif; ?>
   </a>
   <div class="sidebar-section">Account</div>
   <a href="profile.php" class="nav-item">
@@ -457,8 +464,7 @@ tr:hover td{background:var(--sand);box-shadow: 0 4px 12px rgba(12,63,48,.06);}
   <!-- Status Tabs -->
   <div class="tabs">
     <a href="?status=" class="tab <?= !$statusFilter ? 'active' : '' ?>">All <span class="count">(<?= $statusCounts['all'] ?>)</span></a>
-    <a href="?status=pending" class="tab <?= $statusFilter === 'pending' ? 'active' : '' ?>">Pending <span class="count">(<?= $statusCounts['pending'] ?>)</span></a>
-    <a href="?status=confirmed" class="tab <?= $statusFilter === 'confirmed' ? 'active' : '' ?>">Confirmed <span class="count">(<?= $statusCounts['confirmed'] ?>)</span></a>
+    <a href="?status=payment_confirmed" class="tab <?= $statusFilter === 'payment_confirmed' ? 'active' : '' ?>">Ready to Start <span class="count">(<?= $statusCounts['payment_confirmed'] ?>)</span></a>
     <a href="?status=processing" class="tab <?= $statusFilter === 'processing' ? 'active' : '' ?>">Processing <span class="count">(<?= $statusCounts['processing'] ?>)</span></a>
     <a href="?status=shipped" class="tab <?= $statusFilter === 'shipped' ? 'active' : '' ?>">Shipped <span class="count">(<?= $statusCounts['shipped'] ?>)</span></a>
     <a href="?status=delivered" class="tab <?= $statusFilter === 'delivered' ? 'active' : '' ?>">Delivered <span class="count">(<?= $statusCounts['delivered'] ?>)</span></a>
@@ -507,7 +513,6 @@ tr:hover td{background:var(--sand);box-shadow: 0 4px 12px rgba(12,63,48,.06);}
             </td>
             <td data-label="Buyer">
               <div class="buyer-name"><?= htmlspecialchars($displayBuyerName) ?></div>
-              <div class="buyer-contact"><?= htmlspecialchars($displayBuyerEmail ?? $displayBuyerPhone ?? '') ?></div>
             </td>
             <td class="hide-mobile" data-label="Date"><?= date('d M Y', strtotime($order['created_at'])) ?></td>
             <td data-label="Status"><span class="status-badge <?= getStatusBadgeClass($order['order_status']) ?>"><?= getStatusLabel($order['order_status']) ?></span></td>
@@ -606,8 +611,8 @@ tr:hover td{background:var(--sand);box-shadow: 0 4px 12px rgba(12,63,48,.06);}
     const displayBuyerPhone = order.buyer_phone_real || order.guest_phone;
 
     // Check payment status
-    const isPaid = order.payment_status === 'paid';
-    const isPendingPayment = !isPaid;
+    const isPaid = order.order_status === 'payment_confirmed' || order.payment_status === 'paid';
+const isPendingPayment = !isPaid;
 
     let statusFormHtml = '';
 
@@ -619,12 +624,7 @@ tr:hover td{background:var(--sand);box-shadow: 0 4px 12px rgba(12,63,48,.06);}
             </div>
             <div class="dl">Update Order Status</div>
             <select name="new_status" disabled>
-                <option value="pending" ${order.order_status === 'pending' ? 'selected' : ''}>Pending</option>
-                <option value="confirmed" ${order.order_status === 'confirmed' ? 'selected' : ''}>Confirmed</option>
-                <option value="processing" ${order.order_status === 'processing' ? 'selected' : ''}>Processing</option>
-                <option value="shipped" ${order.order_status === 'shipped' ? 'selected' : ''}>Shipped</option>
-                <option value="delivered" ${order.order_status === 'delivered' ? 'selected' : ''}>Delivered</option>
-                <option value="cancelled" ${order.order_status === 'cancelled' ? 'selected' : ''}>Cancelled</option>
+                <option value="payment_confirmed" selected>Payment Confirmed</option>
             </select>
             <div style="margin-top:12px;text-align:right;">
                 <button type="button" class="btn btn-primary" disabled>Update Status</button>
@@ -632,14 +632,17 @@ tr:hover td{background:var(--sand);box-shadow: 0 4px 12px rgba(12,63,48,.06);}
         `;
     } else {
         statusFormHtml = `
-            <div class="dl">Update Order Status</div>
+    ${order.order_status === 'payment_confirmed' ? `
+    <div style="background:#d4edda;border:1px solid #28a745;border-radius:10px;padding:14px 16px;margin-bottom:16px;display:flex;gap:10px;align-items:center;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#155724" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        <div><strong style="color:#155724;font-size:13px;">Payment Approved — Start Working!</strong><div style="font-size:11px;color:#155724;margin-top:2px;">Admin verified the payment. Mark as Processing when you begin.</div></div>
+    </div>` : ''}
+    <div class="dl">Update Order Status</div>
             <select name="new_status">
-                <option value="pending" ${order.order_status === 'pending' ? 'selected' : ''}>Pending</option>
-                <option value="confirmed" ${order.order_status === 'confirmed' ? 'selected' : ''}>Confirmed</option>
                 <option value="processing" ${order.order_status === 'processing' ? 'selected' : ''}>Processing</option>
-                <option value="shipped" ${order.order_status === 'shipped' ? 'selected' : ''}>Shipped</option>
-                <option value="delivered" ${order.order_status === 'delivered' ? 'selected' : ''}>Delivered</option>
-                <option value="cancelled" ${order.order_status === 'cancelled' ? 'selected' : ''}>Cancelled</option>
+<option value="shipped" ${order.order_status === 'shipped' ? 'selected' : ''}>Shipped</option>
+<option value="delivered" ${order.order_status === 'delivered' ? 'selected' : ''}>Delivered</option>
+<option value="cancelled" ${order.order_status === 'cancelled' ? 'selected' : ''}>Cancelled</option>
             </select>
             <div style="margin-top:12px;text-align:right;">
                 <button type="submit" class="btn btn-primary">Update Status</button>
@@ -670,14 +673,6 @@ tr:hover td{background:var(--sand);box-shadow: 0 4px 12px rgba(12,63,48,.06);}
           <div class="dv">${esc(order.created_at)}</div>
         </div>
         <div class="detail-item">
-          <div class="dl">Email</div>
-          <div class="dv ${!displayBuyerEmail ? 'muted' : ''}">${displayBuyerEmail ? esc(displayBuyerEmail) : 'Not provided'}</div>
-        </div>
-        <div class="detail-item">
-          <div class="dl">Phone / WhatsApp</div>
-          <div class="dv ${!displayBuyerPhone ? 'muted' : ''}">${displayBuyerPhone ? esc(displayBuyerPhone) : 'Not provided'}</div>
-        </div>
-        <div class="detail-item">
           <div class="dl">Payment Method</div>
           <div class="dv ${!order.payment_method ? 'muted' : ''}">${order.payment_method ? esc(order.payment_method).replace(/_/g, ' ') : 'Not set'}</div>
         </div>
@@ -698,10 +693,6 @@ tr:hover td{background:var(--sand);box-shadow: 0 4px 12px rgba(12,63,48,.06);}
           <div class="shipping-item">
             <div class="sl">City</div>
             <div class="sv">${esc(order.shipping_city || 'N/A')}</div>
-          </div>
-          <div class="shipping-item">
-            <div class="sl">Phone</div>
-            <div class="sv">${esc(order.shipping_phone || 'N/A')}</div>
           </div>
           <div class="shipping-item">
             <div class="sl">Tracking Number</div>

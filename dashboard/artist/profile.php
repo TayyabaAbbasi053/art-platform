@@ -7,6 +7,14 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'artist') {
     header('Location: ../../login.php');
     exit;
 }
+$__userStatus = $conn->query("SELECT status, status_reason FROM users WHERE id = {$_SESSION['user_id']}")->fetch_assoc();
+if ($__userStatus['status'] === 'blocked') {
+    session_destroy();
+    header('Location: ../../login.php?blocked=1&reason=' . urlencode($__userStatus['status_reason'] ?? ''));
+    exit;
+}
+
+$artistId = (int) $_SESSION['user_id'];  // ← whatever comes next in the file
 
  $artistId   = (int) $_SESSION['user_id'];
  $artistName = $_SESSION['name'] ?? 'Artist';
@@ -286,6 +294,24 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
 .field-input::placeholder { color: var(--muted); }
 textarea.field-input { resize: vertical; min-height: 110px; line-height: 1.6; }
 
+/* ── BIO RESTRICTION NOTE STYLE (NEW) ────────────────────── */
+.bio-warning-box {
+    background: #FCEEE9; /* Light warning color */
+    border: 1px solid #EEC5B8;
+    border-radius: 10px;
+    padding: 10px 14px;
+    margin-top: 6px;
+    font-size: 11px;
+    color: #7D2A14;
+    line-height: 1.5;
+    display: flex;
+    gap: 8px;
+}
+.bio-warning-box svg {
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
 /* ── Toggle switch ───────────────────────────────────── */
 .toggle-row {
     display: flex; align-items: center; justify-content: space-between;
@@ -493,8 +519,18 @@ textarea.field-input { resize: vertical; min-height: 110px; line-height: 1.6; }
                     <input type="text" name="name" class="field-input" value="<?= htmlspecialchars($user['name']) ?>" placeholder="Your name as it appears on your profile" required>
                 </div>
                 <div class="field-group">
-                    <label class="field-label">Bio <span class="optional">(optional)</span></label>
-                    <textarea name="bio" class="field-input" placeholder="Tell buyers about yourself, your artistic journey, inspiration, and techniques..."><?= htmlspecialchars($profile['bio'] ?? '') ?></textarea>
+                    <label class="field-label">Bio </label>
+                    <textarea name="bio" class="field-input" id="bioInput" placeholder="Tell buyers about yourself, your artistic journey, inspiration, and techniques..."><?= htmlspecialchars($profile['bio'] ?? '') ?></textarea>
+                    
+                    <!-- ADDED: RESTRICTION NOTE -->
+                    <div class="bio-warning-box">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 9v4m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                        </svg>
+                        <div>
+                            <strong>Please do not add:</strong> Phone numbers, WhatsApp, Email, "DM me", bank accounts, Easypaisa, JazzCash, or direct payment links. These are not allowed in the bio.
+                        </div>
+                    </div>
                 </div>
                 <div class="field-row">
                     <div class="field-group">
@@ -502,7 +538,7 @@ textarea.field-input { resize: vertical; min-height: 110px; line-height: 1.6; }
                         <input type="text" name="city" class="field-input" value="<?= htmlspecialchars($profile['city'] ?? '') ?>" placeholder="e.g. Lahore, Karachi, Islamabad">
                     </div>
                     <div class="field-group">
-                        <label class="field-label">Art Style <span class="optional">(optional)</span></label>
+                        <label class="field-label">Art Style</label>
                         <input type="text" name="art_style" class="field-input" value="<?= htmlspecialchars($profile['art_style'] ?? '') ?>" placeholder="e.g. Contemporary, Abstract, Realism">
                     </div>
                 </div>
@@ -513,7 +549,6 @@ textarea.field-input { resize: vertical; min-height: 110px; line-height: 1.6; }
         <div class="profile-card">
             <div class="profile-card-header">
                 <h2>Social &amp; Contact</h2>
-                <span class="hint">Links are public, contact details are private</span>
             </div>
             <div class="profile-card-body">
                 <div class="field-group">
@@ -522,11 +557,11 @@ textarea.field-input { resize: vertical; min-height: 110px; line-height: 1.6; }
                 </div>
                 <div class="field-row">
                     <div class="field-group">
-                        <label class="field-label">Contact Email <span class="private-tag">Private</span> <span class="optional">(optional)</span></label>
+                        <label class="field-label">Contact Email <span class="private-tag">Private</span> </label>
                         <input type="email" name="contact_email" class="field-input" value="<?= htmlspecialchars($profile['contact_email'] ?? '') ?>" placeholder="your@email.com">
                     </div>
                     <div class="field-group">
-                        <label class="field-label">Contact Phone <span class="private-tag">Private</span> <span class="optional">(optional)</span></label>
+                        <label class="field-label">Contact Phone <span class="private-tag">Private</span> </label>
                         <input type="text" name="contact_phone" class="field-input" value="<?= htmlspecialchars($profile['contact_phone'] ?? '') ?>" placeholder="03XX-XXXXXXX">
                     </div>
                 </div>
@@ -559,7 +594,7 @@ textarea.field-input { resize: vertical; min-height: 110px; line-height: 1.6; }
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
                 Back to Dashboard
             </a>
-            <button type="submit" class="btn btn-primary">
+            <button type="submit" class="btn btn-primary" id="saveBtn">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
                 Save Changes
             </button>
@@ -660,6 +695,27 @@ if(window.innerWidth <= 768 && !document.querySelector('.ham-btn')){
 
 overlay.addEventListener('click', () => {
     drawer.classList.remove('open');
+});
+
+// ── Simple Client-Side Validation for Bio (Optional Enhancement) ─────
+document.getElementById('profileForm').addEventListener('submit', function(e) {
+    const bio = document.getElementById('bioInput').value.toLowerCase();
+    // Check for common forbidden patterns
+    const forbidden = [
+        /\d{4,}/, // phone numbers 4+ digits
+        /easypaisa|jazzcash|bank|account/i,
+        /wa\.me|whatsapp/i,
+        /dm\s*me|direct\s*message/i,
+        /@gmail\.com|@yahoo\.com/i // simple email check
+    ];
+
+    for (let pattern of forbidden) {
+        if (pattern.test(bio)) {
+            alert('Please remove phone numbers, payment details (Easypaisa, JazzCash), or "DM me" instructions from your bio. These are not allowed on public profiles.');
+            e.preventDefault();
+            return;
+        }
+    }
 });
 </script>
 

@@ -10,16 +10,16 @@
 html,body{height:100%;overflow:hidden;}
 body{font-family:'DM Sans',sans-serif;background:#f5f5f5;min-height:100vh;display:flex;align-items:center;justify-content:center;}
 .wrap{display:flex;width:780px;height:540px;border-radius:24px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.12),0 2px 8px rgba(0,0,0,0.06);border:none;background:#fff;}
-.left{width:38%;background:#0a0a0a;padding:36px 28px;display:flex;flex-direction:column;justify-content:space-between;position:relative;overflow:hidden;}
+.left{width:38%;background:#0C3F30;padding:36px 28px;display:flex;flex-direction:column;justify-content:space-between;position:relative;overflow:hidden;}
 .left::after{content:'';position:absolute;top:-60px;left:-60px;width:220px;height:220px;border:1px solid #1e1e1e;border-radius:50%;}
 .left-tag{font-size:11px;letter-spacing:3px;color:#555;text-transform:uppercase;font-weight:400;z-index:1;}
 .left-content{z-index:1;}
 .left-headline{font-family:'Playfair Display',serif;font-size:28px;color:#fff;line-height:1.25;font-weight:400;}
-.left-sub{font-size:11px;color:#555;line-height:1.7;margin-top:12px;}
+.left-sub{font-size:11px;color:#fff;line-height:1.7;margin-top:12px;}
 .left-features{list-style:none;margin-top:16px;}
-.left-features li{font-size:10px;color:#555;padding:4px 0;border-bottom:1px solid #161616;letter-spacing:0.3px;}
+.left-features li{font-size:10px;color:#fff;padding:4px 0;border-bottom:1px solid #161616;letter-spacing:0.3px;}
 .left-features li:last-child{border:none;}
-.left-footer{font-size:10px;color:#444;z-index:1;}
+.left-footer{font-size:10px;color:#fff;z-index:1;}
 .right{flex:1;padding:32px 36px;display:flex;flex-direction:column;justify-content:center;}
 .right h2{font-family:'Playfair Display',serif;font-size:24px;font-weight:400;color:#0a0a0a;margin-bottom:3px;}
 .right p.sub{font-size:11px;color:#999;margin-bottom:18px;}
@@ -35,8 +35,8 @@ input:focus{border-bottom-color:#0a0a0a;}
 .role-opt.selected{border-color:#0a0a0a;background:#fafafa;}
 .role-opt.selected strong{color:#0a0a0a;}
 .role-opt.selected span{color:#666;}
-button[type=submit]{width:100%;background:#0a0a0a;color:#fff;border:none;padding:11px;font-size:12px;font-family:'DM Sans',sans-serif;letter-spacing:1.5px;text-transform:uppercase;cursor:pointer;margin-top:2px;transition:background .2s;border-radius:10px;}
-button[type=submit]:hover{background:#333;}
+button[type=submit]{width:100%;background:#0C3F30;color:#fff;border:none;padding:11px;font-size:12px;font-family:'DM Sans',sans-serif;letter-spacing:1.5px;text-transform:uppercase;cursor:pointer;margin-top:2px;transition:background .2s;border-radius:10px;}
+button[type=submit]:hover{background:#0a5240;}
 .bottom-link{text-align:center;margin-top:12px;font-size:11px;color:#999;}
 .bottom-link a{color:#0a0a0a;font-weight:500;text-decoration:none;}
 .msg{padding:8px 12px;font-size:11px;margin-bottom:14px;border-left:3px solid;border-radius:0 8px 8px 0;line-height:1.4;}
@@ -124,9 +124,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <p class="left-headline">Join the<br>community.</p>
             <p class="left-sub">Whether you create or collect — there's a place for you here.</p>
             <ul class="left-features">
-                <li>→ Artists: upload & sell your work</li>
-                <li>→ Buyers: browse & commission art</li>
-                <li>→ Direct connection, no middlemen</li>
+                <li>→ Artists: showcase and sell your artwork</li>
+                <li>→ Buyers: browse and request custom artwork</li>
+                <li>→ Secure platform-managed requests</li>
                 <li>→ Supporting Pakistani artists</li>
             </ul>
         </div>
@@ -154,7 +154,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <label class="role-opt <?= ($formData['role'] ?? '') === 'buyer' ? 'selected' : '' ?>" onclick="selectRole('buyer',this)">
                     <input type="radio" name="role" value="buyer" <?= ($formData['role'] ?? '') === 'buyer' ? 'checked' : '' ?>>
                     <strong>Buyer</strong>
-                    <span>Browse & commission</span>
+                    <span>Request custom artwork</span>
                 </label>
             </div>
 
@@ -178,6 +178,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <label>Confirm Password</label>
                 <input type="password" name="confirm" placeholder="Repeat password" required>
             </div>
+            <div id="artist-note" style="display:none;font-size:10px;color:#0C3F30;background:#f0f8f5;border:1px solid #c8e6d8;border-radius:6px;padding:7px 10px;margin-bottom:10px;line-height:1.5;">🎨 Artist profiles are reviewed before appearing publicly.</div>
+<div style="display:flex;align-items:flex-start;gap:8px;margin:10px 0 8px;">
+  <input type="checkbox" name="terms" id="terms" required style="margin-top:2px;width:14px;height:14px;accent-color:#0C3F30;">
+  <label for="terms" style="font-size:10px;color:#888;text-transform:none;letter-spacing:0;font-weight:400;line-height:1.5;">I agree to the <a href="terms.php" style="color:#0C3F30;">Terms & Conditions</a> and <a href="privacy.php" style="color:#0C3F30;">Privacy Policy</a></label>
+</div>
             <button type="submit">Create Account</button>
         </form>
 
@@ -190,6 +195,7 @@ function selectRole(role, el) {
     document.querySelectorAll('.role-opt').forEach(o => o.classList.remove('selected'));
     el.classList.add('selected');
     el.querySelector('input').checked = true;
+    document.getElementById('artist-note').style.display = role === 'artist' ? 'block' : 'none';
 }
 </script>
 </body>

@@ -35,100 +35,77 @@ if (!is_dir($uploadDir)) {
 
 // ── Helper: Dynamic Shipping Calculation (Server-Side) ─────
 function calculateShippingServerSide($conn, $buyerCity, $cartItems): int {
-    // If no city provided, return 0
     if (empty($buyerCity) || empty($cartItems)) return 0;
 
-    $provinceMap = [
-        'punjab' => ['lahore', 'faisalabad', 'rawalpindi', 'multan', 'gujranwala', 'sialkot', 'sargodha', 'bahawalpur'],
-        'sindh' => ['karachi', 'hyderabad', 'sukkur', 'larkana', 'mirpurkhas'],
-        'kpk' => ['peshawar', 'mingora', 'mardan', 'kohat', 'abbottabad'],
-        'balochistan' => ['quetta', 'gawadar', 'turbat', 'sibi']
-    ];
-    
-    function getProv($c, $map) {
-        $c = strtolower(trim($c));
-        foreach ($map as $p => $cities) {
-            if (in_array($c, $cities)) return $p;
-        }
-        return 'unknown';
-    }
-    
-    $buyerProv = getProv($buyerCity, $provinceMap);
-    $maxFee = 0;
-    $isFragile = false;
-    
-    $fragileKeywords = ['sketch', 'watercolor', 'pastel', 'charcoal', 'ink', 'pencil'];
-    $fragileCats = ['Sketch', 'Photography'];
-
-    // Collect IDs
     $ids = [];
-    foreach($cartItems as $it) {
-        if($it['type'] === 'artwork') $ids[] = (int)$it['id'];
+    foreach ($cartItems as $it) {
+        if ($it['type'] === 'artwork') $ids[] = (int)$it['id'];
     }
-    
-    if(empty($ids)) return 0;
-    
+
+    if (empty($ids)) return 0;
+
     $idsStr = implode(',', $ids);
-    $q = "SELECT a.id, (SELECT city FROM artist_profiles ap WHERE ap.user_id = a.artist_id LIMIT 1) AS artist_city, a.medium, c.name AS cat_name 
-          FROM artworks a LEFT JOIN categories c ON a.category_id = c.id WHERE a.id IN ($idsStr)";
+    $q = "SELECT a.id, a.weight_kg,
+                 (SELECT ap.city FROM artist_profiles ap WHERE ap.user_id = a.artist_id LIMIT 1) AS artist_city
+          FROM artworks a
+          WHERE a.id IN ($idsStr)";
     $res = $conn->query($q);
-    
+
+    $totalFee = 0;
+
     while ($row = $res->fetch_assoc()) {
-        $ac = $row['artist_city'] ?? '';
-        $med = strtolower($row['medium'] ?? '');
-        $cat = $row['cat_name'] ?? '';
-        
-        // Tiers
-        $fee = 1000; // Default Inter-province
-        
-        if (!empty($ac) && strcasecmp($buyerCity, $ac) === 0) {
-            $fee = 300; // Same city
-        } elseif (getProv($ac, $provinceMap) === $buyerProv && $buyerProv !== 'unknown') {
-            $fee = 600; // Same province
-        }
-        
-        if ($fee > $maxFee) {
-            $maxFee = $fee;
-        }
-        
-        // Fragile
-        if (!$isFragile) {
-            if (in_array($cat, $fragileCats)) $isFragile = true;
-            else {
-                foreach ($fragileKeywords as $k) {
-                    if (strpos($med, $k) !== false) { $isFragile = true; break; }
-                }
-            }
-        }
+        $artistCity = $row['artist_city'] ?? '';
+        $weightKg   = (float)($row['weight_kg'] ?? 1.00);
+
+        // Base fee: same city = 350, different city = 500
+        $base = (!empty($artistCity) && strcasecmp(trim($buyerCity), trim($artistCity)) === 0) ? 350 : 500;
+
+        // Weight surcharge: +100 per kg above 1kg
+        $weightSurcharge = (int)(max(0, ceil($weightKg - 1)) * 100);
+
+        $totalFee += $base + $weightSurcharge;
     }
-    
-    if ($isFragile) {
-        $maxFee += 400;
-    }
-    
-    return $maxFee;
+
+    return $totalFee;
 }
 
 // ── AJAX Handler (Self-contained) ───────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_calculate_shipping'])) {
     header('Content-Type: application/json');
     $buyerCity = trim($_POST['buyer_city'] ?? '');
-    // Items passed via POST need to be reconstructed or fetched again. 
-    // For simplicity in this single-file structure, we assume we fetch cart items again from DB for current user.
+
     $items = [];
-    $cartQuery = $conn->prepare("
-        SELECT sc.item_type, sc.item_id, sc.quantity
-        FROM shopping_cart sc
-        WHERE sc.buyer_id = ?
-    ");
+    $cartQuery = $conn->prepare("SELECT sc.item_type, sc.item_id FROM shopping_cart sc WHERE sc.buyer_id = ?");
     $cartQuery->bind_param('i', $buyerId);
     $cartQuery->execute();
     $res = $cartQuery->get_result();
-    while($r = $res->fetch_assoc()) {
+    while ($r = $res->fetch_assoc()) {
         $items[] = ['type' => $r['item_type'], 'id' => $r['item_id']];
     }
-    
-    echo json_encode(['shipping_fee' => calculateShippingServerSide($conn, $buyerCity, $items)]);
+
+    $fee = calculateShippingServerSide($conn, $buyerCity, $items);
+
+    // Build breakdown for display
+    $breakdown = [];
+    if (!empty($items)) {
+        $ids = array_map(fn($i) => (int)$i['id'], array_filter($items, fn($i) => $i['type'] === 'artwork'));
+        if (!empty($ids)) {
+            $idsStr = implode(',', $ids);
+            $q = "SELECT a.weight_kg,
+                         (SELECT ap.city FROM artist_profiles ap WHERE ap.user_id = a.artist_id LIMIT 1) AS artist_city
+                  FROM artworks a WHERE a.id IN ($idsStr)";
+            $bRes = $conn->query($q);
+            while ($bRow = $bRes->fetch_assoc()) {
+                $artistCity  = $bRow['artist_city'] ?? '';
+                $weightKg    = (float)($bRow['weight_kg'] ?? 1.00);
+                $base        = (!empty($artistCity) && strcasecmp(trim($buyerCity), trim($artistCity)) === 0) ? 350 : 500;
+                $surcharge   = (int)(max(0, ceil($weightKg - 1)) * 100);
+                $breakdown[] = 'PKR ' . $base . ($surcharge > 0 ? ' + PKR ' . $surcharge . ' (weight)' : '') . ' = PKR ' . ($base + $surcharge);
+            }
+        }
+    }
+
+    echo json_encode(['shipping_fee' => $fee, 'breakdown' => $breakdown]);
     exit;
 }
 
@@ -140,7 +117,7 @@ if ($isCommissionCheckout) {
         LEFT JOIN categories c ON o.commission_category_id = c.id
         LEFT JOIN commission_requests cr ON cr.order_id = o.id
         LEFT JOIN users ua ON cr.artist_id = ua.id
-        WHERE o.id = ? AND o.order_type = 'commission' AND o.order_status = 'confirmed' AND o.price_status = 'accepted' AND o.payment_status = 'pending'
+        WHERE o.id = ? AND o.order_type = 'commission' AND o.order_status = 'assigned' AND o.price_status = 'accepted' AND o.payment_status = 'pending'
     ");
     $stmt->bind_param('i', $commissionOrderId);
     $stmt->execute();
@@ -302,8 +279,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
                     $stmt->bind_param('ssssssi', $paymentMethod, $screenshotPath, $address, $city, $phone, $notes, $orderId);
                     $stmt->execute();
                     
+                    $stmtStatusUpdate = $conn->prepare("UPDATE orders SET order_status = 'payment_review' WHERE id = ?");
+                    $stmtStatusUpdate->bind_param('i', $orderId);
+                    $stmtStatusUpdate->execute();
+
                     $historyNote = 'Buyer submitted payment details (' . strtoupper($paymentMethod) . '). Awaiting admin verification.';
-                    $stmtHistory = $conn->prepare("INSERT INTO order_status_history (order_id, status_from, status_to, changed_by_role, changed_by_id, notes) VALUES (?, 'confirmed', 'confirmed', 'buyer', ?, ?)");
+                    $stmtHistory = $conn->prepare("INSERT INTO order_status_history (order_id, status_from, status_to, changed_by_role, changed_by_id, notes) VALUES (?, 'assigned', 'payment_review', 'buyer', ?, ?)");
                     $stmtHistory->bind_param('iis', $orderId, $buyerId, $historyNote);
                     $stmtHistory->execute();
 
@@ -884,13 +865,24 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data.shipping_fee !== undefined) {
                 const newShipping = parseFloat(data.shipping_fee);
                 const newTotal = subtotal + newShipping;
-                
+
                 shippingAmountEl.textContent = 'PKR ' + newShipping.toLocaleString();
                 totalAmountEl.textContent = 'PKR ' + newTotal.toLocaleString();
-                
-                // Enable button
+
+                // Show per-item breakdown if available
+                let breakdownEl = document.getElementById('shipping-breakdown');
+                if (!breakdownEl) {
+                    breakdownEl = document.createElement('p');
+                    breakdownEl.id = 'shipping-breakdown';
+                    breakdownEl.style.cssText = 'font-size:10px;color:var(--muted);margin-top:4px;line-height:1.6;';
+                    shippingAmountEl.parentElement.parentElement.after(breakdownEl);
+                }
+                if (data.breakdown && data.breakdown.length > 0) {
+                    breakdownEl.innerHTML = data.breakdown.map(b => '• ' + b).join('<br>');
+                }
+
                 placeOrderBtn.disabled = false;
-                if(warningMsg) warningMsg.style.display = 'none';
+                if (warningMsg) warningMsg.style.display = 'none';
             }
         })
         .catch(err => {

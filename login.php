@@ -60,7 +60,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'login
     if (!$email || !$password) {
         $error = 'Please enter your email and password.';
     } else {
-        $stmt = $conn->prepare("SELECT id, name, password_hash, role, status FROM users WHERE email = ? LIMIT 1");
+        $stmt = $conn->prepare("SELECT id, name, password_hash, role, status, status_reason FROM users WHERE email = ? LIMIT 1");
         $stmt->bind_param('s', $email);
         $stmt->execute();
         $user = $stmt->get_result()->fetch_assoc();
@@ -69,7 +69,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'login
         } elseif (!password_verify($password, $user['password_hash'])) {
             $error = 'Wrong password. Try again.';
         } elseif ($user['status'] === 'blocked') {
-            $error = 'Your account has been blocked. Contact support.';
+            $error = 'Your account has been suspended.' . (!empty($user['status_reason']) ? ' Reason: ' . $user['status_reason'] : ' Please contact support.');
         } elseif ($user['status'] === 'pending') {
             $error = 'Your account is pending approval.';
         } else {
@@ -186,25 +186,25 @@ if ($step === 'login' && isset($_SESSION['fp_step'])) {
 html,body{height:100%;overflow:hidden;}
 body{font-family:'DM Sans',sans-serif;background:#f5f5f5;min-height:100vh;display:flex;align-items:center;justify-content:center;}
 .wrap{display:flex;width:760px;height:480px;border-radius:24px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.12),0 2px 8px rgba(0,0,0,0.06);background:#fff;}
-.left{width:40%;background:#0a0a0a;padding:36px 28px;display:flex;flex-direction:column;justify-content:space-between;position:relative;overflow:hidden;}
+.left{width:40%;background:#0C3F30;padding:36px 28px;display:flex;flex-direction:column;justify-content:space-between;position:relative;overflow:hidden;}
 .left::after{content:'';position:absolute;bottom:-60px;right:-60px;width:220px;height:220px;border:1px solid #1e1e1e;border-radius:50%;}
 .left::before{content:'';position:absolute;bottom:-30px;right:-30px;width:140px;height:140px;border:1px solid #1e1e1e;border-radius:50%;}
 .left-tag{font-size:11px;letter-spacing:3px;color:#555;text-transform:uppercase;font-weight:400;z-index:1;}
 .left-content{z-index:1;}
 .left-headline{font-family:'Playfair Display',serif;font-size:32px;color:#fff;line-height:1.2;font-weight:400;}
-.left-sub{font-size:12px;color:#555;line-height:1.7;margin-top:14px;}
-.left-footer{font-size:11px;color:#444;z-index:1;}
+.left-sub{font-size:12px;color:#fff;line-height:1.7;margin-top:14px;}
+.left-footer{font-size:11px;color:#fff;z-index:1;}
 .right{flex:1;padding:36px 40px;display:flex;flex-direction:column;justify-content:center;overflow:hidden;}
 .right h2{font-family:'Playfair Display',serif;font-size:26px;font-weight:400;color:#0a0a0a;margin-bottom:4px;}
 .right p.sub{font-size:12px;color:#999;margin-bottom:24px;}
 label{display:block;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#888;margin-bottom:6px;font-weight:500;}
 .input-wrap{position:relative;}
 input[type=email],input[type=password],input[type=text]{width:100%;border:none;border-bottom:1.5px solid #e0e0e0;padding:8px 0;font-size:14px;font-family:'DM Sans',sans-serif;color:#0a0a0a;outline:none;background:transparent;transition:border-color .2s;}
-input:focus{border-bottom-color:#0a0a0a;}
+input:focus{border-bottom-color:#0C3F30;}
 .toggle-pw{position:absolute;right:0;top:8px;cursor:pointer;font-size:11px;color:#aaa;letter-spacing:0.5px;text-transform:uppercase;background:none;border:none;font-family:'DM Sans',sans-serif;}
 .field{margin-bottom:20px;}
-button[type=submit]{width:100%;background:#0a0a0a;color:#fff;border:none;padding:13px;font-size:13px;font-family:'DM Sans',sans-serif;letter-spacing:1.5px;text-transform:uppercase;cursor:pointer;margin-top:4px;transition:background .2s;border-radius:10px;}
-button[type=submit]:hover{background:#333;}
+button[type=submit]{width:100%;background:#0C3F30;color:#fff;border:none;padding:13px;font-size:13px;font-family:'DM Sans',sans-serif;letter-spacing:1.5px;text-transform:uppercase;cursor:pointer;margin-top:4px;transition:background .2s;border-radius:10px;}
+button[type=submit]:hover{background:#0a5240;}
 .bottom-link{text-align:center;margin-top:18px;font-size:12px;color:#999;}
 .bottom-link a{color:#0a0a0a;font-weight:500;text-decoration:none;}
 .msg{padding:10px 14px;font-size:12px;margin-bottom:16px;border-left:3px solid;border-radius:0 8px 8px 0;line-height:1.4;}

@@ -19,7 +19,7 @@ function getCartCount() {
         return (int)($row['total'] ?? 0);
     }
     
-    // If guest, count from session (only count artworks, skip commissions if any)
+    // If guest, count from session
     $count = 0;
     foreach ($_SESSION['cart'] as $item) {
         if (($item['type'] ?? 'artwork') === 'artwork') {
@@ -62,164 +62,98 @@ if ($isLoggedIn) {
     }
 }
 
-// ── Handle AJAX Add to Cart (returns JSON) ───────────────
+// Pre-selected Artist from URL (e.g., index.php?artist=5)
+ $preSelectedArtistId = isset($_GET['artist']) ? (int)$_GET['artist'] : null;
+ $preSelectedArtistName = null;
+
+if ($preSelectedArtistId) {
+    $stmt = $conn->prepare("SELECT u.name FROM users u LEFT JOIN artist_profiles ap ON u.id = ap.user_id WHERE u.id = ? AND u.role = 'artist' AND u.status = 'active'");
+    $stmt->bind_param('i', $preSelectedArtistId);
+    $stmt->execute();
+    $artist = $stmt->get_result()->fetch_assoc();
+    if ($artist) {
+        $preSelectedArtistName = $artist['name'];
+    }
+}
+
+// ── Handle AJAX Add to Cart ───────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'ajax_add_to_cart') {
     header('Content-Type: application/json');
-    
-    if (!$isLoggedIn) {
-        echo json_encode(['success' => false, 'redirect' => 'login.php']);
-        exit;
-    }
-
+    if (!$isLoggedIn) { echo json_encode(['success' => false, 'redirect' => 'login.php']); exit; }
     $artworkId = (int)($_POST['artwork_id'] ?? 0);
-    if (!$artworkId) {
-        echo json_encode(['success' => false, 'error' => 'Invalid artwork']);
-        exit;
-    }
-
-    // Fetch artwork details from DB to ensure accuracy
+    if (!$artworkId) { echo json_encode(['success' => false, 'error' => 'Invalid artwork']); exit; }
+    
     $awStmt = $conn->prepare("SELECT a.id, a.title, a.price, a.status, u.name AS artist_name, u.id AS artist_id, (SELECT ai.image_path FROM artwork_images ai WHERE ai.artwork_id = a.id AND ai.is_cover = 1 LIMIT 1) AS cover_image FROM artworks a JOIN users u ON a.artist_id = u.id WHERE a.id = ? AND a.status IN ('approved', 'sold')");
     $awStmt->bind_param('i', $artworkId);
     $awStmt->execute();
     $aw = $awStmt->get_result()->fetch_assoc();
-
-    if (!$aw) {
-        echo json_encode(['success' => false, 'error' => 'Artwork not found']);
-        exit;
-    }
+    if (!$aw) { echo json_encode(['success' => false, 'error' => 'Artwork not found']); exit; }
 
     $buyerId = (int)$_SESSION['user_id'];
-    $itemType = 'artwork';
-    $qty = 1;
-
-    $ins = $conn->prepare("
-        INSERT INTO shopping_cart (buyer_id, item_type, item_id, quantity) 
-        VALUES (?, ?, ?, ?) 
-        ON DUPLICATE KEY UPDATE quantity = quantity + 1
-    ");
+    $itemType = 'artwork'; $qty = 1;
+    $ins = $conn->prepare("INSERT INTO shopping_cart (buyer_id, item_type, item_id, quantity) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE quantity = quantity + 1");
     $ins->bind_param('isii', $buyerId, $itemType, $artworkId, $qty);
     $ins->execute();
 
-    // Get updated cart count
     $count = getCartCount();
-
-    // Keep session in sync
     if (!isset($_SESSION['cart'])) $_SESSION['cart'] = [];
     $found = false;
     foreach ($_SESSION['cart'] as &$ci) {
         if (($ci['type'] ?? '') === 'artwork' && ($ci['id'] ?? 0) == $artworkId) {
-            $ci['quantity'] = ($ci['quantity'] ?? 0) + 1;
-            $found = true;
-            break;
+            $ci['quantity'] = ($ci['quantity'] ?? 0) + 1; $found = true; break;
         }
     }
     unset($ci);
     if (!$found) {
-        $_SESSION['cart'][] = [
-            'type' => 'artwork',
-            'id' => $artworkId,
-            'artwork_id' => $artworkId,
-            'quantity' => 1,
-            'artwork_title' => $aw['title'],
-            'artwork_price' => $aw['price'],
-            'artist_name' => $aw['artist_name'],
-            'artist_id' => $aw['artist_id'],
-            'artwork_image' => $aw['cover_image'] ?? ''
-        ];
+        $_SESSION['cart'][] = ['type' => 'artwork', 'id' => $artworkId, 'artwork_id' => $artworkId, 'quantity' => 1, 'artwork_title' => $aw['title'], 'artwork_price' => $aw['price'], 'artist_name' => $aw['artist_name'], 'artist_id' => $aw['artist_id'], 'artwork_image' => $aw['cover_image'] ?? ''];
     }
-
     echo json_encode(['success' => true, 'count' => $count]);
     exit;
 }
 
-// Handle add to cart (normal form submission fallback)
+// Handle add to cart (fallback)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'add_to_cart') {
-    if (!$isLoggedIn) {
-        $_SESSION['redirect_after_login'] = 'index.php';
-        header('Location: login.php');
-        exit;
-    }
-
+    if (!$isLoggedIn) { $_SESSION['redirect_after_login'] = 'index.php'; header('Location: login.php'); exit; }
     $artworkId = (int)($_POST['artwork_id'] ?? 0);
     $artworkTitle = trim($_POST['artwork_title'] ?? '');
     $artworkPrice = (float)($_POST['artwork_price'] ?? 0);
-    $artistName = trim($_POST['artist_name'] ?? '');
-    $artistId = (int)($_POST['artist_id'] ?? 0);
+    $artistName = trim($_POST['artist_name'] ?? ''); $artistId = (int)($_POST['artist_id'] ?? 0);
     $artworkImage = trim($_POST['artwork_image'] ?? '');
-    
     if ($artworkId && $artworkTitle && $artworkPrice) {
-        $buyerId = (int)$_SESSION['user_id'];
-        $itemType = 'artwork';
-        
-        $qty = 1;
-        $ins = $conn->prepare("
-            INSERT INTO shopping_cart (buyer_id, item_type, item_id, quantity) 
-            VALUES (?, ?, ?, ?) 
-            ON DUPLICATE KEY UPDATE quantity = quantity + 1
-        ");
+        $buyerId = (int)$_SESSION['user_id']; $itemType = 'artwork'; $qty = 1;
+        $ins = $conn->prepare("INSERT INTO shopping_cart (buyer_id, item_type, item_id, quantity) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE quantity = quantity + 1");
         $ins->bind_param('isii', $buyerId, $itemType, $artworkId, $qty);
-        $ins->execute();
-        $cartAdded = true;
-        
+        $ins->execute(); $cartAdded = true;
         $found = false;
         foreach ($_SESSION['cart'] as &$ci) {
-            if (($ci['type'] ?? '') === 'artwork' && ($ci['id'] ?? 0) == $artworkId) {
-                $ci['quantity'] = ($ci['quantity'] ?? 0) + 1;
-                $found = true;
-                break;
-            }
+            if (($ci['type'] ?? '') === 'artwork' && ($ci['id'] ?? 0) == $artworkId) { $ci['quantity'] = ($ci['quantity'] ?? 0) + 1; $found = true; break; }
         }
         unset($ci);
-        if (!$found) {
-            $_SESSION['cart'][] = [
-                'type' => 'artwork',
-                'id' => $artworkId,
-                'artwork_id' => $artworkId,
-                'quantity' => 1,
-                'artwork_title' => $artworkTitle,
-                'artwork_price' => $artworkPrice,
-                'artist_name' => $artistName,
-                'artist_id' => $artistId,
-                'artwork_image' => $artworkImage
-            ];
-        }
-    } else {
-        $cartError = true;
-    }
+        if (!$found) { $_SESSION['cart'][] = ['type' => 'artwork', 'id' => $artworkId, 'artwork_id' => $artworkId, 'quantity' => 1, 'artwork_title' => $artworkTitle, 'artwork_price' => $artworkPrice, 'artist_name' => $artistName, 'artist_id' => $artistId, 'artwork_image' => $artworkImage]; }
+    } else { $cartError = true; }
 }
 
-// Handle inquiry submission (Updated for unified orders table)
+// Handle inquiry submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'contact_buy') {
     $artworkId = (int)($_POST['artwork_id'] ?? 0);
-    $buyerName = trim($_POST['buyer_name'] ?? ''); 
-    $buyerEmail = trim($_POST['buyer_email'] ?? '');
-    $buyerPhone = trim($_POST['buyer_phone'] ?? ''); 
-    $message = trim($_POST['message'] ?? '');
-    
-    if (!$buyerName || !$buyerEmail) { 
-        $inquiryError = "Name and email are required."; 
-    } else {
+    $buyerName = trim($_POST['buyer_name'] ?? ''); $buyerEmail = trim($_POST['buyer_email'] ?? '');
+    $buyerPhone = trim($_POST['buyer_phone'] ?? ''); $message = trim($_POST['message'] ?? '');
+    if (!$buyerName || !$buyerEmail) { $inquiryError = "Name and email are required."; } else {
         $artwork = $conn->query("SELECT price FROM artworks WHERE id = $artworkId")->fetch_assoc();
-        $price = $artwork['price'] ?? 0;
-        $orderNumber = 'INQ-' . time() . '-' . rand(1000, 9999);
-        
+        $price = $artwork['price'] ?? 0; $orderNumber = 'INQ-' . time() . '-' . rand(1000, 9999);
         $stmt = $conn->prepare("INSERT INTO orders (buyer_id, guest_name, guest_email, guest_phone, order_number, order_type, order_status, subtotal, shipping_fee, discount, total, payment_method, payment_status, shipping_address, shipping_city, shipping_phone, buyer_notes, created_at, updated_at) VALUES (NULL, ?, ?, ?, ?, 'artwork', 'pending', ?, 0, 0, ?, 'cod', 'pending', 'TBD', 'TBD', ?, ?, NOW(), NOW())");
         $stmt->bind_param("ssssdddss", $buyerName, $buyerEmail, $buyerPhone, $orderNumber, $price, $price, $buyerPhone, $message);
         $inquirySuccess = $stmt->execute();
-        
         if ($inquirySuccess) {
             $orderId = $conn->insert_id;
             $ins = $conn->prepare("INSERT INTO order_items (order_id, item_type, item_id, quantity, price, item_status) VALUES (?, 'artwork', ?, 1, ?, 'pending')");
-            $ins->bind_param("iid", $orderId, $artworkId, $price);
-            $ins->execute();
-        } else {
-            $inquiryError = "Failed to submit. Please try again.";
-        }
+            $ins->bind_param("iid", $orderId, $artworkId, $price); $ins->execute();
+        } else { $inquiryError = "Failed to submit. Please try again."; }
     }
 }
 
 // ============================================================
-// HANDLE COMMISSION FORM SUBMISSION (Unified with commission.php)
+// HANDLE COMMISSION FORM SUBMISSION (UNIFIED WITH COMMISSION.PHP)
 // ============================================================
  $commissionError = false;
 
@@ -235,11 +169,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'commi
     $description = trim($_POST['description'] ?? '');
     $referenceImage = null;
 
-    // Handle reference image upload
+    // ── NEW FIELDS ───────────────────────────────────────
+    $commissionSize        = trim($_POST['commission_size'] ?? '');
+    $commissionFramed      = trim($_POST['commission_framed'] ?? '');
+    $commissionQuantity    = !empty($_POST['commission_quantity']) ? (int)$_POST['commission_quantity'] : 1;
+    $commissionDeliveryCity = trim($_POST['commission_delivery_city'] ?? '');
+
+    // Handle reference image upload (Increased size to 10MB)
     if (isset($_FILES['reference_image']) && $_FILES['reference_image']['error'] === UPLOAD_ERR_OK) {
         $file = $_FILES['reference_image'];
         $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-        $maxSize = 2 * 1024 * 1024;
+        $maxSize = 10 * 1024 * 1024; // 10MB
         $allowedExt = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
         if ($file['size'] <= $maxSize && in_array($ext, $allowedExt)) {
             $dir = __DIR__ . '/uploads/commissions/';
@@ -251,41 +191,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'commi
         }
     }
 
-    // Validate required fields
     if (!$buyerName || !$buyerEmail || !$description) {
         $commissionError = "Name, email, and description are required.";
     } else {
-        // Map artwork_type to a category slug → commission_category_id
         $commissionCategoryId = null;
         if (!empty($artworkType)) {
-            $slugMap = [
-                'painting'     => 'painting',
-                'portrait'     => 'portrait',
-                'digital_art'  => 'digital-art',
-                'calligraphy'  => 'calligraphy',
-                'abstract'     => 'custom-orders',
-                'landscape'    => 'custom-orders',
-                'other'        => 'custom-orders'
-            ];
+            $slugMap = ['painting'=>'painting','portrait'=>'portrait','digital_art'=>'digital-art','calligraphy'=>'calligraphy','abstract'=>'custom-orders','landscape'=>'custom-orders','other'=>'custom-orders'];
             $slug = $slugMap[$artworkType] ?? 'custom-orders';
             $catSlug = $conn->real_escape_string($slug);
             $catRes = $conn->query("SELECT id FROM categories WHERE slug = '$catSlug' LIMIT 1");
-            if ($catRow = $catRes->fetch_assoc()) {
-                $commissionCategoryId = (int)$catRow['id'];
-            }
+            if ($catRow = $catRes->fetch_assoc()) $commissionCategoryId = (int)$catRow['id'];
         }
 
-        // Determine buyer_id: logged-in user or NULL for guest
         $buyerId = (isset($_SESSION['user_id'])) ? (int)$_SESSION['user_id'] : null;
-
-        // Generate unique order number
         $orderNumber = 'COM-' . time() . '-' . rand(1000, 9999);
+        $subtotal = $budgetMin ?? 0; $total = $subtotal;
 
-        // Price placeholder = budget_min or 0 (will be confirmed/agreed later)
-        $subtotal = $budgetMin ?? 0;
-        $total    = $subtotal;
+        // Map artwork_type to DB ENUM
+        $framedMap = ['unframed'=>'unframed','framed_basic'=>'framed','framed_premium'=>'framed','stretched_canvas'=>'unframed'];
+        $commissionFramed = $framedMap[$commissionFramed] ?? 'not_specified';
 
-        // Insert into orders with order_type='commission'
         $stmt = $conn->prepare("
             INSERT INTO orders (
                 buyer_id, guest_name, guest_email, guest_phone,
@@ -296,26 +221,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'commi
                 commission_description, commission_reference_image,
                 commission_deadline, commission_category_id,
                 budget_min, budget_max,
+                commission_size, commission_framed, commission_quantity, commission_delivery_city,
                 created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, 'commission', 'pending', ?, 0, 0, ?, 'cod', 'pending', '', '', '', ?, ?, ?, ?, ?, ?, NOW(), NOW())
+            ) VALUES (?, ?, ?, ?, ?, 'commission', 'pending', ?, 0, 0, ?, 'cod', 'pending', '', '', '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
         ");
 
         $stmt->bind_param(
-            "issssddsssidd",
+            "issssddsssiddssis",
             $buyerId, $buyerName, $buyerEmail, $buyerPhone,
             $orderNumber,
             $subtotal, $total,
             $description, $referenceImage,
             $deadline, $commissionCategoryId,
-            $budgetMin, $budgetMax
+            $budgetMin, $budgetMax,
+            $commissionSize, $commissionFramed, $commissionQuantity, $commissionDeliveryCity
         );
 
         $commissionSuccess = $stmt->execute();
 
         if ($commissionSuccess) {
             $newOrderId = $conn->insert_id;
-
-            // Insert bridge row in commission_requests (order_id + artist_id)
             if ($requestedArtistId) {
                 $cr = $conn->prepare("INSERT INTO commission_requests (order_id, artist_id, created_at, updated_at) VALUES (?, ?, NOW(), NOW())");
                 $cr->bind_param("ii", $newOrderId, $requestedArtistId);
@@ -325,15 +250,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'commi
             }
             $cr->execute();
 
-            // Log initial status in order_status_history
             $changedByRole = isset($_SESSION['user_id']) ? 'buyer' : 'system';
             $changedById   = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 'NULL';
-            $conn->query("
-                INSERT INTO order_status_history (order_id, status_from, status_to, notes, changed_by_role, changed_by_id, created_at)
-                VALUES ($newOrderId, NULL, 'pending', 'Commission request submitted', '$changedByRole', $changedById, NOW())
-            ");
+            $conn->query("INSERT INTO order_status_history (order_id, status_from, status_to, notes, changed_by_role, changed_by_id, created_at) VALUES ($newOrderId, NULL, 'pending', 'Commission request submitted', '$changedByRole', $changedById, NOW())");
 
-            // Redirect to buyer account page with confirmation flag
             header("Location: dashboard/buyer/account.php?commission_submitted=1");
             exit;
         } else {
@@ -343,14 +263,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'commi
 }
 
 function getImgUrl($p) {
-    if (!$p) return null;
-    $p = ltrim($p, './');
+    if (!$p) return null; $p = ltrim($p, './');
     if (strpos($p, 'uploads/') !== false) return $p;
     return 'uploads/artworks/' . $p;
 }
 function getProfileUrl($p) {
-    if (!$p) return null;
-    $p = ltrim($p, './');
+    if (!$p) return null; $p = ltrim($p, './');
     if (strpos($p, 'uploads/') !== false) return $p;
     return 'uploads/profiles/' . $p;
 }
@@ -546,11 +464,6 @@ h1.htitle em{font-style:italic;color:var(--ink);}
 .mcls{background:var(--sand);border:none;border-radius:6px;width:28px;height:28px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--ink);flex-shrink:0;}
 .mcls:hover{background:var(--border);}
 .mbd{padding:14px 24px 24px;}
-.m-aw-row{background:var(--sand);border-radius:8px;padding:10px 13px;margin-bottom:14px;display:flex;align-items:center;gap:10px;}
-.m-aw-thumb{width:38px;height:38px;border-radius:6px;overflow:hidden;background:var(--border);flex-shrink:0;}
-.m-aw-thumb img{width:100%;height:100%;object-fit:cover;}
-.m-aw-info strong{font-size:12.5px;color:var(--ink);font-weight:500;display:block;}
-.m-aw-info span{font-size:11px;color:var(--ink);}
 .fg{margin-bottom:12px;}
 .fg label{display:block;font-size:10.5px;letter-spacing:.7px;text-transform:uppercase;color:var(--body);font-weight:500;margin-bottom:5px;}
 .fg label span{color:var(--ink);}
@@ -558,6 +471,7 @@ h1.htitle em{font-style:italic;color:var(--ink);}
 .fi:focus,.fs:focus,.ft:focus{border-color:var(--ink);}
 .ft{min-height:86px;resize:vertical;line-height:1.55;}
 .frow{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.fr3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;}
 .msub{width:100%;background:var(--sand);color:var(--ink);border:none;padding:11px;border-radius:8px;font-size:13px;font-weight:500;font-family:'DM Sans',sans-serif;cursor:pointer;margin-top:2px;transition:background .12s;}
 .msub:hover{background:#c4b69e;}
 .mmsg{padding:9px 12px;border-radius:7px;font-size:12px;margin-bottom:12px;}
@@ -580,8 +494,6 @@ h1.htitle em{font-style:italic;color:var(--ink);}
 #nav-overlay { display:none; }
 
 /* ─── RESPONSIVE ─── */
-
-/* Tablet (max-width: 1080px) */
 @media(max-width:1080px){
   .cat-row{grid-template-columns:repeat(5,1fr);}
   .mid{grid-template-columns:1fr;}
@@ -589,68 +501,39 @@ h1.htitle em{font-style:italic;color:var(--ink);}
   .how-grid{grid-template-columns:repeat(2,1fr);}
   .fg-foot{grid-template-columns:1fr 1fr;}
 }
-
-/* Mobile (max-width: 768px) */
 @media(max-width:768px){
-  /* Nav */
   .nlinks,.nsearch{display:none;}
-  
-  /* Hero: Stack vertically, keep image */
   .hero{grid-template-columns:1fr;padding:28px 16px;gap:28px;}
   .himg{display:block;}
-  
-  /* Layout */
   .wrap{padding:0 16px;}
-  
-  /* Categories: 3 columns, 6 items shown */
   .cat-row{grid-template-columns:repeat(3,1fr);}
   .cat-row.hidden-cats .cat-item:nth-child(n+7){display:none;}
   .cat-more-btn{display:block;}
-
-  /* Featured Artworks: 2 columns */
   .feat-aw-grid{grid-template-columns:repeat(2,1fr);}
-  
-  /* Featured Artists: 2 columns */
   .ar-grid{grid-template-columns:1fr 1fr;}
-  
-  /* Latest Artworks: 2 columns */
   .latest-grid{grid-template-columns:repeat(2,1fr);}
-  
-  /* How It Works: 2 columns */
   .how-grid{grid-template-columns:repeat(2,1fr);}
-  
-  /* Commission Strip: Stacked */
   .comm-strip{grid-template-columns:1fr;padding:26px 22px;gap:18px;}
-  
-  /* Footer: 1 column */
   .fg-foot{display:flex;flex-direction:column;align-items:center;text-align:center;padding:20px 16px;}
   .fc{display:none;}
   .fb{margin-bottom:12px;}
   .fb b{font-size:16px;}
   .fb p{font-size:10px;}
   .fbot{flex-direction:column;gap:12px;text-align:center;font-size:10px;padding-top:14px;}
-
-  /* Hamburger Menu & Drawer */
   .nend .btn-ghost, .nend .btn-dark, .nend span { display:none; }
-  
   .ham-btn { display:flex; flex-direction:column; justify-content:center; gap:5px; background:transparent; border:none; cursor:pointer; padding:6px; margin-left:auto;}
   .ham-btn span { display:block; width:22px; height:2px; background:var(--bg); border-radius:2px; }
-
   #nav-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:298; }
   #nav-overlay.open { display:block; }
-
   #nav-drawer { display:flex; flex-direction:column; position:fixed; top:0; right:0; width:75vw; max-width:300px; height:100vh; background:var(--ink); z-index:299; transform:translateX(100%); transition:transform 0.3s ease; padding:0; overflow-y:auto; }
   #nav-drawer.open { transform:translateX(0); }
-  
   .drawer-top { display:flex; align-items:center; justify-content:space-between; padding:18px 20px; border-bottom:1px solid rgba(246,237,222,0.1); }
   .drawer-logo b { font-family:'Playfair Display',serif; font-size:16px; color:var(--bg); display:block; }
   .drawer-logo small { font-size:7px; letter-spacing:2px; text-transform:uppercase; color:var(--sand); }
   .drawer-close { background:transparent; border:none; color:var(--bg); font-size:18px; cursor:pointer; padding:4px; }
-  
   .drawer-links { display:flex; flex-direction:column; padding:12px 0; }
   .drawer-links a { color:var(--bg); font-size:14px; padding:13px 20px; border-bottom:1px solid rgba(246,237,222,0.07); transition:background 0.12s; }
   .drawer-links a:hover { background:rgba(246,237,222,0.06); }
-  
   .drawer-actions { margin-top:auto; padding:20px; display:flex; flex-direction:column; gap:10px; border-top:1px solid rgba(246,237,222,0.1); }
   .drawer-cart { color:var(--bg); font-size:13.5px; padding:8px 0; }
   .drawer-btn-ghost { font-size:13px; color:var(--bg); padding:9px 14px; border-radius:6px; border:1px solid rgba(246,237,222,0.4); text-align:center; transition:all 0.12s; }
@@ -851,7 +734,7 @@ h1.htitle em{font-style:italic;color:var(--ink);}
     <p class="cs-desc">Request a custom artwork from our talented Pakistani artists. Portraits, calligraphy, illustrations — anything you can imagine.</p>
   </div>
   <div class="cs-r">
-    <button class="btn-gold" onclick="document.getElementById('cm').classList.add('open')">Request Custom Artwork <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>
+    <button class="btn-gold" onclick="document.getElementById('cm').classList.add('open')">Request Custom Artwork <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></button>
   </div>
 </div></div>
 
@@ -859,10 +742,7 @@ h1.htitle em{font-style:italic;color:var(--ink);}
 
 <!-- LATEST ARTWORKS -->
 <div class="wrap"><div class="sec">
-  <div class="sec-hd"><h2 class="sec-title">Latest Artworks</h2><a href="artworks.php" class="sec-lnk">View all artworks</a></div>
-  <?php if (empty($latestArtworks)): ?>
-    <p style="color:var(--ink);font-size:13px;padding:16px 0;">No artworks yet — check back soon.</p>
-  <?php else: ?>
+  <div class="sec-hd"><h2 class="sec-title">Latest Artworks</h2><a href="artworks.php" class="sec-lnk">View all</a></div>
   <div class="latest-grid">
     <?php foreach ($latestArtworks as $art): $img = getImgUrl($art['cover_image']); ?>
     <div class="aw-card">
@@ -896,15 +776,7 @@ h1.htitle em{font-style:italic;color:var(--ink);}
     </div>
     <?php endforeach; ?>
   </div>
-  <?php endif; ?>
 </div></div>
-
-<!-- TOAST NOTIFICATION -->
-<div id="toast" class="toast">
-  <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
-  <span id="toastMessage"></span>
-  <a href="cart.php">View Cart →</a>
-</div>
 
 <!-- FOOTER -->
 <footer class="footer">
@@ -919,18 +791,141 @@ h1.htitle em{font-style:italic;color:var(--ink);}
   </div>
 </footer>
 
+<!-- COMMISSION MODAL -->
+<div class="mbg" id="cm">
+  <div class="modal">
+    <div class="mhd">
+      <h3>Request a custom artwork</h3>
+      <button class="mcls" onclick="document.getElementById('cm').classList.remove('open')">✕</button>
+    </div>
+    <div class="mbd">
+      <p style="font-size:12px;color:var(--muted);margin-bottom:8px;">Fill out the form and we'll connect you with the perfect artist. Your details are safe with us.</p>
+<p style="font-size:11px;color:var(--ink);background:var(--sand);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:12px;line-height:1.6;">Submit your custom artwork request. The artist/platform will review the details, confirm pricing, timeline, and shipping before payment. <strong>Official payment instructions will only be shared by Art Bazaar Pakistan.</strong></p>
+      
+      <?php if ($commissionError): ?>
+        <div class="mmsg er"><?= htmlspecialchars($commissionError) ?></div>
+      <?php endif; ?>
+      
+      <form method="POST" enctype="multipart/form-data" id="commission-form">
+        <input type="hidden" name="action" value="commission_request">
+        
+        <div class="frow">
+          <div class="fg">
+            <label>Your Name <span>*</span></label>
+            <input type="text" name="buyer_name" class="fi" placeholder="Full name" value="<?= $prefillName ?>" required>
+          </div>
+          <div class="fg">
+            <label>Email <span>*</span></label>
+            <input type="email" name="buyer_email" class="fi" placeholder="you@example.com" value="<?= $prefillEmail ?>" required>
+          </div>
+        </div>
+        
+        <div class="fg">
+          <label>Phone / WhatsApp</label>
+          <input type="tel" name="buyer_phone" class="fi" placeholder="+92 300 0000000" value="<?= $prefillPhone ?>">
+          <p style="font-size:10px;color:var(--muted);margin-top:4px;">Used only by Art Bazaar Pakistan for order updates.</p>
+        </div>
+        
+        <div class="fg">
+          <label>Preferred Artist <span style="font-size:10px;color:var(--muted);font-weight:400;">(optional)</span></label>
+          <select name="requested_artist_id" class="fs" id="cm-artist-select">
+            <option value="">— Any artist (we'll find the best match) —</option>
+            <?php foreach ($availableArtists as $a): ?>
+              <option value="<?= $a['id'] ?>" <?= ($preSelectedArtistId == $a['id']) ? 'selected' : '' ?>>
+                <?= htmlspecialchars($a['name']) ?>
+                <?php if ($a['city']): ?> (<?= htmlspecialchars($a['city']) ?>)<?php endif; ?>
+                <?php if ($a['art_style']): ?> — <?= htmlspecialchars($a['art_style']) ?><?php endif; ?>
+              </option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+        
+        <div class="fr3">
+          <div class="fg">
+            <label>Artwork Type</label>
+            <select name="artwork_type" class="fs">
+              <option value="">Select type...</option>
+              <option value="painting">Painting</option>
+              <option value="portrait">Portrait</option>
+              <option value="digital_art">Digital Art</option>
+              <option value="calligraphy">Calligraphy</option>
+              <option value="abstract">Abstract</option>
+              <option value="landscape">Landscape</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div class="fg">
+            <label>Budget Min (PKR)</label>
+            <input type="number" name="budget_min" class="fi" placeholder="5000">
+          </div>
+          <div class="fg">
+            <label>Budget Max (PKR)</label>
+            <input type="number" name="budget_max" class="fi" placeholder="15000">
+          </div>
+        </div>
+        <p style="font-size:10px;color:var(--muted);margin-top:-8px;margin-bottom:12px;">This is an estimated budget. Final pricing will be confirmed after review.</p>
+        <div class="fg">
+          <label>Preferred Deadline</label>
+          <input type="date" name="deadline" class="fi">
+        </div>
+        
+        <!-- ADDED NEW FIELDS -->
+        <div class="frow">
+            <div class="fg">
+                <label>Artwork Size</label>
+                <input type="text" name="commission_size" class="fi" placeholder="e.g. 18 x 24 inches">
+            </div>
+            <div class="fg">
+                <label>Framed / Unframed</label>
+                <select name="commission_framed" class="fs">
+                    <option value="unframed">Unframed (Canvas/Paper)</option>
+                    <option value="framed_basic">Framed (Basic)</option>
+                    <option value="framed_premium">Framed (Premium)</option>
+                    <option value="stretched_canvas">Stretched Canvas (No Frame)</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="frow">
+            <div class="fg">
+                <label>Quantity</label>
+                <input type="number" name="commission_quantity" class="fi" value="1" min="1">
+            </div>
+            <div class="fg">
+                <label>Delivery City</label>
+                <input type="text" name="commission_delivery_city" class="fi" placeholder="e.g. Lahore">
+            </div>
+        </div>
+        
+        <div class="fg">
+          <label>Describe Your Request <span>*</span></label>
+          <textarea name="description" class="ft" placeholder="Tell us what you want — subject, colors, size, style preferences, any specific details..." required></textarea>
+        </div>
+        
+        <div class="fg">
+          <label>Reference Image <span style="font-size:10px;color:var(--muted);font-weight:400;">(optional, max 10MB)</span></label>
+          <input type="file" name="reference_image" class="fi" accept="image/jpeg,image/png,image/webp,image/gif">
+          <p style="font-size:10px;color:var(--muted);margin-top:4px;">Upload a reference image to help the artist understand your idea better.</p>
+        </div>
+        
+        <button type="submit" class="msub">Submit Commission Request</button>
+      </form>
+    </div>
+  </div>
+</div>
+
 <!-- DRAWER & OVERLAY -->
 <div id="nav-overlay"></div>
 <div id="nav-drawer">
   <div class="drawer-top">
-    <div class="drawer-logo"><b>Art Bazaar</b><small>Marketplace</small></div>
+    <div class="drawer-logo"><img src="logo.png" alt="Art Bazaar" style="height:36px;width:auto;display:block;"></div>
     <button class="drawer-close" aria-label="Close menu">✕</button>
   </div>
   <div class="drawer-links">
     <a href="artworks.php">Explore Art</a>
     <a href="artists.php">Artists</a>
-    <a href="blog.php">Blog</a> 
-    <a href="commission.php">Commission Art</a>
+    <a href="blog.php">Blog</a>
+    <a href="commission.php" class="active">Commission Art</a>
     <a href="sell.php">Sell Your Art</a>
     <a href="about.php">About Us</a>
     <a href="contact.php">Contact</a>
@@ -947,82 +942,8 @@ h1.htitle em{font-style:italic;color:var(--ink);}
   </div>
 </div>
 
-<!-- BUY MODAL (kept for inquiry option) -->
-<div class="mbg" id="bm">
-  <div class="modal">
-    <div class="mhd"><h3>Contact to Buy</h3><button class="mcls" onclick="document.getElementById('bm').classList.remove('open')"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
-    <div class="mbd">
-      <?php if ($inquirySuccess): ?><div class="mmsg ok">✓ Inquiry submitted! We'll be in touch soon.</div><?php endif; ?>
-      <?php if ($inquiryError): ?><div class="mmsg er"><?= htmlspecialchars($inquiryError) ?></div><?php endif; ?>
-      <div class="m-aw-row" id="bm-aw"></div>
-      <form method="POST">
-        <input type="hidden" name="action" value="contact_buy">
-        <input type="hidden" name="artwork_id" id="bm-id">
-        <div class="frow">
-          <div class="fg"><label>Your Name <span>*</span></label><input type="text" name="buyer_name" class="fi" placeholder="Full name" required></div>
-          <div class="fg"><label>Email <span>*</span></label><input type="email" name="buyer_email" class="fi" placeholder="you@example.com" required></div>
-        </div>
-        <div class="fg"><label>Phone / WhatsApp</label><input type="tel" name="buyer_phone" class="fi" placeholder="+92 300 0000000"></div>
-        <div class="fg"><label>Message</label><textarea name="message" class="ft" placeholder="Any questions about the artwork..."></textarea></div>
-        <button type="submit" class="msub">Send Inquiry</button>
-      </form>
-    </div>
-  </div>
-</div>
-
-<!-- COMMISSION MODAL -->
-<div class="mbg" id="cm">
-  <div class="modal">
-    <div class="mhd"><h3>Request Custom Artwork</h3><button class="mcls" onclick="document.getElementById('cm').classList.remove('open')"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
-    <div class="mbd">
-      <?php if ($commissionError): ?><div class="mmsg er"><?= htmlspecialchars($commissionError) ?></div><?php endif; ?>
-      <form method="POST" enctype="multipart/form-data">
-        <input type="hidden" name="action" value="commission_request">
-        <div class="frow">
-          <div class="fg"><label>Your Name <span>*</span></label><input type="text" name="buyer_name" class="fi" placeholder="Full name" value="<?= $prefillName ?>" required></div>
-          <div class="fg"><label>Email <span>*</span></label><input type="email" name="buyer_email" class="fi" placeholder="you@example.com" value="<?= $prefillEmail ?>" required></div>
-        </div>
-        <div class="fg"><label>Phone / WhatsApp</label><input type="tel" name="buyer_phone" class="fi" placeholder="+92 300 0000000" value="<?= $prefillPhone ?>"></div>
-        <div class="fg"><label>Preferred Artist <span style="font-size:10px;color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
-          <select name="requested_artist_id" class="fs" id="cm-artist">
-            <option value="">— Any artist (we'll find the best match) —</option>
-            <?php foreach ($availableArtists as $a): ?>
-              <option value="<?= $a['id'] ?>">
-                <?= htmlspecialchars($a['name']) ?>
-                <?php if ($a['city']): ?> (<?= htmlspecialchars($a['city']) ?>)<?php endif; ?>
-                <?php if ($a['art_style']): ?> — <?= htmlspecialchars($a['art_style']) ?><?php endif; ?>
-              </option>
-            <?php endforeach; ?>
-          </select>
-        </div>
-        <div class="frow">
-          <div class="fg"><label>Artwork Type</label>
-            <select name="artwork_type" class="fs">
-              <option value="">Select type...</option>
-              <option value="painting">Painting</option>
-              <option value="portrait">Portrait</option>
-              <option value="digital_art">Digital Art</option>
-              <option value="calligraphy">Calligraphy</option>
-              <option value="abstract">Abstract</option>
-              <option value="landscape">Landscape</option>
-              <option value="other">Other</option>
-            </select>
-          </div>
-          <div class="fg"><label>Deadline</label><input type="date" name="deadline" class="fi"></div>
-        </div>
-        <div class="frow">
-          <div class="fg"><label>Budget Min (PKR)</label><input type="number" name="budget_min" class="fi" placeholder="5000"></div>
-          <div class="fg"><label>Budget Max (PKR)</label><input type="number" name="budget_max" class="fi" placeholder="15000"></div>
-        </div>
-        <div class="fg"><label>Description <span>*</span></label><textarea name="description" class="ft" placeholder="Describe what you want in detail..." required></textarea></div>
-        <div class="fg"><label>Reference Image <span style="color:var(--ink);font-size:9px;text-transform:none;letter-spacing:0">(optional, max 2MB)</span></label><input type="file" name="reference_image" class="fi" accept="image/jpeg,image/png,image/webp,image/gif" style="padding:7px 12px;"></div>
-        <button type="submit" class="msub">Submit Commission Request</button>
-      </form>
-    </div>
-  </div>
-</div>
-
 <script>
+// Hamburger drawer
 const hamBtn = document.querySelector('.ham-btn');
 const navDrawer = document.getElementById('nav-drawer');
 const navOverlay = document.getElementById('nav-overlay');
@@ -1032,81 +953,23 @@ if(hamBtn) hamBtn.addEventListener('click', openDrawer);
 if(navOverlay) navOverlay.addEventListener('click', closeDrawer);
 document.querySelector('.drawer-close')?.addEventListener('click', closeDrawer);
 
+// Commission Modal Helper
+function openCM(id, name) {
+    const modal = document.getElementById('cm');
+    const select = document.getElementById('cm-artist-select');
+    modal.classList.add('open');
+    if (id && select) {
+        select.value = id;
+    }
+}
+
+// Categories Toggle
 function toggleCategories() {
   const row = document.getElementById('cat-row');
-  row.classList.toggle('hidden-cats');
   const btn = document.querySelector('.cat-more-btn');
+  row.classList.toggle('hidden-cats');
   btn.textContent = row.classList.contains('hidden-cats') ? '+ More Categories' : '- Show Less';
 }
-
-function openBuy(id,title,artist,img){
-  document.getElementById('bm-id').value=id;
-  document.getElementById('bm-aw').innerHTML=`<div class="m-aw-thumb">${img?`<img src="${img}" alt="">`:''}</div><div class="m-aw-info"><strong>${title}</strong><span>by ${artist}</span></div>`;
-  document.getElementById('bm').classList.add('open');
-}
-function openCM(id,name){
-  const s=document.getElementById('cm-artist');
-  if(s&&id)s.value=id;
-  document.getElementById('cm').classList.add('open');
-}
-function showToast(message) {
-  const toast = document.getElementById('toast');
-  const toastMessage = document.getElementById('toastMessage');
-  toastMessage.textContent = message;
-  toast.classList.add('show');
-  setTimeout(() => {
-    toast.classList.remove('show');
-  }, 3000);
-}
-
-function updateCartBadge(count) {
-  const cartIcon = document.querySelector('.cart-icon');
-  const existingCount = document.querySelector('.cart-count');
-  if (count > 0) {
-    if (existingCount) {
-      existingCount.textContent = count;
-    } else if (cartIcon) {
-      const newSpan = document.createElement('span');
-      newSpan.className = 'cart-count';
-      newSpan.textContent = count;
-      cartIcon.appendChild(newSpan);
-    }
-  } else if (existingCount) {
-    existingCount.remove();
-  }
-}
-
-document.querySelectorAll('.mbg').forEach(b=>b.addEventListener('click',e=>{if(e.target===b)b.classList.remove('open');}));
-
-// Handle add to cart form submissions with AJAX
-document.querySelectorAll('.add-to-cart-form').forEach(form => {
-  form.addEventListener('submit', function(e) {
-    e.preventDefault();
-    const formData = new FormData(this);
-    formData.set('action', 'ajax_add_to_cart');
-    
-    fetch('index.php', {
-      method: 'POST',
-      body: formData
-    }).then(r => r.json()).then(data => {
-      if (data.success) {
-        showToast('✓ Added to cart!');
-        updateCartBadge(data.count || 0);
-      } else if (data.redirect) {
-        window.location.href = data.redirect;
-      }
-    }).catch(() => {
-      // Fallback: submit normally
-      this.submit();
-    });
-  });
-});
-
-<?php if ($cartAdded): ?>
-showToast('✓ Added to cart!');
-<?php endif; ?>
-<?php if ($inquirySuccess||$inquiryError): ?>document.getElementById('bm').classList.add('open');<?php endif; ?>
-<?php if ($commissionError): ?>document.getElementById('cm').classList.add('open');<?php endif; ?>
 </script>
 </body>
 </html>
