@@ -7,6 +7,14 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'artist') {
     header('Location: ../../login.php');
     exit;
 }
+$__userStatus = $conn->query("SELECT status, status_reason FROM users WHERE id = {$_SESSION['user_id']}")->fetch_assoc();
+if ($__userStatus['status'] === 'blocked') {
+    session_destroy();
+    header('Location: ../../login.php?blocked=1&reason=' . urlencode($__userStatus['status_reason'] ?? ''));
+    exit;
+}
+
+$artistId = (int) $_SESSION['user_id'];  // ← whatever comes next in the file
 
  $artistId   = (int) $_SESSION['user_id'];
  $artistName = $_SESSION['name'] ?? 'Artist';
@@ -40,8 +48,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $city                   = trim($_POST['city'] ?? '');
     $description            = trim($_POST['description'] ?? '');
     $tags                   = trim($_POST['tags'] ?? '');
-    $delivery_available     = isset($_POST['delivery_available']) ? 1 : 0;
-    $similar_work_available = isset($_POST['similar_work_available']) ? 1 : 0;
+    $delivery_available = 1;
+$similar_work_available = isset($_POST['similar_work_available']) ? 1 : 0;
+$is_framed              = isset($_POST['is_framed']) ? 1 : 0;
+    $weight_kg              = (float)($_POST['weight_kg'] ?? 1.00);
 
     // Validation: Check if the 'images' input actually has files
     $hasFiles = isset($_FILES['images']) && isset($_FILES['images']['name'][0]) && $_FILES['images']['name'][0] !== '';
@@ -52,12 +62,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         // 1. Insert Artwork
         $stmt = $conn->prepare("
-            INSERT INTO artworks 
-            (artist_id, category_id, title, description, tags, medium, size, price, city, delivery_available, similar_work_available, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
-        ");
-        // FIX: Type string changed from 'iissssddsii' to 'iisssssdsii' (added 6th 's' for $tags)
-        $stmt->bind_param('iisssssdsii', $artistId, $categoryId, $title, $description, $tags, $medium, $size, $price, $city, $delivery_available, $similar_work_available);
+    INSERT INTO artworks 
+    (artist_id, category_id, title, description, tags, medium, size, is_framed, weight_kg, price, city, delivery_available, similar_work_available, status)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
+");
+$stmt->bind_param('iisssssiddsii', $artistId, $categoryId, $title, $description, $tags, $medium, $size, $is_framed, $weight_kg, $price, $city, $delivery_available, $similar_work_available);
         
         if ($stmt->execute()) {
             $artworkId = $conn->insert_id;
@@ -416,6 +425,17 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
                 <svg class="upload-icon" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                 <div class="upload-title">Click to upload images</div>
                 <div class="upload-hint">Up to 5 images · Max 3MB each · First image will be the cover.</div>
+<div style="margin-top:14px;text-align:left;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px 14px;">
+    <div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;font-weight:600;color:var(--ink);margin-bottom:8px;">Image Guidelines</div>
+    <ul style="list-style:none;display:flex;flex-direction:column;gap:5px;">
+        <li style="font-size:11px;color:var(--ink);">✓ Clear, well-lit photo of the actual artwork</li>
+        <li style="font-size:11px;color:var(--ink);">✗ No watermarks covering the artwork</li>
+        <li style="font-size:11px;color:var(--ink);">✗ Do not upload stolen or unoriginal work</li>
+        <li style="font-size:11px;color:var(--ink);">✗ No copyrighted characters (Disney, Marvel, etc.) unless you hold the rights</li>
+        <li style="font-size:11px;color:var(--ink);">✗ No AI-generated artwork</li>
+    </ul>
+    <div style="font-size:10px;color:var(--ink);opacity:0.6;margin-top:8px;border-top:1px solid var(--border);padding-top:8px;">Violations may result in artwork rejection or account suspension.</div>
+</div>
                 <input type="file" name="images[]" id="fileInput" accept="image/jpeg,image/png,image/webp" multiple hidden>
             </div>
 
@@ -462,6 +482,17 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
 
             <div class="form-grid">
                 <div class="field-group">
+                    <label>Weight (kg) <span>*</span></label>
+                    <input type="number" name="weight_kg" class="field-input" placeholder="e.g. 1.5" min="0.1" step="0.1" value="1" required>
+                    <p style="font-size:11px;color:var(--muted);margin-top:6px;">Used to calculate shipping fee. Add +100 PKR per kg above 1 kg.</p>
+                </div>
+                <div class="field-group">
+                    <!-- Spacer -->
+                </div>
+            </div>
+
+            <div class="form-grid">
+                <div class="field-group">
                     <label>City <span>*</span></label>
                     <input type="text" name="city" class="field-input" placeholder="e.g. Lahore" required>
                 </div>
@@ -488,11 +519,11 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
             <!-- ── Toggles ───────────────────────────── -->
             <div class="toggle-row">
                 <div>
-                    <div class="toggle-label">Delivery Available</div>
-                    <span class="toggle-desc">Can you ship this artwork to other cities?</span>
+                    <div class="toggle-label">Framed</div>
+                    <span class="toggle-desc">Is this artwork framed and ready to hang?</span>
                 </div>
                 <label class="toggle-switch">
-                    <input type="checkbox" name="delivery_available" value="1">
+                    <input type="checkbox" name="is_framed" value="1">
                     <span class="toggle-slider"></span>
                 </label>
             </div>
@@ -559,6 +590,7 @@ const dropZone = document.getElementById('dropZone');
 const fileInput = document.getElementById('fileInput');
 const previewGrid = document.getElementById('previewGrid');
 const previewCounter = document.getElementById('previewCounter');
+const uploadForm = document.getElementById('uploadForm');
 
 let currentFiles = [];
 
@@ -582,7 +614,6 @@ fileInput.addEventListener('change', function(e) {
     });
     
     renderPreviews();
-    updateFileInput();
 });
 
 function renderPreviews() {
@@ -600,51 +631,93 @@ function renderPreviews() {
                 <button type="button" class="remove-preview" data-index="${index}" title="Remove image">×</button>
             `;
             previewGrid.appendChild(div);
+            
+            // Attach remove event listener to the newly created button
+            div.querySelector('.remove-preview').addEventListener('click', function(e) {
+                e.stopPropagation(); // Prevent triggering dropZone click
+                const idx = parseInt(this.getAttribute('data-index'));
+                removeFileAtIndex(idx);
+            });
         };
         reader.readAsDataURL(file);
     });
     
     // Update counter text
     previewCounter.innerHTML = `${currentFiles.length} / 5 images selected`;
-    previewCounter.querySelector('span')?.classList.add('highlight'); // Optional visual cue
-    
-    // Attach remove event listeners after DOM update
-    document.querySelectorAll('.remove-preview').forEach(btn => {
-        btn.addEventListener('click', function(e) {
-            e.stopPropagation(); // Prevent triggering dropZone click
-            const idx = parseInt(this.getAttribute('data-index'));
-            removeFileAtIndex(idx);
-        });
-    });
 }
 
 function removeFileAtIndex(index) {
     currentFiles.splice(index, 1);
     renderPreviews();
-    updateFileInput();
 }
 
-function updateFileInput() {
-    // Create a new FileList-like object using DataTransfer so the form submits correctly
-    const dataTransfer = new DataTransfer();
-    currentFiles.forEach(file => {
-        dataTransfer.items.add(file);
-    });
-    fileInput.files = dataTransfer.files;
-    
-    // Toggle required attribute to pass browser validation
-    if (currentFiles.length > 0) {
-        fileInput.removeAttribute('required');
-    } else {
-        fileInput.setAttribute('required', 'required');
+// ── Form Submission via Fetch & FormData ──────────────────────────────────
+uploadForm.addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    // Validate files presence
+    if (currentFiles.length === 0) {
+        alert('Please upload at least one image.');
+        return;
     }
-}
+
+    const submitBtn = uploadForm.querySelector('button[type="submit"]');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Uploading…';
+
+    const formData = new FormData(uploadForm);
+    
+    // Delete any existing 'images' entries from the native form data 
+    // (in case the hidden input somehow retained default values)
+    formData.delete('images');
+
+    // Append the files from our JS array
+    currentFiles.forEach(file => {
+        formData.append('images[]', file);
+    });
+
+    try {
+        const response = await fetch(window.location.href, {
+            method: 'POST',
+            body: formData
+        });
+
+        if (response.redirected) {
+            // PHP header("Location: ...") was successful
+            window.location.href = response.url;
+        } else {
+            // Request finished but no redirect => Server-side validation error occurred
+            const text = await response.text();
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(text, 'text/html');
+            const errorDiv = doc.querySelector('.msg');
+            
+            // Remove any existing error messages on the current page
+            const existingMsg = document.querySelector('.msg');
+            if (existingMsg) existingMsg.remove();
+            
+            if (errorDiv) {
+                // Insert the server-generated error message before the form
+                uploadForm.parentNode.insertBefore(errorDiv, uploadForm);
+            }
+            
+            // Re-enable the submit button
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalText;
+        }
+    } catch (error) {
+        console.error('Upload failed:', error);
+        alert('An error occurred during upload. Please try again.');
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalText;
+    }
+});
 
 // Optional: Clear all on form reset (if you add a reset button)
-document.getElementById('uploadForm').addEventListener('reset', function() {
+uploadForm.addEventListener('reset', function() {
     currentFiles = [];
     renderPreviews();
-    updateFileInput();
 });
 </script>
 

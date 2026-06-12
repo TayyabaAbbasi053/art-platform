@@ -279,14 +279,30 @@ img{max-width:100%;display:block;}
   </div>
 
   <!-- STATS -->
-  <div class="section">
-    <div class="stats-grid">
-      <div class="stat-card"><div class="stat-number">200+</div><div class="stat-label">Artists</div></div>
-      <div class="stat-card"><div class="stat-number">500+</div><div class="stat-label">Artworks</div></div>
-      <div class="stat-card"><div class="stat-number">20+</div><div class="stat-label">Cities</div></div>
-      <div class="stat-card"><div class="stat-number">100%</div><div class="stat-label">Pakistani</div></div>
-    </div>
+  <?php
+// Fetch live stats
+$artistCount = 0;
+$artworkCount = 0;
+$cityCount = 0;
+
+$r = $conn->query("SELECT COUNT(*) as cnt FROM users WHERE role='artist' AND status='active'");
+if ($r) $artistCount = (int)$r->fetch_assoc()['cnt'];
+
+$r = $conn->query("SELECT COUNT(*) as cnt FROM artworks WHERE status='approved'");
+if ($r) $artworkCount = (int)$r->fetch_assoc()['cnt'];
+
+$r = $conn->query("SELECT COUNT(DISTINCT city) as cnt FROM artworks WHERE status='approved' AND city IS NOT NULL AND city != ''");
+if ($r) $cityCount = (int)$r->fetch_assoc()['cnt'];
+?>
+<!-- STATS -->
+<div class="section">
+  <div class="stats-grid">
+    <div class="stat-card"><div class="stat-number"><?= $artistCount ?>+</div><div class="stat-label">Artists</div></div>
+    <div class="stat-card"><div class="stat-number"><?= $artworkCount ?>+</div><div class="stat-label">Artworks</div></div>
+    <div class="stat-card"><div class="stat-number"><?= $cityCount ?>+</div><div class="stat-label">Cities</div></div>
+    <div class="stat-card"><div class="stat-number">100%</div><div class="stat-label">Pakistani</div></div>
   </div>
+</div>
 
   <!-- STORY TWO COLUMN -->
   <div class="two-col">

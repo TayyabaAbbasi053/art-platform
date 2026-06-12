@@ -75,11 +75,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'commi
     $description = trim($_POST['description'] ?? '');
     $referenceImage = null;
 
-    // Handle reference image upload
+    // ── NEW FIELDS ───────────────────────────────────────
+    $commissionSize        = trim($_POST['commission_size'] ?? '');
+    $commissionFramed      = trim($_POST['commission_framed'] ?? '');
+    $commissionQuantity    = !empty($_POST['commission_quantity']) ? (int)$_POST['commission_quantity'] : 1;
+    $commissionDeliveryCity = trim($_POST['commission_delivery_city'] ?? '');
+
+    // Handle reference image upload (Increased size to 10MB)
     if (isset($_FILES['reference_image']) && $_FILES['reference_image']['error'] === UPLOAD_ERR_OK) {
         $file = $_FILES['reference_image'];
         $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-        $maxSize = 2 * 1024 * 1024;
+        $maxSize = 10 * 1024 * 1024; // CHANGED: 2MB -> 10MB
         $allowedExt = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
         if ($file['size'] <= $maxSize && in_array($ext, $allowedExt)) {
             $dir = __DIR__ . '/uploads/commissions/';
@@ -126,6 +132,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'commi
         $total    = $subtotal;
 
         // Insert into orders with order_type='commission'
+        // NOTE: Added commission_size, commission_framed, commission_quantity, commission_delivery_city
+        // Assuming columns exist in 'orders' table or mapping to appropriate text fields.
+        // If these columns don't exist in your DB yet, the query will fail.
         $stmt = $conn->prepare("
             INSERT INTO orders (
                 buyer_id, guest_name, guest_email, guest_phone,
@@ -136,19 +145,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'commi
                 commission_description, commission_reference_image,
                 commission_deadline, commission_category_id,
                 budget_min, budget_max,
+                commission_size, commission_framed, commission_quantity, commission_delivery_city,
                 created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, 'commission', 'pending', ?, 0, 0, ?, 'cod', 'pending', '', '', '', ?, ?, ?, ?, ?, ?, NOW(), NOW())
+            ) VALUES (?, ?, ?, ?, ?, 'commission', 'pending', ?, 0, 0, ?, 'cod', 'pending', '', '', '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
         ");
 
-        $stmt->bind_param(
-            "issssddsssidd",
-            $buyerId, $buyerName, $buyerEmail, $buyerPhone,
-            $orderNumber,
-            $subtotal, $total,
-            $description, $referenceImage,
-            $deadline, $commissionCategoryId,
-            $budgetMin, $budgetMax
-        );
+        // Remap form values to valid DB ENUM values
+$framedMap = [
+    'unframed'         => 'unframed',
+    'framed_basic'     => 'framed',
+    'framed_premium'   => 'framed',
+    'stretched_canvas' => 'unframed',
+];
+$commissionFramed = $framedMap[$commissionFramed] ?? 'not_specified';
+
+$stmt->bind_param(
+    "issssddsssiddssis",
+    $buyerId, $buyerName, $buyerEmail, $buyerPhone,
+    $orderNumber,
+    $subtotal, $total,
+    $description, $referenceImage,
+    $deadline, $commissionCategoryId,
+    $budgetMin, $budgetMax,
+    $commissionSize, $commissionFramed, $commissionQuantity, $commissionDeliveryCity
+);
 
         $commissionSuccess = $stmt->execute();
 
@@ -457,8 +477,10 @@ img{max-width:100%;display:block;}
   <!-- RIGHT: FORM -->
   <div class="form-card">
     <div class="form-pane">
+      <!-- Updated Title & Subtitle with Safety Note -->
       <h2 class="form-title">Request a custom artwork</h2>
-      <p class="form-sub">Fill out the form and we'll connect you with the perfect artist. We'll review your request and get back to you shortly.</p>
+      <p class="form-sub">Fill out the form and we'll connect you with the perfect artist. Your details are safe with us, and all payments are handled securely through Art Bazaar.</p>
+<p style="font-size:11.5px;color:var(--ink);background:var(--sand);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:4px;line-height:1.6;">Submit your custom artwork request. The artist/platform will review the details, confirm pricing, timeline, and shipping before payment. <strong>Official payment instructions will only be shared by Art Bazaar Pakistan.</strong></p>
       
       <?php if ($commissionError): ?>
         <div class="mmsg er"><?= htmlspecialchars($commissionError) ?></div>
@@ -481,6 +503,8 @@ img{max-width:100%;display:block;}
         <div class="fg">
           <label>Phone / WhatsApp</label>
           <input type="tel" name="buyer_phone" class="fi" placeholder="+92 300 0000000" value="<?= $prefillPhone ?>">
+          <!-- Added Helper Text -->
+          <p style="font-size:10px;color:var(--muted);margin-top:4px;">Used for delivery updates only. Not shared with artists.</p>
         </div>
         
         <div class="fg">
@@ -520,10 +544,40 @@ img{max-width:100%;display:block;}
             <input type="number" name="budget_max" class="fi" placeholder="15000">
           </div>
         </div>
-        
+        <!-- Added Helper Text -->
+        <p style="font-size:10px;color:var(--muted);margin-top:-8px;margin-bottom:16px;">Setting a realistic budget helps us match you with the right artist faster.</p>
+
         <div class="fg">
-          <label>Desired Deadline</label>
+          <label>Preferred Deadline</label>
           <input type="date" name="deadline" class="fi">
+        </div>
+        
+        <!-- ADDED NEW FIELDS -->
+        <div class="frow">
+            <div class="fg">
+                <label>Artwork Size</label>
+                <input type="text" name="commission_size" class="fi" placeholder="e.g. 18 x 24 inches">
+            </div>
+            <div class="fg">
+                <label>Framed / Unframed</label>
+                <select name="commission_framed" class="fs">
+                    <option value="unframed">Unframed (Canvas/Paper)</option>
+                    <option value="framed_basic">Framed (Basic)</option>
+                    <option value="framed_premium">Framed (Premium)</option>
+                    <option value="stretched_canvas">Stretched Canvas (No Frame)</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="frow">
+            <div class="fg">
+                <label>Quantity</label>
+                <input type="number" name="commission_quantity" class="fi" value="1" min="1">
+            </div>
+            <div class="fg">
+                <label>Delivery City</label>
+                <input type="text" name="commission_delivery_city" class="fi" placeholder="e.g. Lahore">
+            </div>
         </div>
         
         <div class="fg">
@@ -532,7 +586,7 @@ img{max-width:100%;display:block;}
         </div>
         
         <div class="fg">
-          <label>Reference Image <span style="font-size:10px;color:var(--muted);font-weight:400;">(optional, max 2MB)</span></label>
+          <label>Reference Image <span style="font-size:10px;color:var(--muted);font-weight:400;">(optional, max 10MB)</span></label>
           <input type="file" name="reference_image" class="fi" accept="image/jpeg,image/png,image/webp,image/gif">
           <p style="font-size:10px;color:var(--muted);margin-top:4px;">Upload a reference image to help the artist understand your idea better.</p>
         </div>

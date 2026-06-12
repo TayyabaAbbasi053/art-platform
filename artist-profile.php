@@ -22,12 +22,14 @@ function getCartCount() {
     // If guest, count from session
     $count = 0;
     foreach ($_SESSION['cart'] as $item) {
-        $count += $item['quantity'];
+        if (($item['type'] ?? 'artwork') === 'artwork') {
+            $count += $item['quantity'];
+        }
     }
     return $count;
 }
 
-// Check if logged in (for mobile drawer)
+// Check if logged in
  $isLoggedIn = isset($_SESSION['user_id']);
 
  $artistId = (int)($_GET['id'] ?? 0);
@@ -103,12 +105,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'commi
     $deadline    = !empty($_POST['deadline']) ? $_POST['deadline'] : null;
     $description = trim($_POST['description'] ?? ''); 
     $referenceImage = null;
+
+    // ── NEW FIELDS MAPPING ─────────────────────────────────────
+    $commissionSize        = trim($_POST['commission_size'] ?? '');
+    $commissionFramedRaw   = trim($_POST['commission_framed'] ?? '');
+    $commissionQuantity    = !empty($_POST['commission_quantity']) ? (int)$_POST['commission_quantity'] : 1;
+    $commissionDeliveryCity = trim($_POST['commission_delivery_city'] ?? '');
+
+    // Map form framing values to valid DB ENUM values
+    $framedMap = [
+        'unframed'         => 'unframed',
+        'framed_basic'     => 'framed',
+        'framed_premium'   => 'framed',
+        'stretched_canvas' => 'unframed',
+    ];
+    $commissionFramed = $framedMap[$commissionFramedRaw] ?? 'not_specified';
     
-    // Handle reference image upload
+    // Handle reference image upload (Increased size to 10MB)
     if (isset($_FILES['reference_image']) && $_FILES['reference_image']['error'] === UPLOAD_ERR_OK) {
         $file = $_FILES['reference_image']; 
         $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-        $maxSize = 2 * 1024 * 1024;
+        $maxSize = 10 * 1024 * 1024; // 10MB
         $allowedExt = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
         if ($file['size'] <= $maxSize && in_array($ext, $allowedExt)) {
             $dir = __DIR__ . '/uploads/commissions/';
@@ -123,7 +140,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'commi
     } else {
         // Map artwork_type to a category slug → commission_category_id
         $commissionCategoryId = null;
-        if ($artworkType) {
+        if (!empty($artworkType)) {
             $slugMap = [
                 'painting'     => 'painting',
                 'portrait'     => 'portrait',
@@ -152,6 +169,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'commi
         $total    = $subtotal;
 
         // Insert into orders with order_type='commission'
+        // NOTE: Added commission_size, commission_framed, commission_quantity, commission_delivery_city
         $stmt = $conn->prepare("
             INSERT INTO orders (
                 buyer_id, guest_name, guest_email, guest_phone,
@@ -162,18 +180,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'commi
                 commission_description, commission_reference_image,
                 commission_deadline, commission_category_id,
                 budget_min, budget_max,
+                commission_size, commission_framed, commission_quantity, commission_delivery_city,
                 created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, 'commission', 'pending', ?, 0, 0, ?, 'cod', 'pending', '', '', '', ?, ?, ?, ?, ?, ?, NOW(), NOW())
+            ) VALUES (?, ?, ?, ?, ?, 'commission', 'pending', ?, 0, 0, ?, 'cod', 'pending', '', '', '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
         ");
+        
         $stmt->bind_param(
-            "issssddsssidd",
+            "issssddsssiddssis",
             $buyerId, $buyerName, $buyerEmail, $buyerPhone,
             $orderNumber,
             $subtotal, $total,
             $description, $referenceImage,
             $deadline, $commissionCategoryId,
-            $budgetMin, $budgetMax
+            $budgetMin, $budgetMax,
+            $commissionSize, $commissionFramed, $commissionQuantity, $commissionDeliveryCity
         );
+
         $commissionSuccess = $stmt->execute();
         
         if ($commissionSuccess) {
@@ -334,7 +356,7 @@ img{max-width:100%;display:block;}
 /* ─── MODALS ─── */
 .mbg{display:none;position:fixed;inset:0;background:rgba(12,63,48,.58);backdrop-filter:blur(3px);z-index:500;align-items:center;justify-content:center;padding:16px;}
 .mbg.open{display:flex;}
-.modal{background:var(--card);border-radius:14px;width:100%;max-width:490px;max-height:92vh;overflow-y:auto;}
+.modal{background:var(--card);border-radius:14px;width:100%;max-width:500px;max-height:92vh;overflow-y:auto;}
 .mhd{padding:22px 24px 0;display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:4px;}
 .mhd h3{font-family:'Playfair Display',serif;font-size:21px;font-weight:400;color:var(--ink);}
 .mcls{background:var(--sand);border:none;border-radius:6px;width:28px;height:28px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--ink);flex-shrink:0;}
@@ -347,6 +369,7 @@ img{max-width:100%;display:block;}
 .fi:focus,.fs:focus,.ft:focus{border-color:var(--ink);}
 .ft{min-height:86px;resize:vertical;line-height:1.55;}
 .frow{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.fr3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;}
 .msub{width:100%;background:var(--ink);color:var(--bg);border:none;padding:11px;border-radius:8px;font-size:13px;font-weight:500;font-family:'DM Sans',sans-serif;cursor:pointer;margin-top:2px;transition:background .12s;}
 .msub:hover{background:var(--body);}
 .mmsg{padding:9px 12px;border-radius:7px;font-size:12px;margin-bottom:12px;}
@@ -499,13 +522,6 @@ img{max-width:100%;display:block;}
       <div class="stat"><div class="stat-num"><?= $availableCount ?></div><div class="stat-label">Available</div></div>
       <div class="stat"><div class="stat-num"><?= $soldCount ?></div><div class="stat-label">Sold</div></div>
     </div>
-    <?php if ($instagram): ?>
-      <a href="<?= htmlspecialchars($instagram) ?>" target="_blank" class="social-link">
-        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="5"/><line x1="17" y1="7" x2="17.01" y2="7"/></svg>
-        Instagram
-      </a>
-    <?php endif; ?>
-    <div>
       <?php if ($artist['accepts_commissions']): ?>
         <button class="comm-btn" onclick="openCM(<?= $artist['id'] ?>, '<?= addslashes($artist['name']) ?>')">
           <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
@@ -562,49 +578,112 @@ img{max-width:100%;display:block;}
 <!-- COMMISSION MODAL -->
 <div class="mbg" id="cm">
   <div class="modal">
-    <div class="mhd"><h3>Request Custom Artwork</h3><button class="mcls" onclick="document.getElementById('cm').classList.remove('open')"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
+    <div class="mhd">
+        <h3>Request Custom Artwork</h3>
+        <button class="mcls" onclick="document.getElementById('cm').classList.remove('open')">
+            <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+    </div>
     <div class="mbd">
+      <p style="font-size:11px;color:var(--ink);background:var(--sand);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:12px;line-height:1.6;">Submit your custom artwork request. The artist/platform will review the details, confirm pricing, timeline, and shipping before payment. <strong>Official payment instructions will only be shared by Art Bazaar Pakistan.</strong></p>
       <?php if ($commissionError): ?><div class="mmsg er"><?= htmlspecialchars($commissionError) ?></div><?php endif; ?>
       <form method="POST" enctype="multipart/form-data">
         <input type="hidden" name="action" value="commission_request">
+        
+        <!-- User Info -->
         <div class="frow">
           <div class="fg"><label>Your Name <span>*</span></label><input type="text" name="buyer_name" class="fi" placeholder="Full name" value="<?= $prefillName ?>" required></div>
           <div class="fg"><label>Email <span>*</span></label><input type="email" name="buyer_email" class="fi" placeholder="you@example.com" value="<?= $prefillEmail ?>" required></div>
         </div>
-        <div class="fg"><label>Phone / WhatsApp</label><input type="tel" name="buyer_phone" class="fi" placeholder="+92 300 0000000" value="<?= $prefillPhone ?>"></div>
-        <div class="fg"><label>Preferred Artist <span style="font-size:10px;color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
-          <select name="requested_artist_id" class="fs" id="cm-artist">
-            <option value="">— Any artist (we'll find the best match) —</option>
-            <?php foreach ($availableArtists as $a): ?>
-              <option value="<?= $a['id'] ?>">
-                <?= htmlspecialchars($a['name']) ?>
-                <?php if ($a['city']): ?> (<?= htmlspecialchars($a['city']) ?>)<?php endif; ?>
-                <?php if ($a['art_style']): ?> — <?= htmlspecialchars($a['art_style']) ?><?php endif; ?>
-              </option>
-            <?php endforeach; ?>
-          </select>
+        <div class="fg">
+            <label>Phone / WhatsApp</label>
+            <input type="tel" name="buyer_phone" class="fi" placeholder="+92 300 0000000" value="<?= $prefillPhone ?>">
+            <p style="font-size:10px;color:var(--muted);margin-top:4px;">Used for delivery updates only.</p>
         </div>
-        <div class="frow">
-          <div class="fg"><label>Artwork Type</label>
-            <select name="artwork_type" class="fs">
-              <option value="">Select type...</option>
-              <option value="painting">Painting</option>
-              <option value="portrait">Portrait</option>
-              <option value="digital_art">Digital Art</option>
-              <option value="calligraphy">Calligraphy</option>
-              <option value="abstract">Abstract</option>
-              <option value="landscape">Landscape</option>
-              <option value="other">Other</option>
+        
+        <!-- Artist Selection -->
+        <div class="fg">
+            <label>Preferred Artist <span style="font-size:10px;color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+            <select name="requested_artist_id" class="fs" id="cm-artist">
+                <option value="">— Any artist (we'll find the best match) —</option>
+                <?php foreach ($availableArtists as $a): ?>
+                <option value="<?= $a['id'] ?>">
+                    <?= htmlspecialchars($a['name']) ?>
+                    <?php if ($a['city']): ?> (<?= htmlspecialchars($a['city']) ?>)<?php endif; ?>
+                    <?php if ($a['art_style']): ?> — <?= htmlspecialchars($a['art_style']) ?><?php endif; ?>
+                </option>
+                <?php endforeach; ?>
             </select>
-          </div>
-          <div class="fg"><label>Deadline</label><input type="date" name="deadline" class="fi"></div>
         </div>
+        
+        <!-- Artwork Details -->
         <div class="frow">
-          <div class="fg"><label>Budget Min (PKR)</label><input type="number" name="budget_min" class="fi" placeholder="5000"></div>
-          <div class="fg"><label>Budget Max (PKR)</label><input type="number" name="budget_max" class="fi" placeholder="15000"></div>
+            <div class="fg">
+                <label>Artwork Type</label>
+                <select name="artwork_type" class="fs">
+                    <option value="">Select type...</option>
+                    <option value="painting">Painting</option>
+                    <option value="portrait">Portrait</option>
+                    <option value="digital_art">Digital Art</option>
+                    <option value="calligraphy">Calligraphy</option>
+                    <option value="abstract">Abstract</option>
+                    <option value="landscape">Landscape</option>
+                    <option value="other">Other</option>
+                </select>
+            </div>
+            <div class="fg">
+                <label>Preferred Deadline</label>
+                <input type="date" name="deadline" class="fi">
+            </div>
         </div>
-        <div class="fg"><label>Description <span>*</span></label><textarea name="description" class="ft" placeholder="Describe what you want in detail..." required></textarea></div>
-        <div class="fg"><label>Reference Image <span style="color:var(--ink);font-size:9px;text-transform:none;letter-spacing:0">(optional, max 2MB)</span></label><input type="file" name="reference_image" class="fi" accept="image/jpeg,image/png,image/webp,image/gif" style="padding:7px 12px;"></div>
+        
+        <!-- Budget -->
+        <div class="frow">
+            <div class="fg"><label>Budget Min (PKR)</label><input type="number" name="budget_min" class="fi" placeholder="5000"></div>
+            <div class="fg"><label>Budget Max (PKR)</label><input type="number" name="budget_max" class="fi" placeholder="15000"></div>
+        </div>
+        <p style="font-size:10px;color:var(--muted);margin-top:-8px;margin-bottom:12px;">Realistic budget helps us match you faster.</p>
+
+        <!-- NEW FIELDS BLOCK -->
+        <div class="frow">
+            <div class="fg">
+                <label>Artwork Size</label>
+                <input type="text" name="commission_size" class="fi" placeholder="e.g. 18 x 24 inches">
+            </div>
+            <div class="fg">
+                <label>Framed / Unframed</label>
+                <select name="commission_framed" class="fs">
+                    <option value="unframed">Unframed (Canvas/Paper)</option>
+                    <option value="framed_basic">Framed (Basic)</option>
+                    <option value="framed_premium">Framed (Premium)</option>
+                    <option value="stretched_canvas">Stretched Canvas (No Frame)</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="frow">
+            <div class="fg">
+                <label>Quantity</label>
+                <input type="number" name="commission_quantity" class="fi" value="1" min="1">
+            </div>
+            <div class="fg">
+                <label>Delivery City</label>
+                <input type="text" name="commission_delivery_city" class="fi" placeholder="e.g. Lahore">
+            </div>
+        </div>
+        
+        <!-- Description -->
+        <div class="fg">
+            <label>Description <span>*</span></label>
+            <textarea name="description" class="ft" placeholder="Describe what you want in detail..." required></textarea>
+        </div>
+        
+        <!-- Reference Image -->
+        <div class="fg">
+            <label>Reference Image <span style="color:var(--ink);font-size:9px;text-transform:none;letter-spacing:0">(optional, max 10MB)</span></label>
+            <input type="file" name="reference_image" class="fi" accept="image/jpeg,image/png,image/webp,image/gif" style="padding:7px 12px;">
+        </div>
+        
         <button type="submit" class="msub">Submit Commission Request</button>
       </form>
     </div>

@@ -277,29 +277,28 @@ img{max-width:100%;display:block;}
       <div class="contact-details">
         <div class="contact-item">
           <div class="contact-icon"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div>
-          <div class="contact-detail"><strong>Email</strong><span>info@artbazaar.pk</span></div>
+          <div class="contact-detail"><strong>Email</strong><span>teamartbazaar.pk@gmail.com</span></div>
         </div>
         <div class="contact-item">
           <div class="contact-icon"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.362 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg></div>
-          <div class="contact-detail"><strong>WhatsApp</strong><span>+92 300 123 4567</span></div>
-        </div>
-        <div class="contact-item">
-          <div class="contact-icon"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg></div>
-          <div class="contact-detail"><strong>Office</strong><span>Lahore, Pakistan</span></div>
+          <div class="contact-detail">
+    <strong>WhatsApp</strong>
+    <span style="display:block;margin-top:3px;">+92 303 5650362</span>
+    <span style="display:block;margin-top:3px;">+92 321 0903337</span>
+    <span style="display:block;margin-top:3px;">+92 315 1397068</span>
+    </div>
         </div>
       </div>
       
       <div class="social-links">
-        <a href="#" class="social-link"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="5"/><line x1="17" y1="7" x2="17.01" y2="7"/></svg></a>
-        <a href="#" class="social-link"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 2h-3a5 5 0 00-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 011-1h3z"/></svg></a>
-        <a href="#" class="social-link"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M23 3a10.9 10.9 0 01-3.14 1.53 4.48 4.48 0 00-7.86 3v1A10.66 10.66 0 013 4s-4 9 5 13a11.64 11.64 0 01-7 2c9 5 20 0 20-11.5a4.5 4.5 0 00-.08-.83A7.72 7.72 0 0023 3z"/></svg></a>
+        <a href="https://www.instagram.com/art_bazaar.pk?igsh=MWV2aHgyZGtybmhqaQ==" target="_blank" class="social-link" style="width:auto;padding:0 14px;border-radius:20px;gap:8px;font-size:12px;font-weight:500;">
+    <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="5"/><line x1="17" y1="7" x2="17.01" y2="7"/></svg>
+    Instagram
+</a>
       </div>
     </div>
     
-    <div class="map-placeholder">
-      <svg width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.2" viewBox="0 0 24 24"><path d="M12 2a7 7 0 00-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 00-7-7z"/><circle cx="12" cy="9" r="2"/></svg>
-      <p>Lahore, Pakistan — We're online, serving artists and collectors nationwide</p>
-    </div>
+    
   </div>
   
   <!-- RIGHT: FORM -->
@@ -334,6 +333,7 @@ img{max-width:100%;display:block;}
         <label>Phone / WhatsApp</label>
         <input type="tel" name="phone" class="fi" placeholder="+92 300 0000000" value="<?= htmlspecialchars($_POST['phone'] ?? '') ?>">
       </div>
+      
       
       <div class="fg">
         <label>Message <span>*</span></label>

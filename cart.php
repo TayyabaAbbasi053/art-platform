@@ -163,8 +163,8 @@ while ($row = $cartResult->fetch_assoc()) {
 
 // Subtotal and totals are artwork-only (commissions checkout separately)
  $subtotal = $artworkSubtotal;
- $shippingFee = $subtotal > 0 ? 350 : 0; // Only charge shipping if there are artwork items
- $total = $subtotal + $shippingFee;
+ $shippingFee = 0; // Shipping is calculated dynamically at checkout based on city and weight
+ $total = $subtotal; // Total shown in cart excludes shipping
 
 // Count artwork items for the checkout flow
  $artworkCount = 0;
@@ -504,7 +504,7 @@ img{max-width:100%;display:block;}
           </div>
           <div class="summary-row">
             <span>Shipping</span>
-            <span>PKR <?= number_format($shippingFee) ?></span>
+            <span style="color:var(--muted);font-style:italic;font-size:12px;">Calculated at checkout</span>
           </div>
           <div class="summary-row total">
             <span>Total</span>
@@ -536,9 +536,10 @@ img{max-width:100%;display:block;}
         <div class="summary-card">
           <div class="summary-title">Shipping Info</div>
           <p style="font-size:12px;color:var(--muted);line-height:1.6;">
-            Standard shipping across Pakistan: PKR 350.<br>
-            Delivery takes 3–7 business days.<br>
-            For custom commissions, timeline will be discussed with the artist.
+            Shipping is calculated at checkout based on your city and artwork weight.<br>
+            Same city: PKR 350/item. Different city: PKR 500/item.<br>
+            +PKR 100 per kg above 1 kg.<br>
+            Delivery takes 3–7 business days.
           </p>
         </div>
       </div>
