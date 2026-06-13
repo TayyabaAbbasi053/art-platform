@@ -83,7 +83,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_calculate_shippi
         $items[] = ['type' => $r['item_type'], 'id' => $r['item_id']];
     }
 
+    // Check if this is a commission checkout
+$commissionOrderIdAjax = isset($_POST['commission_order_id']) ? (int)$_POST['commission_order_id'] : 0;
+if ($commissionOrderIdAjax > 0) {
+    $crRes = $conn->query("SELECT cr.artist_id FROM commission_requests cr WHERE cr.order_id = $commissionOrderIdAjax LIMIT 1");
+    $artistIdAjax = $crRes ? ($crRes->fetch_assoc()['artist_id'] ?? null) : null;
+    $artistCityAjax = '';
+    if ($artistIdAjax) {
+        $apRes = $conn->query("SELECT city FROM artist_profiles WHERE user_id = $artistIdAjax LIMIT 1");
+        if ($apRes) $artistCityAjax = $apRes->fetch_assoc()['city'] ?? '';
+    }
+    $fee = (!empty($artistCityAjax) && strcasecmp(trim($buyerCity), trim($artistCityAjax)) === 0) ? 350 : 500;
+} else {
     $fee = calculateShippingServerSide($conn, $buyerCity, $items);
+}
 
     // Build breakdown for display
     $breakdown = [];
@@ -265,18 +278,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
             $conn->begin_transaction();
             try {
                 // Recalculate Shipping Server-Side based on submitted City
-                $finalShippingFee = $isCommissionCheckout ? 0 : calculateShippingServerSide($conn, $city, $cartItems);
-                $finalTotal = $subtotal + $finalShippingFee;
+                if ($isCommissionCheckout && $existingOrder) {
+    $artistId = $existingOrder['commission_artist_id'] ?? null;
+    $artistCity = '';
+    if ($artistId) {
+        $res = $conn->query("SELECT city FROM artist_profiles WHERE user_id = $artistId LIMIT 1");
+        if ($res) $artistCity = $res->fetch_assoc()['city'] ?? '';
+    }
+    $finalShippingFee = (!empty($artistCity) && strcasecmp(trim($city), trim($artistCity)) === 0) ? 350 : 500;
+} else {
+    $finalShippingFee = calculateShippingServerSide($conn, $city, $cartItems);
+}
+$finalTotal = $subtotal + $finalShippingFee;
 
                 if ($isCommissionCheckout && $existingOrder) {
                     $orderId = $existingOrder['id'];
                     $stmt = $conn->prepare("
-                        UPDATE orders SET 
-                            payment_method = ?, payment_screenshot = ?, shipping_address = ?, 
-                            shipping_city = ?, shipping_phone = ?, buyer_notes = ?, updated_at = NOW() 
-                        WHERE id = ?
-                    ");
-                    $stmt->bind_param('ssssssi', $paymentMethod, $screenshotPath, $address, $city, $phone, $notes, $orderId);
+    UPDATE orders SET 
+        payment_method = ?, payment_screenshot = ?, shipping_address = ?, 
+        shipping_city = ?, shipping_phone = ?, buyer_notes = ?,
+        shipping_fee = ?, total = ?,
+        updated_at = NOW() 
+    WHERE id = ?
+");
+$stmt->bind_param('ssssssddi', $paymentMethod, $screenshotPath, $address, $city, $phone, $notes, $finalShippingFee, $finalTotal, $orderId);
                     $stmt->execute();
                     
                     $stmtStatusUpdate = $conn->prepare("UPDATE orders SET order_status = 'payment_review' WHERE id = ?");
@@ -832,7 +857,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     let timeoutId;
 
-    if (cityInput && !isCommission) {
+    if (cityInput) {
         cityInput.addEventListener('input', function() {
             const city = this.value.trim();
             
@@ -854,7 +879,8 @@ document.addEventListener('DOMContentLoaded', () => {
     function fetchShipping(city) {
         const formData = new FormData();
         formData.append('ajax_calculate_shipping', '1');
-        formData.append('buyer_city', city);
+formData.append('buyer_city', city);
+formData.append('commission_order_id', '<?php echo $commissionOrderId; ?>');
 
         fetch('checkout.php', {
             method: 'POST',

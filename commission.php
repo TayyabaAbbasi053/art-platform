@@ -508,9 +508,9 @@ img{max-width:100%;display:block;}
         </div>
         
         <div class="fg">
-          <label>Preferred Artist <span style="font-size:10px;color:var(--muted);font-weight:400;">(optional)</span></label>
-          <select name="requested_artist_id" class="fs">
-            <option value="">— Any artist (we'll find the best match) —</option>
+          <label>Preferred Artist <span>*</span></label>
+          <select name="requested_artist_id" class="fs" required>
+            <option value="">— Select an artist —</option>
             <?php foreach ($availableArtists as $a): ?>
               <option value="<?= $a['id'] ?>" <?= ($preSelectedArtistId == $a['id']) ? 'selected' : '' ?>>
                 <?= htmlspecialchars($a['name']) ?>

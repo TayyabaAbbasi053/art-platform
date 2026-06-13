@@ -581,17 +581,6 @@ function buildQS($overrides = []) {
                         <td data-label="Status"><span class="pill <?= $item['item_status'] ?>"><?= ucfirst($item['item_status']) ?></span></td>
                         <td data-label="Actions">
                             <div class="td-actions">
-                                <form method="POST" style="display:inline" onsubmit="return confirm('Change status?')">
-                                    <input type="hidden" name="action" value="update_status">
-                                    <input type="hidden" name="id" value="<?= $item['id'] ?>">
-                                    <select name="new_status" class="status-select" onchange="this.form.submit()">
-                                        <?php 
-                                        $statuses = ['pending','payment_confirmed','processing','shipped','delivered','cancelled'];
-                                        foreach ($statuses as $s): ?>
-                                            <option value="<?= $s ?>" <?= $item['item_status'] === $s ? 'selected' : '' ?>><?= ucfirst($s) ?></option>
-                                        <?php endforeach; ?>
-                                    </select>
-                                </form>
                                 <button type="button" class="act-btn blue" onclick="openDetail(<?= $item['id'] ?>)">View</button>
                                 <form method="POST" style="display:inline" onsubmit="return confirm('Delete this order?')">
                                     <input type="hidden" name="action" value="delete">
