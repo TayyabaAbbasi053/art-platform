@@ -262,8 +262,8 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
 .signout-btn:hover { background: rgba(255,255,255,0.1); color: var(--bg); }
 
 /* Topbar */
-.topbar { position: fixed; top: 0; left: var(--sidebar); right: 0; height: var(--top); background: var(--card); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 32px; z-index: 99; }
-.topbar-left h1 { font-family: 'Playfair Display', serif; font-size: 20px; font-weight: 400; color: var(--ink); }
+.topbar { position: fixed; top: 0; left: var(--sidebar); right: 0; height: var(--top); background: var(--ink); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 32px; z-index: 99; }
+.topbar-left h1 { font-family: 'Playfair Display', serif; font-size: 20px; font-weight: 400; color: var(--bg); }
 .artist-chip { display: flex; align-items: center; gap: 8px; background: var(--sand); border: 1px solid var(--border); padding: 5px 12px 5px 5px; border-radius: 30px; }
 .artist-chip .avatar { width: 26px; height: 26px; border-radius: 50%; background: var(--sand); display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--ink); font-weight: 600; overflow: hidden; }
 .artist-chip .avatar img { width: 100%; height: 100%; object-fit: cover; }
@@ -393,7 +393,7 @@ tr:hover td { background: var(--bg); box-shadow: 0 4px 12px rgba(12,63,48,.06); 
 #nav-overlay{display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:199;}
 #nav-overlay.open{display:block;}
 .ham-btn{display:none; flex-direction:column; gap:4px; background:none; border:none; cursor:pointer; padding:4px;}
-.ham-btn span{width:22px; height:2px; background:var(--ink); border-radius:2px; transition:.2s;}
+.ham-btn span{width:22px; height:2px; background:var(--bg); border-radius:2px; transition:.2s;}
 .drawer-top{display:flex; justify-content:space-between; align-items:center; margin-bottom:30px; border-bottom:1px solid rgba(246,237,222,.1); padding-bottom:15px;}
 .drawer-logo{font-family:'Playfair Display',serif; font-size:18px; color:var(--bg); font-weight:400;}
 .drawer-close{background:none; border:none; color:var(--bg); font-size:24px; cursor:pointer;}
@@ -418,6 +418,21 @@ tr:hover td { background: var(--bg); box-shadow: 0 4px 12px rgba(12,63,48,.06); 
     .suggest-price-row input { width: 100%; }
     .ref-image { width: 100%; }
     .ham-btn { display: flex; }
+    .artist-chip { display: none; }
+
+    /* Table → card layout on mobile (same as orders page) */
+    thead { display: none; }
+    table, tbody, tr, td { display: block; width: 100%; }
+    tr { margin-bottom: 16px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(12,63,48,.06); }
+    td { border-bottom: 1px solid var(--border); padding: 12px 16px; text-align: left; position: relative; padding-left: 42%; }
+    td::before { position: absolute; top: 50%; left: 16px; transform: translateY(-50%); width: 35%; padding-right: 10px; white-space: nowrap; font-weight: 600; font-size: 11px; color: var(--ink); opacity: 0.7; }
+    td:nth-child(1)::before { content: "Buyer"; }
+    td:nth-child(2)::before { content: "Project Type"; }
+    td:nth-child(3)::before { content: "Agreed Price"; }
+    td:nth-child(4)::before { content: "Status"; }
+    td:last-child { border-bottom: none; text-align: center; padding-left: 16px; }
+    td:last-child::before { display: none; }
+    .view-btn { padding: 10px 20px; font-size: 13px; width: 100%; text-align: center; display: block; }
 }
 </style>
 </head>
@@ -445,13 +460,13 @@ tr:hover td { background: var(--bg); box-shadow: 0 4px 12px rgba(12,63,48,.06); 
 
 <header class="topbar">
     <div class="topbar-left"><h1>Commission Orders</h1></div>
-    <div class="topbar-right">
-        <button class="ham-btn" onclick="openDrawer()"><span></span><span></span><span></span></button>
+    <div class="topbar-right" style="display:flex;align-items:center;gap:12px;">
         <div class="artist-chip">
             <div class="avatar"><?php if ($avatarUrl): ?><img src="<?= htmlspecialchars($avatarUrl) ?>" alt=""><?php else: ?><?= strtoupper(substr($artistName, 0, 1)) ?><?php endif; ?></div>
             <span class="name"><?= htmlspecialchars($artistName) ?></span>
             <span class="arrow">∨</span>
         </div>
+        <button class="ham-btn" onclick="openDrawer()"><span></span><span></span><span></span></button>
     </div>
 </header>
 
@@ -678,18 +693,12 @@ $isAwaitingPaymentReview = $viewRequest['status'] === 'payment_review';
 </div>
 
 <script>
-function openDrawer() {
-    document.getElementById('nav-drawer').classList.add('open');
-    document.getElementById('nav-overlay').classList.add('open');
-}
-function closeDrawer() {
-    document.getElementById('nav-drawer').classList.remove('open');
-    document.getElementById('nav-overlay').classList.remove('open');
-}
 function validateAndSubmit(f){const m=f.querySelector('input[name="message"]');const t=m.value.trim();const p=[/[\w.+-]+@[\w-]+\.[a-z]{2,}/i,/(\+92|0)?[-\s]?[0-9]{3}[-\s]?[0-9]{7,8}/,/(instagram|whatsapp|wa|facebook|fb)\s*[:\-@]?\s*\w+/i,/@[a-zA-Z0-9._]{2,30}/,/(iban|bank|easypaisa|jazzcash)/i];for(let r of p){if(r.test(t)){alert('Contact info blocked.');m.value='';return false;}}return true;}
 const c=document.getElementById('chatMessages');if(c)c.scrollTop=c.scrollHeight;
 document.addEventListener('keydown',function(e){if(e.key==='Escape'){window.location.href='commissions.php';}});
 </script>
+
+<?php endif; ?>
 
 <!-- NAV DRAWER (Mobile) -->
 <div id="nav-overlay" onclick="closeDrawer()"></div>
@@ -713,7 +722,16 @@ document.addEventListener('keydown',function(e){if(e.key==='Escape'){window.loca
     </div>
 </div>
 
-<?php endif; ?>
+<script>
+function openDrawer() {
+    document.getElementById('nav-drawer').classList.add('open');
+    document.getElementById('nav-overlay').classList.add('open');
+}
+function closeDrawer() {
+    document.getElementById('nav-drawer').classList.remove('open');
+    document.getElementById('nav-overlay').classList.remove('open');
+}
+</script>
 
 </body>
 </html>

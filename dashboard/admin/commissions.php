@@ -494,7 +494,7 @@ html,body{height:100%;background:var(--grey1);color:var(--black);font-family:'DM
 .sidebar-brand .logo-tag{font-size:10px;letter-spacing:3px;text-transform:uppercase;color:#DDCDAE}
 .sidebar-brand .logo-name{font-family:'Playfair Display',serif;font-size:20px;color:#F6EDDE;margin-top:2px}
 .sidebar-brand .logo-badge{display:inline-block;margin-top:6px;background:#DDCDAE;color:#0C3F30;font-size:8px;letter-spacing:2px;text-transform:uppercase;padding:2px 7px;border-radius:20px}
-.sidebar-section{padding:18px 16px 6px;font-size:9px;letter-spacing:2.5px;text-transform:uppercase;color:var(--grey4);font-weight:500}
+.sidebar-section{padding:18px 16px 6px;font-size:9px;letter-spacing:2.5px;text-transform:uppercase;color:#DDCDAE;font-weight:500}
 .nav-item{display:flex;align-items:center;gap:10px;padding:10px 20px;font-size:12.5px;color:#F6EDDE;text-decoration:none;font-weight:400;border-left:2px solid transparent;transition:all .15s}
 .nav-item:hover{color:#0C3F30;background:#DDCDAE;border-left-color:#DDCDAE}
 .nav-item.active{color:#0C3F30;background:#DDCDAE;border-left-color:#0C3F30;font-weight:500}
@@ -782,11 +782,6 @@ tr:hover td{background:var(--grey1)}
                         <div class="td-buyer"><?= htmlspecialchars($cr['buyer_name']) ?></div>
                         <div class="td-buyer-sub">
                             <?php $email=$cr['buyer_email'];$phone=$cr['buyer_phone'];if($email)echo htmlspecialchars($email);if($email&&$phone)echo ' · ';if($phone)echo htmlspecialchars($phone); ?>
-                            <?php if (!empty($cr['commission_reference_image'])): ?>
-                                <span class="ref-icon" title="Has reference image" onclick="openDetail(<?= $cr['id'] ?>)">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                                </span>
-                            <?php endif; ?>
                         </div>
                     </td>
                     <td class="td-type"><?= htmlspecialchars($cr['artwork_type']) ?></td>
@@ -802,15 +797,6 @@ tr:hover td{background:var(--grey1)}
                     <td><span class="pill <?= $cr['status'] ?>"><?= str_replace('_',' ',ucfirst($cr['status'])) ?></span></td>
                     <td>
                         <div class="td-actions">
-                            <form method="POST" style="display:inline" onsubmit="return confirm('Change status?')">
-                                <input type="hidden" name="action" value="update_status">
-                                <input type="hidden" name="id" value="<?= $cr['id'] ?>">
-                                <select name="new_status" class="status-select" onchange="this.form.submit()">
-                                    <?php foreach ($validStatuses as $s): ?>
-                                    <option value="<?= $s ?>" <?= $cr['status'] === $s ? 'selected' : '' ?>><?= str_replace('_',' ',ucfirst($s)) ?></option>
-                                    <?php endforeach; ?>
-                                </select>
-                            </form>
                             <button type="button" class="act-btn blue" onclick="openDetail(<?= $cr['id'] ?>)">View &amp; Chat</button>
                             <form method="POST" style="display:inline" onsubmit="return confirm('Delete this commission request?')"><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="<?= $cr['id'] ?>"><button type="submit" class="act-btn red">Delete</button></form>
                         </div>
