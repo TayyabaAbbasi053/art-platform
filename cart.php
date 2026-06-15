@@ -2,6 +2,7 @@
 session_start();
 require_once __DIR__ . '/config/db.php';
 
+
 // ── Auth guard ───────────────────────────────────────────
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'buyer') {
     $_SESSION['redirect_after_login'] = 'cart.php';
@@ -10,6 +11,24 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'buyer') {
 }
 
  $buyerId = (int) $_SESSION['user_id'];
+
+ // ── Release expired cart reservations (2-day timeout) ──
+$conn->query("
+    UPDATE artworks 
+    SET reserved_by = NULL, reserved_until = NULL 
+    WHERE reserved_by IS NOT NULL 
+    AND reserved_until IS NOT NULL 
+    AND reserved_until < NOW()
+");
+
+// Also remove those items from shopping_cart
+$conn->query("
+    DELETE sc FROM shopping_cart sc
+    JOIN artworks a ON sc.item_type = 'artwork' AND sc.item_id = a.id
+    WHERE a.reserved_by IS NULL 
+    AND a.reserved_until IS NULL
+");
+
  $message = '';
  $error = '';
  $isLoggedIn = true; // For drawer state
@@ -33,6 +52,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt = $conn->prepare("DELETE FROM shopping_cart WHERE buyer_id = ? AND item_type = ? AND item_id = ?");
         $stmt->bind_param('isi', $buyerId, $itemType, $itemId);
         $stmt->execute();
+
+        // If it was an artwork, release the reservation so others can buy it
+        if ($itemType === 'artwork') {
+    $relStmt = $conn->prepare("UPDATE artworks SET reserved_by = NULL, reserved_until = NULL WHERE id = ? AND reserved_by = ?");            $relStmt->bind_param('ii', $itemId, $buyerId);
+            $relStmt->execute();
+        }
+
         $message = 'Item removed from cart.';
     }
     
@@ -48,7 +74,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     // Clear entire cart
     if ($action === 'clear') {
-        $conn->query("DELETE FROM shopping_cart WHERE buyer_id = $buyerId");
+        // Release all artwork reservations held by this buyer before clearing
+    $conn->query("UPDATE artworks SET reserved_by = NULL, reserved_until = NULL WHERE reserved_by = $buyerId");        $conn->query("DELETE FROM shopping_cart WHERE buyer_id = $buyerId");
         $message = 'Cart cleared.';
     }
 }
@@ -97,7 +124,7 @@ if (!isset($_SESSION['user_id']) && isset($_SESSION['cart']) && !empty($_SESSION
  $cartQuery = $conn->prepare("
     SELECT sc.item_type, sc.item_id, sc.quantity,
            a.id AS artwork_id, a.title AS artwork_title, a.price AS artwork_price, 
-           a.status AS artwork_status,
+           a.status AS artwork_status, a.reserved_by AS artwork_reserved_by,
            (SELECT ai.image_path FROM artwork_images ai WHERE ai.artwork_id = a.id AND ai.is_cover = 1 LIMIT 1) AS cover_image,
            ua.id AS artwork_artist_id, ua.name AS artwork_artist_name,
            cr.id AS commission_id,
@@ -108,7 +135,7 @@ if (!isset($_SESSION['user_id']) && isset($_SESSION['cart']) && !empty($_SESSION
            co.price_status, -- ADDED: Fetch price_status
            uc.id AS commission_artist_id, uc.name AS commission_artist_name
     FROM shopping_cart sc
-    LEFT JOIN artworks a ON sc.item_type = 'artwork' AND sc.item_id = a.id AND a.status IN ('approved', 'sold')
+    LEFT JOIN artworks a ON sc.item_type = 'artwork' AND sc.item_id = a.id AND a.status IN ('approved', 'sold', 'reserved')
     LEFT JOIN users ua ON a.artist_id = ua.id
     LEFT JOIN commission_requests cr ON sc.item_type = 'commission' AND sc.item_id = cr.id
     LEFT JOIN orders co ON cr.order_id = co.id
@@ -130,7 +157,8 @@ while ($row = $cartResult->fetch_assoc()) {
             'artist_id' => $row['artwork_artist_id'],
             'artist_name' => $row['artwork_artist_name'],
             'cover_image' => $row['cover_image'],
-            'status' => $row['artwork_status']
+            'status' => $row['artwork_status'],
+            'reserved_by' => $row['artwork_reserved_by']
         ];
         $artworkSubtotal += $item['price'] * $item['quantity'];
         $cartItems[] = $item;
@@ -417,6 +445,11 @@ img{max-width:100%;display:block;}
           
           // Determine if checkout link should be shown
           $canCheckoutCommission = $isCommission && isset($item['price_status']) && $item['price_status'] === 'accepted';
+
+          // Artwork availability flags
+          $isSold = !$isCommission && ($item['status'] ?? '') === 'sold';
+          $isReservedByOther = !$isCommission && !empty($item['reserved_by']) && (int)$item['reserved_by'] !== $buyerId;
+          $isUnavailable = $isSold || $isReservedByOther;
         ?>
         <div class="cart-item" style="<?= $isCommission ? 'background:#FFFCF5;' : '' ?>">
           <div class="item-info">
@@ -434,8 +467,20 @@ img{max-width:100%;display:block;}
             <div class="item-details">
               <h4><?= htmlspecialchars($item['title']) ?></h4>
               <div class="artist">by <?= htmlspecialchars($item['artist_name'] ?? 'Art Bazaar') ?></div>
-              <span class="type-badge" style="<?= $isCommission ? 'background:#F0D9B5;color:#7D5A2E;' : '' ?>"><?= $isCommission ? '✦ Custom Commission' : 'Ready-made Artwork' ?></span>
-              
+              <span class="type-badge" style="<?= $isCommission ? 'background:#F0D9B5;color:#7D5A2E;' : ($isSold ? 'background:#FDEAEA;color:#7D2A14;' : '') ?>">
+                <?= $isCommission ? '✦ Custom Commission' : ($isSold ? '✕ Sold Out' : 'Ready-made Artwork') ?>
+              </span>
+
+              <?php if ($isUnavailable && !$isCommission): ?>
+              <div style="background:#FDEAEA;border:1px solid #EEC5B8;border-radius:8px;padding:8px 12px;margin-top:8px;font-size:12px;color:#7D2A14;">
+                <?php if ($isSold): ?>
+                  ⚠ This artwork has been sold. Please remove it from your cart.
+                <?php else: ?>
+                  ⚠ This artwork is no longer available. Please remove it.
+                <?php endif; ?>
+              </div>
+              <?php endif; ?>
+
               <?php if ($isCommission): ?>
               <!-- Commission-specific notice -->
               <div class="commission-notice">
@@ -510,7 +555,23 @@ img{max-width:100%;display:block;}
             <span>Total</span>
             <span>PKR <?= number_format($total) ?></span>
           </div>
+          <?php
+          $hasUnavailableItems = false;
+          foreach ($cartItems as $ci) {
+              if ($ci['type'] === 'artwork') {
+                  $ciSold = ($ci['status'] ?? '') === 'sold';
+                  $ciReservedByOther = !empty($ci['reserved_by']) && (int)$ci['reserved_by'] !== $buyerId;
+                  if ($ciSold || $ciReservedByOther) { $hasUnavailableItems = true; break; }
+              }
+          }
+          ?>
+          <?php if ($hasUnavailableItems): ?>
+          <button class="checkout-btn" disabled style="opacity:0.5;cursor:not-allowed;" title="Remove unavailable items before checking out">
+            Remove Unavailable Items First
+          </button>
+          <?php else: ?>
           <a href="checkout.php" class="checkout-btn">Proceed to Checkout →</a>
+          <?php endif; ?>
           <?php else: ?>
           <div class="summary-row">
             <span>No artwork items</span>

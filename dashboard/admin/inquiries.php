@@ -54,6 +54,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
             $stmt->bind_param('si', $newStatus, $id);
             $stmt->execute();
 
+            // If cancelled via dropdown, release artworks same as cancel button
+            if ($newStatus === 'cancelled') {
+                $conn->query("UPDATE artworks SET status = 'approved', reserved_by = NULL WHERE id IN (SELECT item_id FROM order_items WHERE order_id = $id AND item_type = 'artwork')");
+            }
+
             $itemRes = $conn->query("SELECT item_id FROM order_items WHERE order_id = $id AND item_type = 'artwork' LIMIT 1");
             if ($itemRow = $itemRes->fetch_assoc()) {
                 $artId = $itemRow['item_id'];
@@ -124,6 +129,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_
     $toast = 'Notes saved.';
 }
 
+// Cancel Order
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'cancel_order') {
+    $id = (int)($_POST['id'] ?? 0);
+    if ($id) {
+        $conn->query("UPDATE artworks SET status = 'approved', reserved_by = NULL WHERE id IN (SELECT item_id FROM order_items WHERE order_id = $id AND item_type = 'artwork')");
+        $stmt = $conn->prepare("UPDATE orders SET order_status = 'cancelled' WHERE id = ?");
+        $stmt->bind_param('i', $id);
+        $stmt->execute();
+        $adminId = (int)$_SESSION['user_id'];
+        $note = 'Order cancelled by admin. Artworks released back to available.';
+        $oldStatusRes = $conn->query("SELECT order_status FROM orders WHERE id = $id");
+        $oldStatus = $oldStatusRes ? ($oldStatusRes->fetch_assoc()['order_status'] ?? 'pending') : 'pending';
+        
+        $stmtH = $conn->prepare("INSERT INTO order_status_history (order_id, status_from, status_to, changed_by_role, changed_by_id, notes) VALUES (?, ?, 'cancelled', 'admin', ?, ?)");
+        $stmtH->bind_param('isis', $id, $oldStatus, $adminId, $note);
+        $stmtH->execute();
+        $toast = 'Order cancelled and artworks released.';
+    }
+}
+
 // Delete Order
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delete') {
     $id = (int)($_POST['id'] ?? 0);
@@ -151,7 +176,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
 
 // ── Fetch Data ──────────────────────────────────────
 
- $statusFilter = $_GET['status'] ?? '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    header('Location: inquiries.php' . ($_SERVER['QUERY_STRING'] ? '?' . $_SERVER['QUERY_STRING'] : ''));
+    exit;
+}
+
+$statusFilter = $_GET['status'] ?? '';
  $search = trim($_GET['q'] ?? '');
  $sort = $_GET['sort'] ?? 'newest';
  $page = max(1, (int)($_GET['page'] ?? 1));
@@ -695,6 +725,13 @@ function buildQS($overrides = []) {
                             <button type="submit" class="mark-paid-btn">Mark as Paid</button>
                         </form>
                         ` : ''}
+            ${item.item_status !== 'cancelled' && item.item_status !== 'delivered' ? `
+                        <form method="POST" style="display:inline;" onsubmit="return confirm('Cancel this order and release artworks back to available?')">
+                            <input type="hidden" name="action" value="cancel_order">
+                            <input type="hidden" name="id" value="${item.id}">
+                            <button type="submit" class="mark-paid-btn" style="background:#8B2020;">Cancel Order</button>
+                        </form>
+                        ` : ''}
                     </div>
                 `;
             }
@@ -771,6 +808,28 @@ function buildQS($overrides = []) {
                                 <option value="shipped" ${currentDeliveryStatus === 'shipped' ? 'selected' : ''}>Shipped</option>
                                 <option value="delivered" ${currentDeliveryStatus === 'delivered' ? 'selected' : ''}>Delivered</option>
                             </select>
+                        </div>
+                    </form>
+                `;
+            }
+
+            // Status update dropdown
+            if (item.item_status !== 'delivered' && item.item_status !== 'cancelled') {
+                html += `
+                    <form method="POST" style="margin-top:16px;background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:16px;">
+                        <input type="hidden" name="action" value="update_status">
+                        <input type="hidden" name="id" value="${item.id}">
+                        <div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:8px;">Update Order Status</div>
+                        <select name="new_status" style="width:100%;padding:9px 14px;border:1.5px solid var(--sand);border-radius:9px;font-size:13px;font-family:'DM Sans',sans-serif;color:var(--ink);background:var(--card);outline:none;margin-bottom:12px;">
+                            <option value="pending" ${item.item_status === 'pending' ? 'selected' : ''}>Pending</option>
+                            <option value="payment_confirmed" ${item.item_status === 'payment_confirmed' ? 'selected' : ''}>Payment Confirmed</option>
+                            <option value="processing" ${item.item_status === 'processing' ? 'selected' : ''}>Processing</option>
+                            <option value="shipped" ${item.item_status === 'shipped' ? 'selected' : ''}>Shipped</option>
+                            <option value="delivered" ${item.item_status === 'delivered' ? 'selected' : ''}>Delivered</option>
+                            <option value="cancelled" ${item.item_status === 'cancelled' ? 'selected' : ''}>Cancelled</option>
+                        </select>
+                        <div style="text-align:right;">
+                            <button type="submit" class="btn btn-success" style="padding:7px 14px;font-size:11px;" onclick="return confirm('Update order status?')">Update Status</button>
                         </div>
                     </form>
                 `;

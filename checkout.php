@@ -180,11 +180,11 @@ if ($isCommissionCheckout) {
     $cartQuery = $conn->prepare("
         SELECT sc.item_type, sc.item_id, sc.quantity,
                a.id AS artwork_id, a.title AS artwork_title, a.price AS artwork_price, 
-               a.status AS artwork_status, a.artist_id AS artwork_artist_id,
+               a.status AS artwork_status, a.reserved_by AS artwork_reserved_by, a.artist_id AS artwork_artist_id,
                (SELECT ai.image_path FROM artwork_images ai WHERE ai.artwork_id = a.id AND ai.is_cover = 1 LIMIT 1) AS cover_image,
                ua.name AS artwork_artist_name
         FROM shopping_cart sc
-        LEFT JOIN artworks a ON sc.item_type = 'artwork' AND sc.item_id = a.id AND a.status IN ('approved', 'sold')
+        LEFT JOIN artworks a ON sc.item_type = 'artwork' AND sc.item_id = a.id AND a.status = 'approved'
         LEFT JOIN users ua ON a.artist_id = ua.id
         WHERE sc.buyer_id = ?
     ");
@@ -203,7 +203,9 @@ if ($isCommissionCheckout) {
                 'quantity' => $row['quantity'],
                 'artist_id' => $row['artwork_artist_id'],
                 'artist_name' => $row['artwork_artist_name'],
-                'cover_image' => $row['cover_image']
+                'cover_image' => $row['cover_image'],
+                'status' => $row['artwork_status'],
+                'reserved_by' => $row['artwork_reserved_by']
             ];
             $subtotal += $price * $row['quantity'];
             $cartItems[] = $item;
@@ -213,6 +215,22 @@ if ($isCommissionCheckout) {
     if (empty($cartItems)) {
         header('Location: cart.php');
         exit;
+    }
+
+    // Block checkout if any artwork is sold or reserved by someone else
+    foreach ($cartItems as $ci) {
+        if ($ci['type'] === 'artwork') {
+            if (($ci['status'] ?? '') === 'sold') {
+                $_SESSION['cart_error'] = 'One or more artworks in your cart have been sold. Please remove them before checking out.';
+                header('Location: cart.php');
+                exit;
+            }
+            if (!empty($ci['reserved_by']) && (int)$ci['reserved_by'] !== $buyerId) {
+                $_SESSION['cart_error'] = 'One or more artworks in your cart are no longer available. Please remove them before checking out.';
+                header('Location: cart.php');
+                exit;
+            }
+        }
     }
 
     // Default shipping is 0 until user enters city
@@ -331,6 +349,13 @@ $stmt->bind_param('ssssssddi', $paymentMethod, $screenshotPath, $address, $city,
                         $stmtItem = $conn->prepare("INSERT INTO order_items (order_id, item_type, item_id, quantity, price, item_status) VALUES (?, ?, ?, ?, ?, ?)");
                         $stmtItem->bind_param('isiiis', $orderId, $item['type'], $item['id'], $item['quantity'], $item['price'], $itemStatus);
                         $stmtItem->execute();
+
+                        // Mark artwork as sold and release reservation
+                        if ($item['type'] === 'artwork') {
+                            $soldStmt = $conn->prepare("UPDATE artworks SET status = 'sold', reserved_by = NULL WHERE id = ?");
+                            $soldStmt->bind_param('i', $item['id']);
+                            $soldStmt->execute();
+                        }
                     }
                     
                     $conn->query("DELETE FROM shopping_cart WHERE buyer_id = $buyerId");

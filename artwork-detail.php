@@ -48,23 +48,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'ajax_
         exit;
     }
 
-    // Verify artwork exists and is approved
-    $awStmt = $conn->prepare("SELECT id, title, price, status FROM artworks WHERE id = ? AND status IN ('approved', 'sold')");
+    // Verify artwork exists, is approved, and not reserved by someone else
+    $awStmt = $conn->prepare("SELECT id, title, price, status, reserved_by FROM artworks WHERE id = ? AND status = 'approved'");
     $awStmt->bind_param('i', $artworkId);
     $awStmt->execute();
     $aw = $awStmt->get_result()->fetch_assoc();
 
     if (!$aw) {
-        echo json_encode(['success' => false, 'error' => 'Artwork not found']);
-        exit;
-    }
-
-    if ($aw['status'] === 'sold') {
-        echo json_encode(['success' => false, 'error' => 'Artwork is sold out']);
+        echo json_encode(['success' => false, 'error' => 'This artwork is not available']);
         exit;
     }
 
     $buyerId = (int)$_SESSION['user_id'];
+
+    // Block if reserved by a different buyer
+    if (!empty($aw['reserved_by']) && (int)$aw['reserved_by'] !== $buyerId) {
+        echo json_encode(['success' => false, 'error' => 'This artwork is already in someone else\'s cart']);
+        exit;
+    }
+
     $itemType = 'artwork';
     $qty = 1;
 
@@ -75,6 +77,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'ajax_
     ");
     $ins->bind_param('isii', $buyerId, $itemType, $artworkId, $qty);
     $ins->execute();
+
+    // Mark artwork as reserved by this buyer
+    $resStmt = $conn->prepare("UPDATE artworks SET reserved_by = ?, reserved_until = DATE_ADD(NOW(), INTERVAL 2 HOUR) WHERE id = ?");
+    $resStmt->bind_param('ii', $buyerId, $artworkId);
+    $resStmt->execute();
 
     $count = getCartCount();
 
@@ -116,17 +123,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'add_t
     }
 
     $buyerId = (int)$_SESSION['user_id'];
-    $itemType = 'artwork';
-    $qty = 1;
 
-    $ins = $conn->prepare("
-        INSERT INTO shopping_cart (buyer_id, item_type, item_id, quantity) 
-        VALUES (?, ?, ?, ?) 
-        ON DUPLICATE KEY UPDATE quantity = quantity + 1
-    ");
-    $ins->bind_param('isii', $buyerId, $itemType, $artworkId, $qty);
-    $ins->execute();
-    $cartAdded = true;
+    // Check artwork is available and not reserved by someone else
+    $chkStmt = $conn->prepare("SELECT status, reserved_by FROM artworks WHERE id = ? AND status = 'approved'");
+    $chkStmt->bind_param('i', $artworkId);
+    $chkStmt->execute();
+    $chkAw = $chkStmt->get_result()->fetch_assoc();
+
+    if (!$chkAw || (!empty($chkAw['reserved_by']) && (int)$chkAw['reserved_by'] !== $buyerId)) {
+        $cartError = true; // will show error on page
+    } else {
+        $itemType = 'artwork';
+        $qty = 1;
+
+        $ins = $conn->prepare("
+            INSERT INTO shopping_cart (buyer_id, item_type, item_id, quantity) 
+            VALUES (?, ?, ?, ?) 
+            ON DUPLICATE KEY UPDATE quantity = quantity + 1
+        ");
+        $ins->bind_param('isii', $buyerId, $itemType, $artworkId, $qty);
+        $ins->execute();
+
+        // Mark artwork as reserved by this buyer
+        $resStmt = $conn->prepare("UPDATE artworks SET reserved_by = ?, reserved_until = DATE_ADD(NOW(), INTERVAL 2 HOUR) WHERE id = ?");
+        $resStmt->bind_param('ii', $buyerId, $artworkId);
+        $resStmt->execute();
+
+        $cartAdded = true;
+    }
 
     // Keep session in sync
     if (!isset($_SESSION['cart'])) $_SESSION['cart'] = [];
@@ -140,18 +164,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'add_t
     }
     unset($ci);
     if (!$found) {
-        $_SESSION['cart'][] = [
-            'type' => 'artwork',
-            'id' => $artworkId,
-            'artwork_id' => $artworkId,
-            'quantity' => 1,
-            'artwork_title' => '',
-            'artist_name' => '',
-            'artist_id' => 0,
-            'artwork_image' => ''
-        ];
-    }
-}
+            $_SESSION['cart'][] = [
+                'type' => 'artwork',
+                'id' => $artworkId,
+                'artwork_id' => $artworkId,
+                'quantity' => 1,
+                'artwork_title' => '',
+                'artist_name' => '',
+                'artist_id' => 0,
+                'artwork_image' => ''
+            ];
+        }
+    } // end else (artwork available)
 
 // Fetch artwork with all details
  $stmt = $conn->prepare("
@@ -163,11 +187,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'add_t
     JOIN users u ON a.artist_id = u.id
     JOIN categories c ON a.category_id = c.id
     LEFT JOIN artist_profiles ap ON ap.user_id = u.id
-    WHERE a.id = ? AND a.status = 'approved'
+    WHERE a.id = ? AND a.status IN ('approved', 'sold')
 ");
  $stmt->bind_param('i', $artworkId);
  $stmt->execute();
  $artwork = $stmt->get_result()->fetch_assoc();
+
+ // Check if this artwork is reserved by current buyer or someone else
+$isReservedByMe = $isLoggedIn && !empty($artwork['reserved_by']) && (int)$artwork['reserved_by'] === (int)($_SESSION['user_id'] ?? 0);
+$isReservedByOther = !empty($artwork['reserved_by']) && !$isReservedByMe;
 
 if (!$artwork) {
     header('Location: artworks.php');
@@ -536,17 +564,19 @@ h1{font-family:'Playfair Display',serif;font-size:clamp(24px,2.5vw,32px);font-we
     <?php endif; ?>
 
     <div class="btn-group">
-      <?php if ($artwork['status'] !== 'sold'): ?>
-        <?php if ($isLoggedIn): ?>
-          <form method="POST" id="addToCartForm">
-            <input type="hidden" name="action" value="add_to_cart">
-            <button type="submit" class="btn btn-terr">🛒 Add to Cart</button>
-          </form>
-        <?php else: ?>
-          <a href="login.php?redirect=artwork-detail.php?id=<?= $artworkId ?>" class="btn btn-terr" style="text-align:center;">🛒 Login to Add to Cart</a>
-        <?php endif; ?>
+      <?php if ($artwork['status'] === 'sold'): ?>
+        <button class="btn btn-secondary" disabled style="opacity:0.6;cursor:not-allowed;">🚫 Sold Out</button>
+      <?php elseif ($isReservedByOther): ?>
+        <button class="btn btn-secondary" disabled style="opacity:0.6;cursor:not-allowed;">🔒 Currently in Someone's Cart</button>
+      <?php elseif ($isReservedByMe): ?>
+        <a href="cart.php" class="btn btn-terr" style="text-align:center;">✓ Already in Your Cart → Go to Cart</a>
+      <?php elseif ($isLoggedIn): ?>
+        <form method="POST" id="addToCartForm">
+          <input type="hidden" name="action" value="add_to_cart">
+          <button type="submit" class="btn btn-terr">🛒 Add to Cart</button>
+        </form>
       <?php else: ?>
-        <button class="btn btn-secondary" disabled style="opacity:0.6;">Sold Out</button>
+        <a href="login.php?redirect=artwork-detail.php?id=<?= $artworkId ?>" class="btn btn-terr" style="text-align:center;">🛒 Login to Add to Cart</a>
       <?php endif; ?>
       <a href="commission.php?artist=<?= $artwork['artist_id'] ?>" class="btn btn-outline" style="text-align:center;">
         🎨 Request Similar Custom Work

@@ -19,6 +19,15 @@ $artistId = (int) $_SESSION['user_id'];  // ← whatever comes next in the file
  $artistId = (int) $_SESSION['user_id'];
  $artistName = $_SESSION['name'] ?? 'Artist';
  $successMsg = $_GET['msg'] ?? '';
+// ── Filter and pagination ────────────────────────────────
+ $statusFilter = $_GET['status'] ?? '';
+ $allowedStatuses = ['payment_confirmed', 'processing', 'shipped', 'delivered', 'cancelled'];
+if (!in_array($statusFilter, $allowedStatuses)) {
+    $statusFilter = '';
+}
+
+
+
 
 // ── Handle Status Update ─────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'update_status') {
@@ -32,15 +41,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
             SELECT o.id FROM orders o
             JOIN order_items oi ON o.id = oi.order_id
             JOIN artworks a ON oi.item_id = a.id
-            WHERE o.id = ? AND a.artist_id = ? AND oi.item_type = 'artwork'
+            WHERE o.id = ? AND a.artist_id = ? AND oi.item_type = 'artwork' AND o.order_type = 'artwork'
         ");
         $checkStmt->bind_param('ii', $orderId, $artistId);
         $checkStmt->execute();
+        $checkResult = $checkStmt->get_result();
+
         
-        if ($checkStmt->get_result()->num_rows > 0) {
+        
+        if ($checkResult->num_rows > 0) {
             $updateStmt = $conn->prepare("UPDATE orders SET order_status = ? WHERE id = ?");
             $updateStmt->bind_param('si', $newStatus, $orderId);
             $updateStmt->execute();
+
+            // If cancelled, release all artworks in this order back to available
+            if ($newStatus === 'cancelled') {
+                $conn->query("UPDATE artworks SET status = 'approved', reserved_by = NULL WHERE id IN (SELECT item_id FROM order_items WHERE order_id = $orderId AND item_type = 'artwork')");
+            }
             
             // Log to history
             $adminId = $artistId;
@@ -53,16 +70,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
             $stmtH->bind_param('issis', $orderId, $oldStatus, $newStatus, $adminId, $note);
             $stmtH->execute();
             
-            $successMsg = 'Order status updated successfully!';
+            header('Location: orders.php?status=' . urlencode($statusFilter) . '&msg=Order+status+updated+successfully');
+            exit;
         }
     }
-}
-
-// ── Filter and pagination ────────────────────────────────
- $statusFilter = $_GET['status'] ?? '';
- $allowedStatuses = ['payment_confirmed', 'processing', 'shipped', 'delivered', 'cancelled'];
-if (!in_array($statusFilter, $allowedStatuses)) {
-    $statusFilter = '';
 }
 
  $page = max(1, (int)($_GET['page'] ?? 1));
