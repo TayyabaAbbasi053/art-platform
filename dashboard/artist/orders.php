@@ -33,7 +33,7 @@ if (!in_array($statusFilter, $allowedStatuses)) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'update_status') {
     $orderId = (int) ($_POST['order_id'] ?? 0);
     $newStatus = $_POST['new_status'] ?? '';
-    $allowedUpdates = ['processing', 'shipped', 'delivered', 'cancelled'];
+    $allowedUpdates = ['cod', 'shipped', 'delivered', 'cancelled'];
     
     if ($orderId && in_array($newStatus, $allowedUpdates)) {
         // Verify this order belongs to the artist's artwork
@@ -76,28 +76,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
     }
 }
 
+// ── Mark order as seen ───────────────────────────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'mark_seen') {
+    $orderId = (int)($_POST['order_id'] ?? 0);
+    if ($orderId) {
+        $seenStmt = $conn->prepare("UPDATE orders SET seen_by_artist = 1 WHERE id = ?");
+        $seenStmt->bind_param('i', $orderId);
+        $seenStmt->execute();
+    }
+    exit;
+}
+
  $page = max(1, (int)($_GET['page'] ?? 1));
  $perPage = 10;
  $offset = ($page - 1) * $perPage;
 
-function getStatusBadgeClass($status) {
+function getStatusBadgeClass($status, $paymentMethod = null) {
     $classes = [
         'payment_confirmed' => 'payment_confirmed',
-        'processing' => 'processing',
-        'shipped' => 'shipped',
-        'delivered' => 'delivered',
-        'cancelled' => 'cancelled'
+        'processing'        => 'processing',
+        'cod'               => 'payment_confirmed', // reuse green — artist accepted COD
+        'shipped'           => 'shipped',
+        'delivered'         => 'delivered',
+        'cancelled'         => 'cancelled',
+        'pending'           => 'pending',
     ];
     return $classes[$status] ?? 'pending';
 }
 
-function getStatusLabel($status) {
+function getStatusLabel($status, $paymentMethod = null) {
     $labels = [
-        'payment_confirmed' => 'Payment Confirmed',
-        'processing' => 'Processing',
-        'shipped' => 'Shipped',
-        'delivered' => 'Delivered',
-        'cancelled' => 'Cancelled'
+        'payment_confirmed' => 'Ready to Start',
+        'processing'        => 'Processing',
+        'cod'               => 'COD — In Progress',
+        'shipped'           => 'Shipped',
+        'delivered'         => 'Delivered',
+        'cancelled'         => 'Cancelled',
+        'pending'           => 'New COD Order',
     ];
     return $labels[$status] ?? ucfirst($status);
 }
@@ -108,8 +123,8 @@ function getStatusLabel($status) {
     FROM orders o
     JOIN order_items oi ON o.id = oi.order_id
     JOIN artworks a ON oi.item_id = a.id AND oi.item_type = 'artwork'
-    WHERE a.artist_id = ? AND o.order_type = 'artwork' AND o.order_status NOT IN ('pending', 'payment_review')
-
+    WHERE a.artist_id = ? AND o.order_type = 'artwork'
+      AND o.order_status NOT IN ('pending', 'payment_review')
 ";
  $params = [$artistId];
  $types = 'i';
@@ -132,6 +147,7 @@ if ($statusFilter) {
         o.id, o.order_number, o.order_status, o.created_at,
         o.shipping_address, o.shipping_city, o.shipping_phone, 
         o.tracking_number, o.payment_method, o.payment_status,
+        o.seen_by_artist,
         o.buyer_id, o.guest_name, o.guest_email, o.guest_phone,
         u.name AS buyer_name_real, u.email AS buyer_email_real, u.phone AS buyer_phone_real,
         oi.price AS order_price,
@@ -141,7 +157,8 @@ if ($statusFilter) {
     JOIN order_items oi ON o.id = oi.order_id
     JOIN artworks a ON oi.item_id = a.id AND oi.item_type = 'artwork'
     LEFT JOIN users u ON o.buyer_id = u.id
-    WHERE a.artist_id = ? AND o.order_type = 'artwork' AND o.order_status NOT IN ('pending', 'payment_review')
+    WHERE a.artist_id = ? AND o.order_type = 'artwork'
+      AND o.order_status NOT IN ('pending', 'payment_review')
 ";
 
  $params = [$artistId];
@@ -165,7 +182,7 @@ if ($statusFilter) {
 
 // ── Status counts for tabs ───────────────────────────────
  $statusCounts = [
-    'all' => 0, 'payment_confirmed' => 0,
+    'all' => 0, 'pending' => 0, 'payment_confirmed' => 0,
     'processing' => 0, 'shipped' => 0, 'delivered' => 0, 'cancelled' => 0
 ];
 
@@ -175,6 +192,7 @@ if ($statusFilter) {
     JOIN order_items oi ON o.id = oi.order_id
     JOIN artworks a ON oi.item_id = a.id AND oi.item_type = 'artwork'
     WHERE a.artist_id = ? AND o.order_type = 'artwork'
+      AND o.order_status NOT IN ('pending', 'payment_review')
     GROUP BY o.order_status
 ");
  $countStmt->bind_param('i', $artistId);
@@ -426,7 +444,13 @@ tr:hover td{background:var(--sand);box-shadow: 0 4px 12px rgba(12,63,48,.06);}
   <a href="orders.php" class="nav-item active">
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 7H4a2 2 0 00-2 2v6a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>
     Orders
-    <?php if ($statusCounts['payment_confirmed'] > 0): ?><span class="badge"><?= $statusCounts['payment_confirmed'] ?></span><?php endif; ?>
+    <?php
+$unseenCount = 0;
+foreach ($orders as $o) {
+    if (!$o['seen_by_artist']) $unseenCount++;
+}
+?>
+<?php if ($unseenCount > 0): ?><span class="badge"><?= $unseenCount ?> New</span><?php elseif ($statusCounts['payment_confirmed'] > 0): ?><span class="badge"><?= $statusCounts['payment_confirmed'] ?></span><?php endif; ?>
   </a>
   <div class="sidebar-section">Account</div>
   <a href="profile.php" class="nav-item">
@@ -526,8 +550,13 @@ tr:hover td{background:var(--sand);box-shadow: 0 4px 12px rgba(12,63,48,.06);}
               <div class="buyer-name"><?= htmlspecialchars($displayBuyerName) ?></div>
             </td>
             <td class="hide-mobile" data-label="Date"><?= date('d M Y', strtotime($order['created_at'])) ?></td>
-            <td data-label="Status"><span class="status-badge <?= getStatusBadgeClass($order['order_status']) ?>"><?= getStatusLabel($order['order_status']) ?></span></td>
-            <td data-label="Actions"><button type="button" class="action-btn" onclick="openDetail(<?= $order['id'] ?>)">View</button></td>
+            <td data-label="Status">
+    <span class="status-badge <?= getStatusBadgeClass($order['order_status'], $order['payment_method']) ?>"><?= getStatusLabel($order['order_status'], $order['payment_method']) ?></span>
+    <?php if (!$order['seen_by_artist']): ?>
+        <span style="display:inline-block;margin-left:6px;background:#fff3cd;color:#856404;border:1px solid #ffc107;font-size:8px;font-weight:700;padding:2px 6px;border-radius:20px;letter-spacing:.5px;text-transform:uppercase;">New</span>
+    <?php endif; ?>
+</td>
+            <td data-label="Actions"><button type="button" class="action-btn" onclick="openDetail(<?= $order['id'] ?>, <?= $order['seen_by_artist'] ? 'true' : 'false' ?>)">View</button></td>
           </tr>
           <?php endforeach; ?>
         </tbody>
@@ -609,9 +638,27 @@ tr:hover td{background:var(--sand);box-shadow: 0 4px 12px rgba(12,63,48,.06);}
       });
   }
 
-  function openDetail(id) {
+  function openDetail(id, alreadySeen) {
     const order = orderData.find(o => o.id == id);
     if (!order) return;
+
+    // Mark as seen via AJAX if not already seen
+    if (!alreadySeen) {
+        const fd = new FormData();
+        fd.append('action', 'mark_seen');
+        fd.append('order_id', id);
+        fetch('orders.php', { method: 'POST', body: fd });
+
+        // Remove "New" badge from this row immediately without page reload
+        const rows = document.querySelectorAll('tr');
+        rows.forEach(row => {
+            const btn = row.querySelector(`button[onclick*="openDetail(${id},"]`);
+            if (btn) {
+                const newBadge = row.querySelector('span[style*="ffc107"]');
+                if (newBadge) newBadge.remove();
+            }
+        });
+    }
 
     const imgUrl = order.artwork_image ? `../../${order.artwork_image.replace(/^\.?\/*/, '')}` : '';
     const deliveryText = parseInt(order.delivery_available) === 1 ? 'Delivery Available' : 'Pickup Only';
@@ -621,9 +668,16 @@ tr:hover td{background:var(--sand);box-shadow: 0 4px 12px rgba(12,63,48,.06);}
     const displayBuyerEmail = order.buyer_email_real || order.guest_email;
     const displayBuyerPhone = order.buyer_phone_real || order.guest_phone;
 
-    // Check payment status
-    const isPaid = order.order_status === 'payment_confirmed' || order.payment_status === 'paid';
-const isPendingPayment = !isPaid;
+    // Check payment status — COD orders have nothing to "verify", they're ready immediately
+    const isCod = order.payment_method === 'cod';
+// COD orders are always actionable for artist — no payment verification needed
+const isPaid = order.order_status === 'payment_confirmed'
+            || order.order_status === 'cod'
+            || order.order_status === 'shipped'
+            || order.order_status === 'delivered'
+            || order.payment_status === 'paid'
+            || (isCod && order.order_status === 'pending');
+const isPendingPayment = !isPaid && !isCod;
 
     let statusFormHtml = '';
 
@@ -642,19 +696,31 @@ const isPendingPayment = !isPaid;
             </div>
         `;
     } else {
-        statusFormHtml = `
-    ${order.order_status === 'payment_confirmed' ? `
-    <div style="background:#d4edda;border:1px solid #28a745;border-radius:10px;padding:14px 16px;margin-bottom:16px;display:flex;gap:10px;align-items:center;">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#155724" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-        <div><strong style="color:#155724;font-size:13px;">Payment Approved — Start Working!</strong><div style="font-size:11px;color:#155724;margin-top:2px;">Admin verified the payment. Mark as Processing when you begin.</div></div>
-    </div>` : ''}
+        const readyBannerHtml = isCod
+            ? `<div style="background:#d4edda;border:1px solid #28a745;border-radius:10px;padding:14px 16px;margin-bottom:16px;display:flex;gap:10px;align-items:center;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#155724" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                <div><strong style="color:#155724;font-size:13px;">Cash on Delivery — Start Working!</strong><div style="font-size:11px;color:#155724;margin-top:2px;">Buyer will pay cash when the order is delivered. Mark as Processing when you begin.</div></div>
+               </div>`
+            : (order.order_status === 'payment_confirmed' ? `
+                <div style="background:#d4edda;border:1px solid #28a745;border-radius:10px;padding:14px 16px;margin-bottom:16px;display:flex;gap:10px;align-items:center;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#155724" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                    <div><strong style="color:#155724;font-size:13px;">Payment Approved — Start Working!</strong><div style="font-size:11px;color:#155724;margin-top:2px;">Admin verified the payment. Mark as Processing when you begin.</div></div>
+                </div>` : '');
+
+        const isCodOrder = order.payment_method === 'cod';
+statusFormHtml = `
+    ${readyBannerHtml}
     <div class="dl">Update Order Status</div>
-            <select name="new_status">
-                <option value="processing" ${order.order_status === 'processing' ? 'selected' : ''}>Processing</option>
-<option value="shipped" ${order.order_status === 'shipped' ? 'selected' : ''}>Shipped</option>
-<option value="delivered" ${order.order_status === 'delivered' ? 'selected' : ''}>Delivered</option>
-<option value="cancelled" ${order.order_status === 'cancelled' ? 'selected' : ''}>Cancelled</option>
-            </select>
+        <select name="new_status">
+            ${isCodOrder ? `
+            <option value="cod" ${order.order_status === 'cod' ? 'selected' : ''}>COD — Accepted & In Progress</option>
+            ` : `
+            <option value="processing" ${order.order_status === 'processing' ? 'selected' : ''}>Processing</option>
+            `}
+            <option value="shipped" ${order.order_status === 'shipped' ? 'selected' : ''}>Shipped</option>
+            <option value="delivered" ${order.order_status === 'delivered' ? 'selected' : ''}>Delivered</option>
+            <option value="cancelled" ${order.order_status === 'cancelled' ? 'selected' : ''}>Cancelled</option>
+        </select>
             <div style="margin-top:12px;text-align:right;">
                 <button type="submit" class="btn btn-primary">Update Status</button>
             </div>
@@ -689,7 +755,7 @@ const isPendingPayment = !isPaid;
         </div>
         <div class="detail-item">
           <div class="dl">Payment Status</div>
-          <div class="dv ${!order.payment_status ? 'muted' : ''}">${order.payment_status ? esc(order.payment_status) : 'Pending'}</div>
+          <div class="dv ${!order.payment_status ? 'muted' : ''}">${codLabel(order.payment_status)}</div>
         </div>
       </div>
 
@@ -728,6 +794,11 @@ const isPendingPayment = !isPaid;
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeDetail(); });
 
   function esc(str) { if (!str) return ''; const d = document.createElement('div'); d.textContent = str; return d.innerHTML; }
+  function codLabel(status) {
+    if (status === 'cod_pending') return 'Cash on Delivery';
+    if (status === 'cod_collected') return 'Cash Collected';
+    return status ? esc(status) : 'Pending';
+  }
 
   // Auto-hide toast
   setTimeout(() => {

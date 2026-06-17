@@ -135,6 +135,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cancel_order']) && $order['order_status'] === 'pending') {
     $conn->query("UPDATE orders SET order_status = 'cancelled' WHERE id = $orderId");
     
+    // Release artworks back to available
+    $conn->query("UPDATE artworks SET status = 'approved', reserved_by = NULL WHERE id IN (SELECT item_id FROM order_items WHERE order_id = $orderId AND item_type = 'artwork')");
+    
     // Add status history
     $stmt = $conn->prepare("
         INSERT INTO order_status_history (order_id, status_from, status_to, changed_by_role, changed_by_id, notes)

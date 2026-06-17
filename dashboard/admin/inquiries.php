@@ -23,19 +23,26 @@ function getArtworkImageUrl($imagePath) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'mark_paid') {
     $id = (int)($_POST['id'] ?? 0);
     if ($id) {
-        // Update payment status and move order to confirmed
-        $stmt = $conn->prepare("UPDATE orders SET payment_status = 'paid', order_status = 'payment_confirmed' WHERE id = ?");
-        $stmt->bind_param('i', $id);
-        $stmt->execute();
-        
-        // Add status history
-        $adminId = (int)$_SESSION['user_id'];
-        $note = 'Payment verified by admin. Order confirmed.';
-        $stmtH = $conn->prepare("INSERT INTO order_status_history (order_id, status_from, status_to, changed_by_role, changed_by_id, notes) VALUES (?, 'pending', 'payment_confirmed', 'admin', ?, ?)");
-        $stmtH->bind_param('iis', $id, $adminId, $note);
-        $stmtH->execute();
-        
-        $toast = 'Order marked as paid and confirmed.';
+        $methodRes = $conn->query("SELECT payment_method FROM orders WHERE id = $id");
+        $methodRow = $methodRes ? $methodRes->fetch_assoc() : null;
+
+        if ($methodRow && $methodRow['payment_method'] === 'cod') {
+            $toast = 'This order is Cash on Delivery — there is no screenshot to verify.';
+        } else {
+            // Update payment status and move order to confirmed
+            $stmt = $conn->prepare("UPDATE orders SET payment_status = 'paid', order_status = 'payment_confirmed' WHERE id = ?");
+            $stmt->bind_param('i', $id);
+            $stmt->execute();
+            
+            // Add status history
+            $adminId = (int)$_SESSION['user_id'];
+            $note = 'Payment verified by admin. Order confirmed.';
+            $stmtH = $conn->prepare("INSERT INTO order_status_history (order_id, status_from, status_to, changed_by_role, changed_by_id, notes) VALUES (?, 'pending', 'payment_confirmed', 'admin', ?, ?)");
+            $stmtH->bind_param('iis', $id, $adminId, $note);
+            $stmtH->execute();
+            
+            $toast = 'Order marked as paid and confirmed.';
+        }
     }
 }
 
@@ -46,13 +53,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
     $validStatuses = ['pending', 'payment_confirmed', 'processing', 'shipped', 'delivered', 'cancelled'];
     
     if ($id && in_array($newStatus, $validStatuses)) {
-        $oldRes = $conn->query("SELECT order_status, buyer_id FROM orders WHERE id = $id");
+        $oldRes = $conn->query("SELECT order_status, buyer_id, payment_method FROM orders WHERE id = $id");
         if ($oldRow = $oldRes->fetch_assoc()) {
             $oldStatus = $oldRow['order_status'];
             
             $stmt = $conn->prepare("UPDATE orders SET order_status = ? WHERE id = ?");
             $stmt->bind_param('si', $newStatus, $id);
             $stmt->execute();
+
+            // COD orders have no screenshot to verify — cash is confirmed collected on delivery
+            if ($newStatus === 'delivered' && $oldRow['payment_method'] === 'cod') {
+                $conn->query("UPDATE orders SET payment_status = 'cod_collected' WHERE id = $id");
+            }
 
             // If cancelled via dropdown, release artworks same as cancel button
             if ($newStatus === 'cancelled') {
@@ -95,10 +107,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'forward_to_artist') {
     $id = (int)($_POST['id'] ?? 0);
     $deliveryStatus = $_POST['delivery_status'] ?? 'pending';
-    
+
     if ($id) {
-        $stmt = $conn->prepare("UPDATE orders SET order_status = 'processing' WHERE id = ?");
-        $stmt->bind_param('i', $id);
+        $orderRow = $conn->query("SELECT payment_method FROM orders WHERE id = $id")->fetch_assoc();
+        $isCod = ($orderRow && $orderRow['payment_method'] === 'cod');
+$newForwardStatus = $isCod ? 'cod' : 'payment_confirmed';
+
+        $stmt = $conn->prepare("UPDATE orders SET order_status = ? WHERE id = ?");
+        $stmt->bind_param('si', $newForwardStatus, $id);
         $stmt->execute();
 
         $itemRes = $conn->query("SELECT item_id FROM order_items WHERE order_id = $id AND item_type = 'artwork' LIMIT 1");
@@ -108,10 +124,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'forwa
             $artUpdate->bind_param('si', $deliveryStatus, $artId);
             $artUpdate->execute();
         }
-        
+
         $adminId = (int)$_SESSION['user_id'];
-        $stmtH = $conn->prepare("INSERT INTO order_status_history (order_id, status_from, status_to, changed_by_role, changed_by_id, notes) VALUES (?, 'confirmed', 'processing', 'admin', ?, 'Order forwarded to artist to start work.')");
-        $stmtH->bind_param('ii', $id, $adminId);
+        $histNote = $isCod
+            ? 'COD order forwarded to artist. Awaiting artist confirmation.'
+            : 'Payment confirmed. Order forwarded to artist to start work.';
+
+        $stmtH = $conn->prepare("INSERT INTO order_status_history (order_id, status_from, status_to, changed_by_role, changed_by_id, notes) VALUES (?, 'pending', ?, 'admin', ?, ?)");
+        $stmtH->bind_param('isis', $id, $newForwardStatus, $adminId, $histNote);
         $stmtH->execute();
 
         $toast = 'Order forwarded to artist.';
@@ -188,7 +208,7 @@ $statusFilter = $_GET['status'] ?? '';
  $perPage = 15;
  $offset = ($page - 1) * $perPage;
 
- $validStatuses = ['pending','payment_confirmed','processing','shipped','delivered','cancelled'];
+ $validStatuses = ['pending','payment_confirmed','processing','cod','shipped','delivered','cancelled'];
 if (!in_array($statusFilter, $validStatuses)) $statusFilter = '';
 
  $where = ["o.order_type = 'artwork'"];
@@ -395,7 +415,8 @@ function buildQS($overrides = []) {
         
         /* ── Pills ───────────────────────────────────────────── */
         .pill { display: inline-block; font-size: 9px; letter-spacing: .5px; text-transform: uppercase; font-weight: 600; padding: 3px 9px; border-radius: 20px; white-space: nowrap; background: var(--sand); color: var(--ink); }
-        .pill.payment_confirmed { background: #d4edda; color: #155724; border: 1px solid #28a745; font-weight: 700; }        
+        .pill.pending { background: var(--sand); color: var(--ink); }
+.pill.cod-pending { background: #fff3cd; color: #856404; border: 1px solid #ffc107; font-weight: 700; }        
         /* ── Actions ─────────────────────────────────────────── */
         .td-actions { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
         .status-select { padding: 5px 8px; font-size: 10px; border: 1.5px solid var(--sand); border-radius: 7px; background: var(--bg); color: var(--ink); font-family: 'DM Sans', sans-serif; cursor: pointer; outline: none; }
@@ -538,9 +559,19 @@ function buildQS($overrides = []) {
             <!-- Status tabs -->
             <div class="tabs">
                 <a href="?<?= buildQS(['status' => null]) ?>" class="tab <?= !$statusFilter ? 'active' : '' ?>">All <span class="count"><?= $statusCounts['all'] ?></span></a>
-                <?php foreach (['pending', 'payment_confirmed', 'processing', 'shipped', 'delivered', 'cancelled'] as $s): ?>
-                <a href="?<?= buildQS(['status' => $s]) ?>" class="tab <?= $statusFilter === $s ? 'active' : '' ?>"><?= ucfirst($s) ?> <span class="count <?= ($s === 'pending' && ($statusCounts[$s] ?? 0) > 0) ? 'hot' : '' ?>"><?= $statusCounts[$s] ?? 0 ?></span></a>
-                <?php endforeach; ?>
+                <?php 
+$tabLabels = [
+    'pending'           => 'Pending',
+    'payment_confirmed' => 'Payment Confirmed',
+    'cod'               => 'COD — In Progress',
+    'processing'        => 'Processing',
+    'shipped'           => 'Shipped',
+    'delivered'         => 'Delivered',
+    'cancelled'         => 'Cancelled',
+];
+foreach ($tabLabels as $s => $label): ?>
+<a href="?<?= buildQS(['status' => $s]) ?>" class="tab <?= $statusFilter === $s ? 'active' : '' ?>"><?= $label ?> <span class="count <?= ($s === 'pending' && ($statusCounts[$s] ?? 0) > 0) ? 'hot' : '' ?>"><?= $statusCounts[$s] ?? 0 ?></span></a>
+<?php endforeach; ?>
             </div>
 
             <div class="filters">
@@ -608,7 +639,20 @@ function buildQS($overrides = []) {
                         <td class="td-price hide-mobile" data-label="Amount">
                             PKR <?= number_format($item['total_price']) ?>
                         </td>
-                        <td data-label="Status"><span class="pill <?= $item['item_status'] ?>"><?= ucfirst($item['item_status']) ?></span></td>
+                        <td data-label="Status">
+    <?php 
+    $pillClass = $item['item_status'];
+$pillLabel = ucfirst($item['item_status']);
+if ($item['item_status'] === 'pending' && $item['payment_method'] === 'cod') {
+    $pillClass = 'cod-pending';
+    $pillLabel = 'Awaiting Forward (COD)';
+} elseif ($item['item_status'] === 'cod') {
+    $pillClass = 'cod-pending';
+    $pillLabel = 'COD — In Progress';
+}
+    ?>
+    <span class="pill <?= $pillClass ?>"><?= $pillLabel ?></span>
+</td>
                         <td data-label="Actions">
                             <div class="td-actions">
                                 <button type="button" class="act-btn blue" onclick="openDetail(<?= $item['id'] ?>)">View</button>
@@ -695,7 +739,7 @@ function buildQS($overrides = []) {
                     <div class="detail-item"><div class="dl">Email</div><div class="dv ${!item.buyer_email ? 'muted' : ''}">${item.buyer_email ? esc(item.buyer_email) : 'Not provided'}</div></div>
                     <div class="detail-item"><div class="dl">Phone / WhatsApp</div><div class="dv ${!item.buyer_phone ? 'muted' : ''}">${item.buyer_phone ? esc(item.buyer_phone) : 'Not provided'}</div></div>
                     <div class="detail-item"><div class="dl">Payment Method</div><div class="dv ${!item.payment_method ? 'muted' : ''}">${item.payment_method ? esc(item.payment_method).replace(/_/g, ' ') : 'Not set'}</div></div>
-                    <div class="detail-item"><div class="dl">Payment Status</div><div class="dv ${!item.payment_status ? 'muted' : ''}">${item.payment_status ? esc(item.payment_status) : 'Pending'}</div></div>
+                    <div class="detail-item"><div class="dl">Payment Status</div><div class="dv ${!item.payment_status ? 'muted' : ''}">${codStatusLabel(item)}</div></div>
                 </div>
             `;
 
@@ -709,8 +753,34 @@ function buildQS($overrides = []) {
                 `;
             }
             
-            // Screenshot Display
-            if (item.payment_screenshot) {
+            // Payment verification box — screenshot for wallet payments, info note for COD
+            if (item.payment_method === 'cod') {
+    html += `
+        <div class="screenshot-box">
+            <div class="screenshot-info">
+                <strong>💵 Cash on Delivery</strong>
+                <div>${item.payment_status === 'cod_collected' ? 'Cash collected on delivery.' : 'No screenshot needed — buyer will pay cash on delivery.'}</div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px;">
+            ${item.item_status === 'pending' ? `
+                <form method="POST" style="display:inline;" onsubmit="return confirm('Forward this COD order to the artist?')">
+                    <input type="hidden" name="action" value="forward_to_artist">
+                    <input type="hidden" name="id" value="${item.id}">
+                    <input type="hidden" name="delivery_status" value="pending">
+                    <button type="submit" class="mark-paid-btn">Forward to Artist</button>
+                </form>
+            ` : ''}
+            ${item.item_status !== 'cancelled' && item.item_status !== 'delivered' ? `
+                <form method="POST" style="display:inline;" onsubmit="return confirm('Cancel this order and release artworks back to available?')">
+                    <input type="hidden" name="action" value="cancel_order">
+                    <input type="hidden" name="id" value="${item.id}">
+                    <button type="submit" class="mark-paid-btn" style="background:#8B2020;">Cancel Order</button>
+                </form>
+            ` : ''}
+            </div>
+        </div>
+    `;
+            } else if (item.payment_screenshot) {
                 html += `
                     <div class="screenshot-box">
                         <img src="../../${item.payment_screenshot}" class="screenshot-thumb" alt="Payment SS" style="cursor:pointer;" onclick="window.open('../../${item.payment_screenshot}', '_blank')">
@@ -860,6 +930,11 @@ function buildQS($overrides = []) {
 
         function esc(str) { if (!str) return ''; const d = document.createElement('div'); d.textContent = str; return d.innerHTML; }
         function ucf(str) { return str ? str.charAt(0).toUpperCase() + str.slice(1) : ''; }
+        function codStatusLabel(item) {
+            if (item.payment_status === 'cod_pending') return 'Cash on Delivery — awaiting delivery';
+            if (item.payment_status === 'cod_collected') return 'Cash Collected on Delivery';
+            return item.payment_status ? esc(item.payment_status) : 'Pending';
+        }
 
         let searchTimer;
         document.getElementById('searchInput').addEventListener('keyup', function() { clearTimeout(searchTimer); searchTimer = setTimeout(applyFilters, 400); });

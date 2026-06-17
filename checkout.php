@@ -258,39 +258,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
     $paymentMethod = $_POST['payment_method'] ?? 'jazzcash';
     $saveAddress = isset($_POST['save_address']) ? 1 : 0;
     $notes = trim($_POST['notes'] ?? '');
-    
+
+    // COD is never allowed for commissions, regardless of what was posted
+    $allowedMethods = $isCommissionCheckout
+        ? ['jazzcash', 'easypaisa', 'nayapay']
+        : ['jazzcash', 'easypaisa', 'nayapay', 'cod'];
+    $isCod = ($paymentMethod === 'cod');
+
     // Validation: City is required for calculation
     if (empty($city)) {
         $orderError = 'Please enter your City to calculate shipping.';
     } else {
         
-        // File Upload
+        // File Upload — only required for wallet methods, never for COD
         $screenshotPath = null;
-        if (isset($_FILES['payment_screenshot']) && $_FILES['payment_screenshot']['error'] === UPLOAD_ERR_OK) {
-            $fileTmp = $_FILES['payment_screenshot']['tmp_name'];
-            $fileName = time() . '_' . basename($_FILES['payment_screenshot']['name']);
-            $fileSize = $_FILES['payment_screenshot']['size'];
-            $fileExt = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
-            $allowedExts = ['jpg', 'jpeg', 'png', 'webp'];
-            
-            if (in_array($fileExt, $allowedExts) && $fileSize <= 2 * 1024 * 1024) {
-                if (move_uploaded_file($fileTmp, $uploadDir . $fileName)) {
-                    $screenshotPath = 'uploads/payment_screenshots/' . $fileName;
+        if (!$isCod) {
+            if (isset($_FILES['payment_screenshot']) && $_FILES['payment_screenshot']['error'] === UPLOAD_ERR_OK) {
+                $fileTmp = $_FILES['payment_screenshot']['tmp_name'];
+                $fileName = time() . '_' . basename($_FILES['payment_screenshot']['name']);
+                $fileSize = $_FILES['payment_screenshot']['size'];
+                $fileExt = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
+                $allowedExts = ['jpg', 'jpeg', 'png', 'webp'];
+                
+                if (in_array($fileExt, $allowedExts) && $fileSize <= 2 * 1024 * 1024) {
+                    if (move_uploaded_file($fileTmp, $uploadDir . $fileName)) {
+                        $screenshotPath = 'uploads/payment_screenshots/' . $fileName;
+                    } else {
+                        $orderError = 'Failed to upload screenshot. Please try again.';
+                    }
                 } else {
-                    $orderError = 'Failed to upload screenshot. Please try again.';
+                    $orderError = 'Invalid file. Only JPG, PNG, WEBP allowed (Max 2MB).';
                 }
             } else {
-                $orderError = 'Invalid file. Only JPG, PNG, WEBP allowed (Max 2MB).';
+                $orderError = 'Payment screenshot is required.';
             }
-        } else {
-            $orderError = 'Payment screenshot is required.';
         }
         
         if (!$fullName || !$address || !$phone) {
             $orderError = 'Please fill in all required fields.';
-        } elseif (!in_array($paymentMethod, ['jazzcash', 'easypaisa', 'nayapay'])) {
-            $orderError = 'Invalid payment method.';
-        } elseif (!$screenshotPath) {
+        } elseif (!in_array($paymentMethod, $allowedMethods)) {
+            $orderError = $isCommissionCheckout
+                ? 'Cash on Delivery is not available for commissions. Please choose JazzCash, Easypaisa, or Nayapay.'
+                : 'Invalid payment method.';
+        } elseif (!$isCod && !$screenshotPath) {
              $orderError = 'Payment screenshot is required.';
         } else {
             $conn->begin_transaction();
@@ -308,6 +318,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
     $finalShippingFee = calculateShippingServerSide($conn, $city, $cartItems);
 }
 $finalTotal = $subtotal + $finalShippingFee;
+
+// Re-validate COD eligibility now that shipping is known — a borderline
+// cart could cross the 10k line once shipping is added.
+if ($isCod && $finalTotal > 10000) {
+    throw new Exception('COD_LIMIT_EXCEEDED');
+}
 
                 if ($isCommissionCheckout && $existingOrder) {
                     $orderId = $existingOrder['id'];
@@ -336,11 +352,13 @@ $stmt->bind_param('ssssssddi', $paymentMethod, $screenshotPath, $address, $city,
                     $orderNumber = 'ORD-' . date('Ymd') . '-' . str_pad(rand(1, 9999), 4, '0', STR_PAD_LEFT);
                     $orderType = 'artwork'; 
                     
+                    $initialPaymentStatus = $isCod ? 'cod_pending' : 'pending';
+
                     $stmt = $conn->prepare("
                         INSERT INTO orders (buyer_id, order_number, order_type, order_status, subtotal, shipping_fee, discount, total, payment_method, payment_status, payment_screenshot, shipping_address, shipping_city, shipping_phone, buyer_notes, created_at)
-                        VALUES (?, ?, ?, 'pending', ?, ?, 0, ?, ?, 'pending', ?, ?, ?, ?, ?, NOW())
+                        VALUES (?, ?, ?, 'pending', ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
                     ");
-                    $stmt->bind_param('issddsssssss', $buyerId, $orderNumber, $orderType, $subtotal, $finalShippingFee, $finalTotal, $paymentMethod, $screenshotPath, $address, $city, $phone, $notes);
+                    $stmt->bind_param('issddssssssss', $buyerId, $orderNumber, $orderType, $subtotal, $finalShippingFee, $finalTotal, $paymentMethod, $initialPaymentStatus, $screenshotPath, $address, $city, $phone, $notes);
                     $stmt->execute();
                     $orderId = $conn->insert_id;
                     
@@ -360,8 +378,11 @@ $stmt->bind_param('ssssssddi', $paymentMethod, $screenshotPath, $address, $city,
                     
                     $conn->query("DELETE FROM shopping_cart WHERE buyer_id = $buyerId");
                     
-                    $stmtHistory = $conn->prepare("INSERT INTO order_status_history (order_id, status_from, status_to, changed_by_role, changed_by_id, notes) VALUES (?, NULL, 'pending', 'buyer', ?, 'Order placed. Payment verification pending.')");
-                    $stmtHistory->bind_param('ii', $orderId, $buyerId);
+                    $placedNote = $isCod
+                        ? 'Order placed with Cash on Delivery.'
+                        : 'Order placed. Payment verification pending.';
+                    $stmtHistory = $conn->prepare("INSERT INTO order_status_history (order_id, status_from, status_to, changed_by_role, changed_by_id, notes) VALUES (?, NULL, 'pending', 'buyer', ?, ?)");
+                    $stmtHistory->bind_param('iis', $orderId, $buyerId, $placedNote);
                     $stmtHistory->execute();
                 }
                 
@@ -383,8 +404,12 @@ $stmt->bind_param('ssssssddi', $paymentMethod, $screenshotPath, $address, $city,
                 
             } catch (Exception $e) {
                 $conn->rollback();
-                $orderError = 'Failed to place order. Please try again.';
-                error_log('Order placement error: ' . $e->getMessage());
+                if ($e->getMessage() === 'COD_LIMIT_EXCEEDED') {
+                    $orderError = 'Cash on Delivery is only available for orders under PKR 10,000 (including shipping). Please choose another payment method or reduce your order.';
+                } else {
+                    $orderError = 'Failed to place order. Please try again.';
+                    error_log('Order placement error: ' . $e->getMessage());
+                }
             }
         }
     }
@@ -795,9 +820,21 @@ img{max-width:100%;display:block;}
               Account Title: Fazal karim Ahsan<br>
               Account Number: 03304780888
             </div>
+
+            <?php if (!$isCommissionCheckout): ?>
+            <!-- COD -->
+            <div class="payment-option<?= $total > 10000 ? '' : '' ?>" onclick="selectPayment('cod')" id="cod-option">
+              <input type="radio" name="payment_method" value="cod">
+              <span>💵 Cash on Delivery</span>
+            </div>
+            <div id="details-cod" class="payment-details">
+              <strong>Cash on Delivery</strong>
+              Pay in cash when your order arrives. Only available for orders under PKR 10,000 (including shipping).
+            </div>
+            <?php endif; ?>
             
-            <!-- Payment Screenshot Upload -->
-            <div class="upload-section">
+            <!-- Payment Screenshot Upload (hidden for COD) -->
+            <div class="upload-section" id="upload-section">
               <label>
                 <span class="upload-icon">📷</span>
                 <span>Upload Payment Screenshot <span style="color:var(--ink)">*</span></span>
@@ -808,6 +845,10 @@ img{max-width:100%;display:block;}
                 <img id="preview-image" src="" alt="Payment Preview">
               </div>
             </div>
+
+            <?php if (!$isCommissionCheckout): ?>
+            <p id="cod-warning" style="display:none;font-size:11px;color:#7D2A14;margin-top:8px;">Cash on Delivery is only available for orders under PKR 10,000 (including shipping). Please choose another payment method.</p>
+            <?php endif; ?>
           </div>
           
           <button type="submit" name="place_order" class="place-order-btn" id="placeOrderBtn" <?= ($shippingFee === 0 && !$isCommissionCheckout) ? 'disabled' : '' ?>><?= $isCommissionCheckout ? 'Confirm & Pay' : 'Place Order' ?></button>
@@ -879,6 +920,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     const subtotal = <?php echo $subtotal; ?>;
     const isCommission = <?php echo $isCommissionCheckout ? 'true' : 'false'; ?>;
+    const COD_LIMIT = 10000;
     
     let timeoutId;
 
@@ -934,6 +976,8 @@ formData.append('commission_order_id', '<?php echo $commissionOrderId; ?>');
 
                 placeOrderBtn.disabled = false;
                 if (warningMsg) warningMsg.style.display = 'none';
+
+                updateCodAvailability(newTotal);
             }
         })
         .catch(err => {
@@ -943,6 +987,10 @@ formData.append('commission_order_id', '<?php echo $commissionOrderId; ?>');
 
     // Initialize Payment Method UI
     selectPayment('jazzcash');
+
+    if (!isCommission) {
+        updateCodAvailability(subtotal); // initial total before shipping is entered
+    }
 
     // Initialize Address UI
     document.querySelectorAll('.address-option').forEach(opt => {
@@ -979,6 +1027,32 @@ function selectPayment(method) {
   if (activeDiv) {
     activeDiv.classList.add('active');
   }
+
+  const uploadSection = document.getElementById('upload-section');
+  const screenshotInput = document.getElementById('payment_screenshot');
+  const isCod = (method === 'cod');
+
+  if (uploadSection) uploadSection.style.display = isCod ? 'none' : 'block';
+  if (screenshotInput) screenshotInput.required = !isCod;
+}
+
+function updateCodAvailability(currentTotal) {
+  const codOption = document.getElementById('cod-option');
+  const codWarning = document.getElementById('cod-warning');
+  if (!codOption) return; // commission checkout has no COD option
+
+  const codRadio = codOption.querySelector('input[name="payment_method"]');
+  const overLimit = currentTotal > COD_LIMIT;
+
+  codOption.style.opacity = overLimit ? '0.5' : '1';
+  codOption.style.pointerEvents = overLimit ? 'none' : 'auto';
+  if (codRadio) codRadio.disabled = overLimit;
+
+  if (overLimit && codRadio && codRadio.checked) {
+    selectPayment('jazzcash'); // bump back to a valid method if total grew past the cap
+  }
+
+  if (codWarning) codWarning.style.display = overLimit ? 'block' : 'none';
 }
 
 function previewImage(event) {

@@ -21,6 +21,7 @@ $conn->query("
     AND reserved_until < NOW()
 ");
 
+
 // Also remove those items from shopping_cart
 $conn->query("
     DELETE sc FROM shopping_cart sc
@@ -28,7 +29,14 @@ $conn->query("
     WHERE a.reserved_by IS NULL 
     AND a.reserved_until IS NULL
 ");
-
+// ── Refresh reservation timer for active buyer ──────────
+// Resets the clock each time they view their cart, so active shoppers don't get timed out
+$conn->query("
+    UPDATE artworks 
+    SET reserved_until = DATE_ADD(NOW(), INTERVAL 2 MINUTE)
+    WHERE reserved_by = $buyerId
+    AND reserved_until IS NOT NULL
+");
  $message = '';
  $error = '';
  $isLoggedIn = true; // For drawer state
@@ -193,6 +201,11 @@ while ($row = $cartResult->fetch_assoc()) {
  $subtotal = $artworkSubtotal;
  $shippingFee = 0; // Shipping is calculated dynamically at checkout based on city and weight
  $total = $subtotal; // Total shown in cart excludes shipping
+
+// COD is only ever eligible for artwork orders, and only when subtotal is under the cap.
+// NOTE: shipping is added later at checkout and could push a borderline order over —
+// this flag is informational only; checkout.php re-validates with the final total.
+ $codEligible = $total <= 10000;
 
 // Count artwork items for the checkout flow
  $artworkCount = 0;
@@ -555,6 +568,11 @@ img{max-width:100%;display:block;}
             <span>Total</span>
             <span>PKR <?= number_format($total) ?></span>
           </div>
+          <?php if (!$codEligible): ?>
+          <div class="summary-note" style="border-top:none;padding-top:0;margin-top:4px;">
+            Cash on Delivery isn't available for orders over PKR 10,000 — shipping may also affect eligibility at checkout.
+          </div>
+          <?php endif; ?>
           <?php
           $hasUnavailableItems = false;
           foreach ($cartItems as $ci) {
