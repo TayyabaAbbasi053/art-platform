@@ -134,7 +134,7 @@ if ($params) {
 // Fetch
  $dataSQL = "
     SELECT u.id, u.name, u.email, u.phone, u.status, u.profile_picture, u.created_at,
-           ap.city, ap.art_style, ap.bio, ap.accepts_commissions, ap.is_featured,
+           ap.city, ap.art_style, ap.bio, ap.accepts_commissions, ap.is_featured, ap.profile_complete,
            (SELECT COUNT(*) FROM artworks WHERE artist_id = u.id) AS art_count,
            (SELECT COUNT(*) FROM artworks WHERE artist_id = u.id AND status = 'approved') AS approved_count,
            (SELECT COUNT(*) FROM artworks WHERE artist_id = u.id AND status = 'sold') AS sold_count,
@@ -701,7 +701,7 @@ tr:hover td { background: var(--bg); box-shadow: 0 4px 12px rgba(12,63,48,.06); 
                     <td data-label="Status">
                         <span class="pill <?= $a['status'] ?>"><?= ucfirst($a['status']) ?></span>
                         <?php
-                        $incomplete = empty($a['profile_picture']) || empty($a['city']) || empty($a['art_style']) || empty($a['bio']);
+                        $incomplete = empty($a['profile_complete']);
                         if ($incomplete):
                         ?>
                             <span class="pill" style="background:var(--sand);color:var(--ink);margin-top:4px;display:inline-block;">⚠ Incomplete</span>

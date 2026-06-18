@@ -184,7 +184,9 @@ function buildQS($overrides = []) {
         if ($v === null) unset($q[$k]);
         else $q[$k] = $v;
     }
+    if (!array_key_exists('page', $overrides)) {
     unset($q['page']);
+}
     return http_build_query($q);
 }
 ?>

@@ -15,8 +15,14 @@ if (!$id) { header('Location: artists.php'); exit; }
 
 // Fetch artist
  $stmt = $conn->prepare("
-    SELECT u.*, ap.bio, ap.city, ap.instagram_url, ap.contact_email, ap.contact_phone,
-           ap.art_style, ap.accepts_commissions, ap.is_featured, u.status_reason
+    SELECT u.*, ap.bio, ap.city, ap.address, ap.instagram_url, ap.contact_email, ap.contact_phone,
+           ap.art_style, ap.accepts_commissions, ap.is_featured, ap.profile_complete,
+           ap.has_bank_account, ap.bank_name, ap.bank_account_title, ap.bank_account_number,
+           ap.has_easypaisa, ap.easypaisa_name, ap.easypaisa_number,
+           ap.has_jazzcash, ap.jazzcash_name, ap.jazzcash_number,
+           ap.has_nayapay, ap.nayapay_name, ap.nayapay_number,
+           ap.has_sadapay, ap.sadapay_name, ap.sadapay_number,
+           u.status_reason
     FROM users u
     LEFT JOIN artist_profiles ap ON ap.user_id = u.id
     WHERE u.id = ? AND u.role = 'artist'
@@ -30,11 +36,14 @@ if (!$artist) { header('Location: artists.php'); exit; }
 
 // Change 1: Add completeness calculation after fetching the artist
  $missingFields = [];
-if (empty($artist['bio']))            $missingFields[] = 'Bio';
-if (empty($artist['city']))           $missingFields[] = 'City';
-if (empty($artist['art_style']))      $missingFields[] = 'Art Style';
+if (empty($artist['bio']))             $missingFields[] = 'Bio';
+if (empty($artist['city']))            $missingFields[] = 'City';
+if (empty($artist['address']))         $missingFields[] = 'Address';
+if (empty($artist['art_style']))       $missingFields[] = 'Art Style';
 if (empty($artist['profile_picture'])) $missingFields[] = 'Profile Picture';
- $isComplete = empty($missingFields);
+$hasPayment = $artist['has_bank_account'] || $artist['has_easypaisa'] || $artist['has_jazzcash'] || $artist['has_nayapay'] || $artist['has_sadapay'];
+if (!$hasPayment)                      $missingFields[] = 'Payment Method';
+$isComplete = (bool)($artist['profile_complete'] ?? 0);
 
 // Fetch artworks
  $artworks = [];
@@ -435,6 +444,7 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
             <div class="card-head">Contact Details (Private)</div>
             <div class="card-body">
                 <div class="info-row"><span class="label">Email</span><span class="value"><?= htmlspecialchars($artist['email']) ?></span></div>
+                <div class="info-row"><span class="label">Address</span><span class="value <?= !$artist['address'] ? 'muted' : '' ?>"><?= $artist['address'] ? htmlspecialchars($artist['address']) : 'Not set' ?></span></div>
                 <div class="info-row"><span class="label">Phone</span><span class="value <?= !$artist['phone'] ? 'muted' : '' ?>"><?= $artist['phone'] ? htmlspecialchars($artist['phone']) : 'Not set' ?></span></div>
                 <div class="info-row"><span class="label">Contact Email</span><span class="value <?= !$artist['contact_email'] ? 'muted' : '' ?>"><?= $artist['contact_email'] ? htmlspecialchars($artist['contact_email']) : 'Not set' ?></span></div>
                 <div class="info-row"><span class="label">Contact Phone</span><span class="value <?= !$artist['contact_phone'] ? 'muted' : '' ?>"><?= $artist['contact_phone'] ? htmlspecialchars($artist['contact_phone']) : 'Not set' ?></span></div>
@@ -466,6 +476,30 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
         </div>
     </div>
 
+    <!-- Payment Methods -->
+<div class="card" style="margin-bottom:20px;">
+    <div class="card-head">Payment Methods (Private)</div>
+    <div class="card-body">
+        <?php if ($artist['has_bank_account']): ?>
+        <div class="info-row"><span class="label">Bank</span><span class="value"><?= htmlspecialchars($artist['bank_name'] ?? '—') ?> — <?= htmlspecialchars($artist['bank_account_title'] ?? '') ?> — <?= htmlspecialchars($artist['bank_account_number'] ?? '') ?></span></div>
+        <?php endif; ?>
+        <?php if ($artist['has_easypaisa']): ?>
+        <div class="info-row"><span class="label">Easypaisa</span><span class="value"><?= htmlspecialchars($artist['easypaisa_name'] ?? '—') ?> — <?= htmlspecialchars($artist['easypaisa_number'] ?? '') ?></span></div>
+        <?php endif; ?>
+        <?php if ($artist['has_jazzcash']): ?>
+        <div class="info-row"><span class="label">JazzCash</span><span class="value"><?= htmlspecialchars($artist['jazzcash_name'] ?? '—') ?> — <?= htmlspecialchars($artist['jazzcash_number'] ?? '') ?></span></div>
+        <?php endif; ?>
+        <?php if ($artist['has_nayapay']): ?>
+        <div class="info-row"><span class="label">NayaPay</span><span class="value"><?= htmlspecialchars($artist['nayapay_name'] ?? '—') ?> — <?= htmlspecialchars($artist['nayapay_number'] ?? '') ?></span></div>
+        <?php endif; ?>
+        <?php if ($artist['has_sadapay']): ?>
+        <div class="info-row"><span class="label">SadaPay</span><span class="value"><?= htmlspecialchars($artist['sadapay_name'] ?? '—') ?> — <?= htmlspecialchars($artist['sadapay_number'] ?? '') ?></span></div>
+        <?php endif; ?>
+        <?php if (!$artist['has_bank_account'] && !$artist['has_easypaisa'] && !$artist['has_jazzcash'] && !$artist['has_nayapay'] && !$artist['has_sadapay']): ?>
+        <div style="font-size:12px;color:var(--ink);opacity:0.5;">No payment methods added yet.</div>
+        <?php endif; ?>
+    </div>
+</div>
     <!-- Artworks -->
     <div class="card" style="margin-bottom:28px;">
         <div class="card-head">Artworks by <?= htmlspecialchars($artist['name']) ?> (<?= count($artworks) ?>)</div>

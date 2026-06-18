@@ -14,21 +14,25 @@ if ($__userStatus['status'] === 'blocked') {
     exit;
 }
 
-$artistId = (int) $_SESSION['user_id'];  // ← whatever comes next in the file
-
- $artistId   = (int) $_SESSION['user_id'];
- $artistName = $_SESSION['name'] ?? 'Artist';
- $successMsg = '';
- $errorMsg   = '';
+$artistId = (int) $_SESSION['user_id'];
+$artistName = $_SESSION['name'] ?? 'Artist';
+$successMsg = '';
+$errorMsg   = '';
 
 // ── Fetch current data ──────────────────────────────────
- $user = $conn->query("SELECT name, email, phone, profile_picture FROM users WHERE id = $artistId")->fetch_assoc();
+$user = $conn->query("SELECT name, email, phone, profile_picture FROM users WHERE id = $artistId")->fetch_assoc();
 
 // Ensure artist_profiles row exists
- $conn->query("INSERT IGNORE INTO artist_profiles (user_id) VALUES ($artistId)");
+$conn->query("INSERT IGNORE INTO artist_profiles (user_id) VALUES ($artistId)");
 
- $profile = $conn->query("
-    SELECT bio, city, instagram_url, contact_email, contact_phone, art_style, accepts_commissions
+$profile = $conn->query("
+    SELECT bio, city, address, instagram_url, contact_email, contact_phone, art_style, accepts_commissions,
+           has_bank_account, bank_name, bank_account_title, bank_account_number,
+           has_easypaisa, easypaisa_name, easypaisa_number,
+           has_jazzcash, jazzcash_name, jazzcash_number,
+           has_nayapay, nayapay_name, nayapay_number,
+           has_sadapay, sadapay_name, sadapay_number,
+           profile_complete
     FROM artist_profiles WHERE user_id = $artistId
 ")->fetch_assoc();
 
@@ -53,6 +57,28 @@ elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $contact_phone      = trim($_POST['contact_phone'] ?? '');
     $art_style          = trim($_POST['art_style'] ?? '');
     $accepts_commissions = isset($_POST['accepts_commissions']) ? 1 : 0;
+    $address            = trim($_POST['address'] ?? '');
+    $hasBankAccount     = isset($_POST['has_bank_account']) ? 1 : 0;
+    $hasEasypaisa       = isset($_POST['has_easypaisa']) ? 1 : 0;
+    $hasJazzcash        = isset($_POST['has_jazzcash']) ? 1 : 0;
+    $hasNayapay         = isset($_POST['has_nayapay']) ? 1 : 0;
+    $hasSadapay         = isset($_POST['has_sadapay']) ? 1 : 0;
+
+    $bankName   = $hasBankAccount ? trim($_POST['bank_name'] ?? '') : null;
+    $bankTitle  = $hasBankAccount ? trim($_POST['bank_account_title'] ?? '') : null;
+    $bankNumber = $hasBankAccount ? trim($_POST['bank_account_number'] ?? '') : null;
+    $epName     = $hasEasypaisa ? trim($_POST['easypaisa_name'] ?? '') : null;
+    $epNum      = $hasEasypaisa ? trim($_POST['easypaisa_number'] ?? '') : null;
+    $jcName     = $hasJazzcash ? trim($_POST['jazzcash_name'] ?? '') : null;
+    $jcNum      = $hasJazzcash ? trim($_POST['jazzcash_number'] ?? '') : null;
+    $npName     = $hasNayapay ? trim($_POST['nayapay_name'] ?? '') : null;
+    $npNum      = $hasNayapay ? trim($_POST['nayapay_number'] ?? '') : null;
+    $spName     = $hasSadapay ? trim($_POST['sadapay_name'] ?? '') : null;
+    $spNum      = $hasSadapay ? trim($_POST['sadapay_number'] ?? '') : null;
+
+    // Determine if profile is now complete
+    $profileComplete = (!empty($city) && !empty($address) && ($hasBankAccount || $hasEasypaisa || $hasJazzcash || $hasNayapay || $hasSadapay)) ? 1 : 0;
+    $profileCompletedAt = ($profileComplete && !($profile['profile_complete'] ?? 0)) ? date('Y-m-d H:i:s') : null;
 
     // Validation
     if ($name === '') {
@@ -99,22 +125,65 @@ elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->bind_param('ssi', $name, $newPicture, $artistId);
             $stmt->execute();
 
-            // Update artist_profiles table
+            // Update artist_profiles table with all fields
+            // COUNT: 26 fields being updated: bio, city, address, instagram_url, contact_email, 
+            // contact_phone, art_style, accepts_commissions, has_bank_account, bank_name, 
+            // bank_account_title, bank_account_number, has_easypaisa, easypaisa_name, easypaisa_number,
+            // has_jazzcash, jazzcash_name, jazzcash_number, has_nayapay, nayapay_name, nayapay_number,
+            // has_sadapay, sadapay_name, sadapay_number, profile_complete, profile_completed_at
+            // + 1 for WHERE user_id = 27 total parameters
             $stmt = $conn->prepare("
                 UPDATE artist_profiles
-                SET bio = ?, city = ?, instagram_url = ?, contact_email = ?,
-                    contact_phone = ?, art_style = ?, accepts_commissions = ?
+                SET bio = ?, city = ?, address = ?, instagram_url = ?, contact_email = ?,
+                    contact_phone = ?, art_style = ?, accepts_commissions = ?,
+                    has_bank_account = ?, bank_name = ?, bank_account_title = ?, bank_account_number = ?,
+                    has_easypaisa = ?, easypaisa_name = ?, easypaisa_number = ?,
+                    has_jazzcash = ?, jazzcash_name = ?, jazzcash_number = ?,
+                    has_nayapay = ?, nayapay_name = ?, nayapay_number = ?,
+                    has_sadapay = ?, sadapay_name = ?, sadapay_number = ?,
+                    profile_complete = ?, profile_completed_at = ?
                 WHERE user_id = ?
             ");
-            $stmt->bind_param('ssssssii', $bio, $city, $instagram_url, $contact_email, $contact_phone, $art_style, $accepts_commissions, $artistId);
+            
+            // 27 parameters total: 26 SET fields + 1 WHERE
+            // Types: s=string, i=integer
+            // s(1) bio, s(2) city, s(3) address, s(4) instagram_url, s(5) contact_email,
+            // s(6) contact_phone, s(7) art_style, i(8) accepts_commissions,
+            // i(9) has_bank_account, s(10) bank_name, s(11) bank_account_title, s(12) bank_account_number,
+            // i(13) has_easypaisa, s(14) easypaisa_name, s(15) easypaisa_number,
+            // i(16) has_jazzcash, s(17) jazzcash_name, s(18) jazzcash_number,
+            // i(19) has_nayapay, s(20) nayapay_name, s(21) nayapay_number,
+            // i(22) has_sadapay, s(23) sadapay_name, s(24) sadapay_number,
+            // i(25) profile_complete, s(26) profile_completed_at,
+            // i(27) user_id
+            $typeString = 'sssssssiisssississississisi';
+            
+            $stmt->bind_param(
+                $typeString,
+                $bio, $city, $address, $instagram_url, $contact_email,
+                $contact_phone, $art_style, $accepts_commissions,
+                $hasBankAccount, $bankName, $bankTitle, $bankNumber,
+                $hasEasypaisa, $epName, $epNum,
+                $hasJazzcash, $jcName, $jcNum,
+                $hasNayapay, $npName, $npNum,
+                $hasSadapay, $spName, $spNum,
+                $profileComplete, $profileCompletedAt,
+                $artistId
+            );
             $stmt->execute();
 
             // Refresh session and data
             $_SESSION['name'] = $name;
             $artistName = $name;
-            $user    = $conn->query("SELECT name, email, phone, profile_picture FROM users WHERE id = $artistId")->fetch_assoc();
+            $user = $conn->query("SELECT name, email, phone, profile_picture FROM users WHERE id = $artistId")->fetch_assoc();
             $profile = $conn->query("
-                SELECT bio, city, instagram_url, contact_email, contact_phone, art_style, accepts_commissions
+                SELECT bio, city, address, instagram_url, contact_email, contact_phone, art_style, accepts_commissions,
+                       has_bank_account, bank_name, bank_account_title, bank_account_number,
+                       has_easypaisa, easypaisa_name, easypaisa_number,
+                       has_jazzcash, jazzcash_name, jazzcash_number,
+                       has_nayapay, nayapay_name, nayapay_number,
+                       has_sadapay, sadapay_name, sadapay_number,
+                       profile_complete
                 FROM artist_profiles WHERE user_id = $artistId
             ")->fetch_assoc();
 
@@ -124,31 +193,29 @@ elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // ── Avatar URL for display ──────────────────────────────
- $avatarUrl = $user['profile_picture'] ? '../../' . $user['profile_picture'] : null;
+$avatarUrl = $user['profile_picture'] ? '../../' . $user['profile_picture'] : null;
 
 // ── Fetch counts for Sidebar Badges ─────────────────────
- $pendingCount = (int) ($conn->query("SELECT COUNT(*) FROM artworks WHERE artist_id = $artistId AND status = 'pending'")->fetch_row()[0] ?? 0);
+$pendingCount = (int) ($conn->query("SELECT COUNT(*) FROM artworks WHERE artist_id = $artistId AND status = 'pending'")->fetch_row()[0] ?? 0);
 
-// Updated commission count query (bridge table + orders)
- $newCommCount = (int) ($conn->query("
+$newCommCount = (int) ($conn->query("
     SELECT COUNT(*) 
     FROM commission_requests cr 
     JOIN orders o ON cr.order_id = o.id 
     WHERE cr.artist_id = $artistId AND o.order_type = 'commission' AND o.order_status = 'pending'
 ")->fetch_row()[0] ?? 0);
 
-// Updated new orders count query (orders table)
- $newOrdersCount = 0;
- $countStmt = $conn->prepare("
+$newOrdersCount = 0;
+$countStmt = $conn->prepare("
     SELECT COUNT(DISTINCT o.id) 
     FROM orders o
     JOIN order_items oi ON o.id = oi.order_id
     JOIN artworks a ON oi.item_id = a.id AND oi.item_type = 'artwork'
     WHERE a.artist_id = ? AND o.order_type = 'artwork' AND o.order_status = 'pending'
 ");
- $countStmt->bind_param('i', $artistId);
- $countStmt->execute();
- $newOrdersCount = $countStmt->get_result()->fetch_row()[0];
+$countStmt->bind_param('i', $artistId);
+$countStmt->execute();
+$newOrdersCount = $countStmt->get_result()->fetch_row()[0];
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -161,7 +228,7 @@ elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 :root {
     --bg: #F6EDDE; --card: #F6EDDE; --sand: #DDCDAE; --border: #0C3F30;
-    --ink: #0C3F30; --body: #0C3F30; --muted: #0C3F30; --light: #0C3F30;
+    --ink: #0C3F30; --body: #0C3F30; --muted: #8a9e97; --light: #0C3F30;
     --r: 16px;
     --sidebar: 240px;
     --top: 60px;
@@ -294,9 +361,9 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
 .field-input::placeholder { color: var(--muted); }
 textarea.field-input { resize: vertical; min-height: 110px; line-height: 1.6; }
 
-/* ── BIO RESTRICTION NOTE STYLE (NEW) ────────────────────── */
+/* ── BIO RESTRICTION NOTE STYLE ────────────────────── */
 .bio-warning-box {
-    background: #FCEEE9; /* Light warning color */
+    background: #FCEEE9;
     border: 1px solid #EEC5B8;
     border-radius: 10px;
     padding: 10px 14px;
@@ -331,6 +398,13 @@ textarea.field-input { resize: vertical; min-height: 110px; line-height: 1.6; }
 }
 .toggle-switch input:checked + .toggle-slider { background: var(--ink); border-color: var(--ink); }
 .toggle-switch input:checked + .toggle-slider::before { transform: translateX(20px); }
+
+/* ── Payment Toggles ─────────────────────────────────── */
+.pay-toggle{display:flex;align-items:center;gap:5px;font-size:10px;color:#666;cursor:pointer;padding:5px 12px;border:1.5px solid var(--sand);border-radius:20px;transition:all .2s;user-select:none;}
+.pay-toggle input{display:none;}
+.pay-toggle.active{border-color:var(--ink);background:var(--sand);color:var(--ink);font-weight:500;}
+.pay-fields{display:none;background:var(--bg);border:1px solid var(--sand);border-radius:10px;padding:14px 16px;margin-bottom:10px;}
+.pay-fields.show{display:block;}
 
 /* ── Buttons ─────────────────────────────────────────── */
 .form-actions { padding-top: 24px; border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
@@ -375,14 +449,10 @@ textarea.field-input { resize: vertical; min-height: 110px; line-height: 1.6; }
     .open #nav-drawer{display:block;position:fixed;top:0;right:0;width:80%;height:100%;background:var(--ink);z-index:1001;padding:40px 20px;box-shadow:-5px 0 15px rgba(0,0,0,0.1);transition:right 0.3s ease;}
     .open #nav-overlay{display:block;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;}
     
-    /* Mobile Drawer Links */
     #nav-drawer a { display: block; padding: 15px 0; color: var(--bg); font-size: 16px; border-bottom: 1px solid rgba(255,255,255,0.1); }
-    
-    /* Footer minimal */
     .dash-footer { text-align: center; padding: 20px 16px; }
 }
 
-/* Drawer Global Styles */
 #nav-drawer{display:none;}
 #nav-overlay{display:none;}
 </style>
@@ -416,8 +486,6 @@ textarea.field-input { resize: vertical; min-height: 110px; line-height: 1.6; }
         Commission Requests
         <?php if ($newCommCount > 0): ?><span class="badge"><?= $newCommCount ?></span><?php endif; ?>
     </a>
-    
-    <!-- ADDED ORDERS LINK -->
     <a href="orders.php" class="nav-item">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 7H4a2 2 0 00-2 2v6a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>
         Orders
@@ -461,6 +529,16 @@ textarea.field-input { resize: vertical; min-height: 110px; line-height: 1.6; }
 <main class="main">
 <div class="content">
 
+    <?php if (!($profile['profile_complete'] ?? 1)): ?>
+    <div style="background:#fef3cd;border:1px solid #e6c200;border-radius:12px;padding:14px 20px;margin-bottom:24px;display:flex;align-items:center;gap:12px;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#856404" stroke-width="2"><path d="M12 9v4m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+        <div>
+            <strong style="font-size:12px;color:#856404;">Complete your profile</strong>
+            <p style="font-size:11px;color:#856404;margin-top:2px;">Please add your address and at least one payment method below so you can receive payouts.</p>
+        </div>
+    </div>
+    <?php endif; ?>
+    
     <div class="section-title">Edit Your Profile</div>
 
     <?php if ($successMsg): ?>
@@ -522,7 +600,6 @@ textarea.field-input { resize: vertical; min-height: 110px; line-height: 1.6; }
                     <label class="field-label">Bio </label>
                     <textarea name="bio" class="field-input" id="bioInput" placeholder="Tell buyers about yourself, your artistic journey, inspiration, and techniques..."><?= htmlspecialchars($profile['bio'] ?? '') ?></textarea>
                     
-                    <!-- ADDED: RESTRICTION NOTE -->
                     <div class="bio-warning-box">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M12 9v4m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
@@ -538,8 +615,17 @@ textarea.field-input { resize: vertical; min-height: 110px; line-height: 1.6; }
                         <input type="text" name="city" class="field-input" value="<?= htmlspecialchars($profile['city'] ?? '') ?>" placeholder="e.g. Lahore, Karachi, Islamabad">
                     </div>
                     <div class="field-group">
+                        <label class="field-label">Address *</label>
+                        <input type="text" name="address" class="field-input" value="<?= htmlspecialchars($profile['address'] ?? '') ?>" placeholder="Street / Area">
+                    </div>
+                </div>
+                <div class="field-row">
+                    <div class="field-group">
                         <label class="field-label">Art Style</label>
                         <input type="text" name="art_style" class="field-input" value="<?= htmlspecialchars($profile['art_style'] ?? '') ?>" placeholder="e.g. Contemporary, Abstract, Realism">
+                    </div>
+                    <div class="field-group">
+                        <!-- empty for layout -->
                     </div>
                 </div>
             </div>
@@ -570,6 +656,69 @@ textarea.field-input { resize: vertical; min-height: 110px; line-height: 1.6; }
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="vertical-align:-2px;margin-right:4px;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
                         Private fields are <strong>only visible to admin</strong> — never shown on your public profile. Buyers contact you through our inquiry system.
                     </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Payment Methods ───────────────────── -->
+        <div class="profile-card">
+            <div class="profile-card-header">
+                <h2>Payment Methods</h2>
+                <span class="hint">For receiving payouts — never shown publicly</span>
+            </div>
+            <div class="profile-card-body">
+                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
+                    <label class="pay-toggle <?= ($profile['has_bank_account'] ?? 0) ? 'active' : '' ?>" onclick="togglePay('bank',this)">
+                        <input type="checkbox" name="has_bank_account" <?= ($profile['has_bank_account'] ?? 0) ? 'checked' : '' ?>> 🏦 Bank Account
+                    </label>
+                    <label class="pay-toggle <?= ($profile['has_easypaisa'] ?? 0) ? 'active' : '' ?>" onclick="togglePay('easypaisa',this)">
+                        <input type="checkbox" name="has_easypaisa" <?= ($profile['has_easypaisa'] ?? 0) ? 'checked' : '' ?>> Easypaisa
+                    </label>
+                    <label class="pay-toggle <?= ($profile['has_jazzcash'] ?? 0) ? 'active' : '' ?>" onclick="togglePay('jazzcash',this)">
+                        <input type="checkbox" name="has_jazzcash" <?= ($profile['has_jazzcash'] ?? 0) ? 'checked' : '' ?>> JazzCash
+                    </label>
+                    <label class="pay-toggle <?= ($profile['has_nayapay'] ?? 0) ? 'active' : '' ?>" onclick="togglePay('nayapay',this)">
+                        <input type="checkbox" name="has_nayapay" <?= ($profile['has_nayapay'] ?? 0) ? 'checked' : '' ?>> NayaPay
+                    </label>
+                    <label class="pay-toggle <?= ($profile['has_sadapay'] ?? 0) ? 'active' : '' ?>" onclick="togglePay('sadapay',this)">
+                        <input type="checkbox" name="has_sadapay" <?= ($profile['has_sadapay'] ?? 0) ? 'checked' : '' ?>> SadaPay
+                    </label>
+                </div>
+
+                <div id="pay-bank" class="pay-fields <?= ($profile['has_bank_account'] ?? 0) ? 'show' : '' ?>">
+                    <div class="field-group"><label class="field-label">Bank Name</label><input type="text" name="bank_name" class="field-input" value="<?= htmlspecialchars($profile['bank_name'] ?? '') ?>" placeholder="e.g. HBL, Meezan"></div>
+                    <div class="field-row">
+                        <div class="field-group"><label class="field-label">Account Title</label><input type="text" name="bank_account_title" class="field-input" value="<?= htmlspecialchars($profile['bank_account_title'] ?? '') ?>" placeholder="Name on account"></div>
+                        <div class="field-group"><label class="field-label">Account Number / IBAN</label><input type="text" name="bank_account_number" class="field-input" value="<?= htmlspecialchars($profile['bank_account_number'] ?? '') ?>" placeholder="Account / IBAN"></div>
+                    </div>
+                </div>
+
+                <div id="pay-easypaisa" class="pay-fields <?= ($profile['has_easypaisa'] ?? 0) ? 'show' : '' ?>">
+                    <div class="field-row">
+                        <div class="field-group"><label class="field-label">Account Name</label><input type="text" name="easypaisa_name" class="field-input" value="<?= htmlspecialchars($profile['easypaisa_name'] ?? '') ?>" placeholder="Registered name"></div>
+                        <div class="field-group"><label class="field-label">Mobile Number</label><input type="tel" name="easypaisa_number" class="field-input" value="<?= htmlspecialchars($profile['easypaisa_number'] ?? '') ?>" placeholder="03XX XXXXXXX"></div>
+                    </div>
+                </div>
+
+                <div id="pay-jazzcash" class="pay-fields <?= ($profile['has_jazzcash'] ?? 0) ? 'show' : '' ?>">
+                    <div class="field-row">
+                        <div class="field-group"><label class="field-label">Account Name</label><input type="text" name="jazzcash_name" class="field-input" value="<?= htmlspecialchars($profile['jazzcash_name'] ?? '') ?>" placeholder="Registered name"></div>
+                        <div class="field-group"><label class="field-label">Mobile Number</label><input type="tel" name="jazzcash_number" class="field-input" value="<?= htmlspecialchars($profile['jazzcash_number'] ?? '') ?>" placeholder="03XX XXXXXXX"></div>
+                    </div>
+                </div>
+
+                <div id="pay-nayapay" class="pay-fields <?= ($profile['has_nayapay'] ?? 0) ? 'show' : '' ?>">
+                    <div class="field-row">
+                        <div class="field-group"><label class="field-label">Account Name</label><input type="text" name="nayapay_name" class="field-input" value="<?= htmlspecialchars($profile['nayapay_name'] ?? '') ?>" placeholder="Registered name"></div>
+                        <div class="field-group"><label class="field-label">Mobile Number</label><input type="tel" name="nayapay_number" class="field-input" value="<?= htmlspecialchars($profile['nayapay_number'] ?? '') ?>" placeholder="03XX XXXXXXX"></div>
+                    </div>
+                </div>
+
+                <div id="pay-sadapay" class="pay-fields <?= ($profile['has_sadapay'] ?? 0) ? 'show' : '' ?>">
+                    <div class="field-row">
+                        <div class="field-group"><label class="field-label">Account Name</label><input type="text" name="sadapay_name" class="field-input" value="<?= htmlspecialchars($profile['sadapay_name'] ?? '') ?>" placeholder="Registered name"></div>
+                        <div class="field-group"><label class="field-label">Mobile Number</label><input type="tel" name="sadapay_number" class="field-input" value="<?= htmlspecialchars($profile['sadapay_number'] ?? '') ?>" placeholder="03XX XXXXXXX"></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -659,7 +808,6 @@ document.getElementById('fileInput').addEventListener('change', function(e) {
 document.getElementById('removeBtn').addEventListener('click', function(e) {
     e.preventDefault();
 
-    // Submit a hidden removal form
     const form = document.createElement('form');
     form.method = 'POST';
     form.action = '';
@@ -674,11 +822,21 @@ document.getElementById('removeBtn').addEventListener('click', function(e) {
     form.submit();
 });
 
+// ── Payment toggle ─────────────────────────────────────
+function togglePay(key, el) {
+    el.classList.toggle('active');
+    const cb = el.querySelector('input[type=checkbox]');
+    cb.checked = !cb.checked;
+    const field = document.getElementById('pay-' + key);
+    if (field) {
+        field.classList.toggle('show', cb.checked);
+    }
+}
+
 // ── Drawer Logic ───────────────────────────────────────
 const drawer = document.querySelector('body');
 const overlay = document.getElementById('nav-overlay');
 
-// Inject Hamburger if not present (Mobile only)
 if(window.innerWidth <= 768 && !document.querySelector('.ham-btn')){
     const topbarRight = document.querySelector('.topbar-right');
     if(topbarRight){
@@ -697,16 +855,15 @@ overlay.addEventListener('click', () => {
     drawer.classList.remove('open');
 });
 
-// ── Simple Client-Side Validation for Bio (Optional Enhancement) ─────
+// ── Bio validation ─────────────────────────────────────
 document.getElementById('profileForm').addEventListener('submit', function(e) {
     const bio = document.getElementById('bioInput').value.toLowerCase();
-    // Check for common forbidden patterns
     const forbidden = [
-        /\d{4,}/, // phone numbers 4+ digits
+        /\d{4,}/,
         /easypaisa|jazzcash|bank|account/i,
         /wa\.me|whatsapp/i,
         /dm\s*me|direct\s*message/i,
-        /@gmail\.com|@yahoo\.com/i // simple email check
+        /@gmail\.com|@yahoo\.com/i
     ];
 
     for (let pattern of forbidden) {

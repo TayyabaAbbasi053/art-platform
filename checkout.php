@@ -58,7 +58,7 @@ function calculateShippingServerSide($conn, $buyerCity, $cartItems): int {
         $weightKg   = (float)($row['weight_kg'] ?? 1.00);
 
         // Base fee: same city = 350, different city = 500
-        $base = (!empty($artistCity) && strcasecmp(trim($buyerCity), trim($artistCity)) === 0) ? 350 : 500;
+        $base = (!empty($artistCity) && strcasecmp(trim($buyerCity), trim($artistCity)) === 0) ? 300 : 500;
 
         // Weight surcharge: +100 per kg above 1kg
         $weightSurcharge = (int)(max(0, ceil($weightKg - 1)) * 100);
@@ -93,7 +93,7 @@ if ($commissionOrderIdAjax > 0) {
         $apRes = $conn->query("SELECT city FROM artist_profiles WHERE user_id = $artistIdAjax LIMIT 1");
         if ($apRes) $artistCityAjax = $apRes->fetch_assoc()['city'] ?? '';
     }
-    $fee = (!empty($artistCityAjax) && strcasecmp(trim($buyerCity), trim($artistCityAjax)) === 0) ? 350 : 500;
+    $fee = (!empty($artistCityAjax) && strcasecmp(trim($buyerCity), trim($artistCityAjax)) === 0) ? 300 : 500;
 } else {
     $fee = calculateShippingServerSide($conn, $buyerCity, $items);
 }
@@ -111,7 +111,7 @@ if ($commissionOrderIdAjax > 0) {
             while ($bRow = $bRes->fetch_assoc()) {
                 $artistCity  = $bRow['artist_city'] ?? '';
                 $weightKg    = (float)($bRow['weight_kg'] ?? 1.00);
-                $base        = (!empty($artistCity) && strcasecmp(trim($buyerCity), trim($artistCity)) === 0) ? 350 : 500;
+                $base = (!empty($artistCity) && strcasecmp(trim($buyerCity), trim($artistCity)) === 0) ? 300 : 500;
                 $surcharge   = (int)(max(0, ceil($weightKg - 1)) * 100);
                 $breakdown[] = 'PKR ' . $base . ($surcharge > 0 ? ' + PKR ' . $surcharge . ' (weight)' : '') . ' = PKR ' . ($base + $surcharge);
             }
@@ -313,7 +313,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
         $res = $conn->query("SELECT city FROM artist_profiles WHERE user_id = $artistId LIMIT 1");
         if ($res) $artistCity = $res->fetch_assoc()['city'] ?? '';
     }
-    $finalShippingFee = (!empty($artistCity) && strcasecmp(trim($city), trim($artistCity)) === 0) ? 350 : 500;
+    $finalShippingFee = (!empty($artistCity) && strcasecmp(trim($city), trim($artistCity)) === 0) ? 300 : 500;
 } else {
     $finalShippingFee = calculateShippingServerSide($conn, $city, $cartItems);
 }
