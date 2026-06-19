@@ -75,7 +75,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_artists') {
 function containsContactInfo(string $text): bool {
     $patterns = [
         '/\b[\w.+-]+@[\w-]+\.[a-z]{2,}\b/i',
-        '/(\+92|0)?[-\s]?[0-9]{3}[-\s]?[0-9]{7,8}/',
+        '/(\+92[-\s]?[0-9]{3}[-\s]?[0-9]{7}|(?<!\d)0[0-9]{2,3}[-\s]?[0-9]{6,8})/',
         '/\b(instagram|insta|ig|whatsapp|wa|facebook|fb|twitter|tiktok|snapchat)\s*[:\-@]?\s*\w+/i',
         '/@[a-zA-Z0-9._]{2,30}/',
         '/\b(iban|account\s*no|bank|easypaisa|jazzcash|sadapay|nayapay)\b/i',

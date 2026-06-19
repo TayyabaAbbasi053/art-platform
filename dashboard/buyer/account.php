@@ -62,7 +62,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['commission_action']))
 function containsContactInfo(string $text): bool {
     $patterns = [
         '/\b[\w.+-]+@[\w-]+\.[a-z]{2,}\b/i',
-        '/(\+92|0)?[-\s]?[0-9]{3}[-\s]?[0-9]{7,8}/',
+        '/(\+92[-\s]?[0-9]{3}[-\s]?[0-9]{7}|(?<!\d)0[0-9]{2,3}[-\s]?[0-9]{6,8})/',
         '/\b(instagram|insta|ig|whatsapp|wa|facebook|fb|twitter|tiktok|snapchat)\s*[:\-@]?\s*\w+/i',
         '/@[a-zA-Z0-9._]{2,30}/',
         '/\b(iban|account\s*no|bank|easypaisa|jazzcash|sadapay|nayapay)\b/i',
@@ -74,9 +74,20 @@ function containsContactInfo(string $text): bool {
 }
 
 // ── Handle commission chat message POST ──────────────────
- $chatError = '';
- $chatSuccess = false;
- $chatOrderId = 0;
+$chatError = '';
+$chatSuccess = false;
+$chatOrderId = 0;
+
+// Read success/error state from GET params (set after redirect)
+if (isset($_GET['chat_sent']) && $_GET['chat_sent'] == 1) {
+    $chatSuccess = true;
+    $chatOrderId = (int)($_GET['order_id'] ?? 0);
+}
+if (isset($_GET['chat_error'])) {
+    $chatError = urldecode($_GET['chat_error']);
+    $chatOrderId = (int)($_GET['order_id'] ?? 0);
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'send_commission_message') {
     $chatOrderId = (int)($_POST['order_id'] ?? 0);
     $chatMessage = trim($_POST['message'] ?? '');
@@ -87,14 +98,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $verifyStmt->execute();
 
     if ($verifyStmt->get_result()->num_rows === 0) {
-        $chatError = 'Invalid order.';
+        header("Location: account.php?order_id={$chatOrderId}&chat_error=" . urlencode('Invalid order.') . "#comm-{$chatOrderId}");
+        exit;
     } elseif (containsContactInfo($chatMessage)) {
-        $chatError = 'Message blocked: Contact information cannot be shared.';
+        header("Location: account.php?order_id={$chatOrderId}&chat_error=" . urlencode('Message blocked: Contact information cannot be shared.') . "#comm-{$chatOrderId}");
+        exit;
     } elseif ($chatMessage) {
         $msgStmt = $conn->prepare("INSERT INTO order_messages (order_id, sender_role, sender_id, sender_name, message, is_read_by_admin, is_read_by_artist, is_read_by_buyer) VALUES (?, 'buyer', ?, ?, ?, 0, 0, 1)");
         $msgStmt->bind_param('iiss', $chatOrderId, $buyerId, $buyerName, $chatMessage);
         $msgStmt->execute();
-        $chatSuccess = true;
+        header("Location: account.php?order_id={$chatOrderId}&chat_sent=1#comm-{$chatOrderId}");
+        exit;
+    } else {
+        header("Location: account.php?order_id={$chatOrderId}#comm-{$chatOrderId}");
+        exit;
     }
 }
 
@@ -877,8 +894,8 @@ function validateCommMsg(form) {
   const msg = input.value.trim();
   const patterns = [
     /[\w.+-]+@[\w-]+\.[a-z]{2,}/i,
-    /(\+92|0)?[-\s]?[0-9]{3}[-\s]?[0-9]{7,8}/,
-    /(instagram|insta|ig|whatsapp|wa|facebook|fb|twitter|tiktok|snapchat)\s*[:\-@]?\s*\w+/i,
+    /(\+92[\s-]?[0-9]{3}[\s-]?[0-9]{7}|(?<!\d)0[0-9]{2,3}[\s-]?[0-9]{6,8})/,
+    /\b(instagram|insta|whatsapp|facebook|twitter|tiktok|snapchat|ig|fb|wa)\b(\s*[:\-@]\s*|\s+(?:is|id|number|no|me|on|at)\s+)\w+/i,
     /@[a-zA-Z0-9._]{2,30}/,
     /(iban|account\s*no|bank|easypaisa|jazzcash|sadapay|nayapay)/i,
   ];
