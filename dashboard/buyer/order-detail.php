@@ -3,8 +3,8 @@ session_start();
 require_once __DIR__ . '/../../config/db.php';
 
 // ── Auth guard ───────────────────────────────────────────
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'buyer') {
-    header('Location: ../../login.php');
+if (!isset($_SESSION['user_id'])) {
+    header('Location: ../../login.php?redirect=' . urlencode($_SERVER['REQUEST_URI']));
     exit;
 }
 
@@ -628,8 +628,8 @@ img{max-width:100%;display:block;}
 <div id="nav-overlay"></div>
 <div id="nav-drawer">
   <div class="d-header">Menu</div>
-  <a href="../../account.php" class="d-link">Overview</a>
-  <a href="../../orders.php" class="d-link">My Orders</a>
+  <a href="account.php" class="d-link">Overview</a>
+  <a href="orders.php" class="d-link">My Orders</a>
   <div style="margin-top:auto;border-top:1px solid rgba(246,237,222,0.1);padding-top:16px;">
     <a href="../../logout.php" class="d-link" style="color:#ff9999;">Sign Out</a>
   </div>

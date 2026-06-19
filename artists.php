@@ -25,7 +25,7 @@ function getCartCount() {
     return $count;
 }
 
- $isLoggedIn = isset($_SESSION['user_id']) && $_SESSION['role'] === 'buyer';
+ $isLoggedIn = isset($_SESSION['user_id']);
 
  $search = trim($_GET['q'] ?? '');
  $cityFilter = trim($_GET['city'] ?? '');

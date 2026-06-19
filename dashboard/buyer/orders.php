@@ -4,8 +4,8 @@ session_start();
 require_once __DIR__ . '/../../config/db.php';
 
 // ── Auth guard ───────────────────────────────────────────
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'buyer') {
-    header('Location: ../../login.php');
+if (!isset($_SESSION['user_id'])) {
+    header('Location: ../../login.php?redirect=' . urlencode($_SERVER['REQUEST_URI']));
     exit;
 }
 
@@ -139,21 +139,21 @@ img{max-width:100%;display:block;}
 .sidebar-brand .logo-tag{font-size:9px;letter-spacing:2px;color:var(--sand);margin-top:2px;}
 .sidebar-section{padding:20px 20px 8px;font-size:9px;letter-spacing:2.5px;text-transform:uppercase;color:var(--sand);font-weight:500;}
 .nav-item{display:flex;align-items:center;gap:12px;padding:10px 20px;font-size:13px;color:var(--bg);border-left:2px solid transparent;transition:all .15s;}
-.nav-item:hover{color:var(--ink);background:rgba(255,255,255,0.3);border-left-color:var(--border);}
-.nav-item.active{color:var(--ink);background:var(--sand);font-weight:500;border-left-color:var(--sand);}
-.nav-item .icon{width:18px;height:18px;opacity:.6;}
-.nav-item.active .icon{opacity:1;}
+.nav-item:hover{color:var(--ink);background:rgba(246,237,222,0.15);border-left-color:var(--sand);}
+.nav-item.active{color:var(--ink);background:var(--sand);font-weight:500;border-left-color:var(--ink);}
+.nav-item .icon{width:18px;height:18px;opacity:.8;stroke:var(--bg);}
+.nav-item.active .icon, .nav-item:hover .icon{stroke:var(--ink);}
 .badge{margin-left:auto;background:var(--sand);color:var(--ink);font-size:9px;padding:2px 7px;border-radius:20px;}
 .sidebar-bottom{margin-top:auto;padding:20px;border-top:1px solid var(--border);}
 .signout-btn{display:flex;align-items:center;gap:10px;padding:10px;font-size:13px;color:var(--bg);border-radius:8px;transition:all .15s;}
 .signout-btn:hover{background:#FFF0EC;color:var(--ink);}
 
 /* TOPBAR */
-.topbar{position:fixed;top:0;left:var(--sidebar);right:0;height:var(--top);background:var(--card);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 32px;z-index:99;}
-.topbar-left h1{font-family:'Playfair Display',serif;font-size:22px;font-weight:400;}
+.topbar{position:fixed;top:0;left:var(--sidebar);right:0;height:var(--top);background:var(--ink);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 32px;z-index:99;}
+.topbar-left h1{font-family:'Playfair Display',serif;font-size:22px;font-weight:400;color:var(--bg);}
 .buyer-chip{display:flex;align-items:center;gap:10px;background:var(--sand);border:1px solid var(--border);padding:5px 12px 5px 8px;border-radius:30px;}
 .buyer-chip .avatar{width:32px;height:32px;border-radius:50%;background:var(--ink);display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--bg);font-weight:600;}
-.buyer-chip .name{font-size:13px;font-weight:500;}
+.buyer-chip .name{font-size:13px;font-weight:500;color:var(--ink);}
 
 /* MAIN */
 .main{margin-left:var(--sidebar);padding-top:var(--top);min-height:100vh;}
@@ -203,15 +203,20 @@ tr:hover { box-shadow: 0 4px 12px rgba(12,63,48,.06); }
 /* SUCCESS MESSAGE */
 .success-msg{background:#E8F5EE;color:#6BA58D;padding:12px 16px;border-radius:10px;margin-bottom:20px;border:1px solid #C8E0D5; background:var(--sand); color:var(--ink); border-color:var(--border);}
 
-/* HAMBURGER DRAWER & OVERLAY */
-#nav-drawer{display:none;}
-#nav-overlay{display:none;}
-.ham-btn{display:none;}
-.ham-btn{width:30px;height:24px;position:relative;background:none;border:none;cursor:pointer;z-index:2000;}
-.ham-btn span{position:absolute;display:block;width:100%;height:2px;background:var(--ink);border-radius:2px;transition:all .3s;opacity:1;left:0;}
-.ham-btn span:nth-child(1){top:2px;}
-.ham-btn span:nth-child(2){top:10px;}
-.ham-btn span:nth-child(3){top:18px;}
+/* HAMBURGER DRAWER & OVERLAY (artist-dashboard pattern) */
+#nav-drawer{display:none;position:fixed;top:0;right:0;bottom:0;width:260px;background:var(--ink);z-index:200;padding:20px;transform:translateX(100%);transition:transform .3s ease;flex-direction:column;border-left:1px solid rgba(246,237,222,.1);}
+#nav-drawer.open{transform:translateX(0);display:flex;}
+#nav-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:199;}
+#nav-overlay.open{display:block;}
+.ham-btn{display:none;flex-direction:column;gap:4px;background:none;border:none;cursor:pointer;padding:4px;}
+.ham-btn span{width:22px;height:2px;background:var(--bg);border-radius:2px;transition:.2s;}
+.drawer-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:30px;border-bottom:1px solid rgba(246,237,222,.1);padding-bottom:15px;}
+.drawer-logo{font-family:'Playfair Display',serif;font-size:18px;color:var(--bg);font-weight:400;}
+.drawer-close{background:none;border:none;color:var(--bg);font-size:24px;cursor:pointer;}
+.drawer-links a{display:block;color:var(--bg);text-decoration:none;padding:12px 0;border-bottom:1px solid rgba(246,237,222,.05);font-size:14px;}
+.drawer-links a:hover{color:var(--sand);}
+.drawer-actions{margin-top:auto;padding-top:20px;border-top:1px solid rgba(246,237,222,.1);}
+.drawer-actions a{display:block;padding:10px 0;color:var(--bg);text-decoration:none;font-size:13px;}
 /* Tablet Adjustments */
 @media(max-width:1080px){
     /* Footer adjustments handled in mobile block if necessary, or kept as is */
@@ -221,7 +226,9 @@ tr:hover { box-shadow: 0 4px 12px rgba(12,63,48,.06); }
 @media(max-width:768px){
     :root{--sidebar:0px;}
     .sidebar{display:none;}
-    .topbar{left:0;}
+    .topbar{left:0;padding:0 16px;}
+    .topbar-left h1{font-size:17px;color:var(--bg);}
+    .buyer-chip{display:none;}
     .content{padding:16px;}
     
     /* Drawer Active States */
@@ -229,7 +236,7 @@ tr:hover { box-shadow: 0 4px 12px rgba(12,63,48,.06); }
     .open #nav-overlay{display:block;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;}
     
     /* Show Hamburger */
-    .ham-btn{display:inline-block;}
+    .ham-btn{display:flex;}
     
     /* Stack Table Rows to Cards */
     table, thead, tbody, th, td, tr{display:block;}
@@ -239,7 +246,9 @@ tr:hover { box-shadow: 0 4px 12px rgba(12,63,48,.06); }
     td:before{content:attr(data-label);font-weight:600;font-size:11px;text-transform:uppercase;color:var(--muted);text-align:left;flex:1;}
     
     /* Hide less critical columns visually via display:none or simplified CSS */
-    .hide-mobile{display:none;} 
+    .hide-mobile{display:none;}
+    .item-count{display:none;}
+    .hide-desktop{display:block;} 
     
     /* Force button full width */
     .view-btn{width:100%;margin-top:10px;text-align:center;justify-content:center;}
@@ -279,11 +288,12 @@ tr:hover { box-shadow: 0 4px 12px rgba(12,63,48,.06); }
 <!-- TOPBAR -->
 <header class="topbar">
   <div class="topbar-left"><h1>My Orders</h1></div>
-  <div class="topbar-right">
+  <div class="topbar-right" style="display:flex;align-items:center;gap:12px;">
     <div class="buyer-chip">
       <div class="avatar"><?= strtoupper(substr($buyerName, 0, 1)) ?></div>
       <span class="name"><?= htmlspecialchars($buyerName) ?></span>
     </div>
+    <button class="ham-btn" onclick="openDrawer()"><span></span><span></span><span></span></button>
   </div>
 </header>
 
@@ -377,45 +387,31 @@ tr:hover { box-shadow: 0 4px 12px rgba(12,63,48,.06); }
 </div>
 </main>
 
-<!-- MOBILE DRAWER & OVERLAY -->
+<!-- NAV DRAWER (Mobile) -->
+<div id="nav-overlay" onclick="closeDrawer()"></div>
 <div id="nav-drawer">
-    <div style="margin-bottom: 30px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 20px;">
-        <h2 style="color:var(--bg); font-family:'Playfair Display',serif;">Menu</h2>
+    <div class="drawer-top">
+        <div class="drawer-logo">Art Bazaar</div>
+        <button class="drawer-close" onclick="closeDrawer()">&times;</button>
     </div>
-    <a href="account.php" style="display:block; padding: 15px 0; color:var(--bg); font-size:16px; border-bottom:1px solid rgba(255,255,255,0.05);">Account Overview</a>
-    <a href="orders.php" style="display:block; padding: 15px 0; color:var(--bg); font-size:16px; border-bottom:1px solid rgba(255,255,255,0.05);">My Orders</a>
-    <a href="../../artworks.php" style="display:block; padding: 15px 0; color:var(--bg); font-size:16px; border-bottom:1px solid rgba(255,255,255,0.05);">Browse Artworks</a>
-    <div style="margin-top: 40px;">
-        <a href="../../logout.php" style="display:inline-block; padding: 10px 20px; background:var(--sand); color:var(--ink); border-radius:30px; font-weight:600;">Sign Out</a>
+    <div class="drawer-links">
+        <a href="account.php">Account Overview</a>
+        <a href="orders.php">My Orders</a> 
+    </div>
+    <div class="drawer-actions">
+        <a href="../../logout.php">Sign Out</a>
     </div>
 </div>
-<div id="nav-overlay"></div>
 
 <script>
-// Drawer Logic
-const drawer = document.querySelector('body');
-const overlay = document.getElementById('nav-overlay');
-// Note: The hamburger button HTML is dynamically or typically added to header in design patterns.
-// Since we cannot touch the header HTML block, we inject the button via JS as an implementation detail of the Drawer feature.
-if(!document.querySelector('.ham-btn')){
-    const topbarRight = document.querySelector('.topbar-right');
-    if(topbarRight){
-        const btn = document.createElement('button');
-        btn.className = 'ham-btn';
-        btn.innerHTML = '<span></span><span></span><span></span>';
-        // Insert before the chip or append
-        topbarRight.insertBefore(btn, topbarRight.firstChild);
-        
-        // Event Listeners
-        btn.addEventListener('click', () => {
-            drawer.classList.toggle('open');
-        });
-    }
+function openDrawer() {
+    document.getElementById('nav-drawer').classList.add('open');
+    document.getElementById('nav-overlay').classList.add('open');
 }
-
-overlay.addEventListener('click', () => {
-    drawer.classList.remove('open');
-});
+function closeDrawer() {
+    document.getElementById('nav-drawer').classList.remove('open');
+    document.getElementById('nav-overlay').classList.remove('open');
+}
 </script>
 
 </body>

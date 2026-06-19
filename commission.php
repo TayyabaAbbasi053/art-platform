@@ -25,7 +25,7 @@ function getCartCount() {
     return $count;
 }
 
- $isLoggedIn = isset($_SESSION['user_id']) && $_SESSION['role'] === 'buyer';
+ $isLoggedIn = isset($_SESSION['user_id']);
 
  $preSelectedArtistId = isset($_GET['artist']) ? (int)$_GET['artist'] : null;
  $preSelectedArtistName = null;
@@ -194,8 +194,12 @@ $stmt->bind_param(
             ");
 
             // Redirect to buyer account page with confirmation flag
-            header("Location: dashboard/buyer/account.php?commission_submitted=1");
-            exit;
+            if (isset($_SESSION['user_id'])) {
+    header("Location: dashboard/buyer/account.php?commission_submitted=1");
+} else {
+    header("Location: commission.php?submitted=1");
+}
+exit;
         } else {
             $commissionError = "Failed to submit. Please try again.";
         }
@@ -483,8 +487,13 @@ img{max-width:100%;display:block;}
 <p style="font-size:11.5px;color:var(--ink);background:var(--sand);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:4px;line-height:1.6;">Submit your custom artwork request. The artist/platform will review the details, confirm pricing, timeline, and shipping before payment. <strong>Official payment instructions will only be shared by Art Bazaar Pakistan.</strong></p>
       
       <?php if ($commissionError): ?>
-        <div class="mmsg er"><?= htmlspecialchars($commissionError) ?></div>
-      <?php endif; ?>
+  <div class="mmsg er"><?= htmlspecialchars($commissionError) ?></div>
+<?php endif; ?>
+<?php if (isset($_GET['submitted'])): ?>
+  <div class="mmsg" style="background:var(--sand);border:1px solid var(--border);color:var(--ink);">
+    ✓ Your commission request has been submitted! We'll be in touch via email soon.
+  </div>
+<?php endif; ?>
       
       <form method="POST" enctype="multipart/form-data">
         <input type="hidden" name="action" value="commission_request">

@@ -165,8 +165,8 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
 .signout-btn:hover { background: rgba(255,255,255,0.1); color: var(--bg); }
 
 /* ── Topbar ──────────────────────────────────────────── */
-.topbar { position: fixed; top: 0; left: var(--sidebar); right: 0; height: var(--top); background: var(--card); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 32px; z-index: 99; }
-.topbar-left h1 { font-family: 'Playfair Display', serif; font-size: 20px; font-weight: 400; color: var(--ink); }
+.topbar { position: fixed; top: 0; left: var(--sidebar); right: 0; height: var(--top); background: var(--ink); border-bottom: 1px solid var(--ink); display: flex; align-items: center; justify-content: space-between; padding: 0 32px; z-index: 99; }
+.topbar-left h1 { font-family: 'Playfair Display', serif; font-size: 20px; font-weight: 400; color: var(--bg); }
 .artist-chip { display: flex; align-items: center; gap: 8px; background: var(--sand); border: 1px solid var(--border); padding: 5px 12px 5px 5px; border-radius: 30px; }
 .artist-chip .avatar { width: 26px; height: 26px; border-radius: 50%; background: var(--sand); display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--ink); font-weight: 600; overflow: hidden; }
 .artist-chip .avatar img { width: 100%; height: 100%; object-fit: cover; }
@@ -308,7 +308,7 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
 #nav-overlay{display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:199;}
 #nav-overlay.open{display:block;}
 .ham-btn{display:none; flex-direction:column; gap:4px; background:none; border:none; cursor:pointer; padding:4px;}
-.ham-btn span{width:22px; height:2px; background:var(--ink); border-radius:2px; transition:.2s;}
+.ham-btn span{width:22px; height:2px; background:var(--bg); border-radius:2px; transition:.2s;}
 .drawer-top{display:flex; justify-content:space-between; align-items:center; margin-bottom:30px; border-bottom:1px solid rgba(246,237,222,.1); padding-bottom:15px;}
 .drawer-logo{font-family:'Playfair Display',serif; font-size:18px; color:var(--bg); font-weight:400;}
 .drawer-close{background:none; border:none; color:var(--bg); font-size:24px; cursor:pointer;}
@@ -390,19 +390,6 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
     <div class="topbar-left"><h1>Upload Artwork</h1></div>
     <div class="topbar-right">
         <button class="ham-btn" onclick="openDrawer()"><span></span><span></span><span></span></button>
-        <div class="artist-chip">
-            <div class="avatar">
-                <?php 
-                $avatar = $conn->query("SELECT profile_picture FROM users WHERE id = $artistId")->fetch_assoc()['profile_picture'] ?? '';
-                if ($avatar): ?>
-                    <img src="<?= '../../' . ltrim($avatar, './') ?>" alt="">
-                <?php else: ?>
-                    <?= strtoupper(substr($artistName, 0, 1)) ?>
-                <?php endif; ?>
-            </div>
-            <span class="name"><?= htmlspecialchars($artistName) ?></span>
-            <span class="arrow">∨</span>
-        </div>
     </div>
 </header>
 

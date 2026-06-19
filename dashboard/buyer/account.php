@@ -3,8 +3,8 @@ session_start();
 require_once __DIR__ . '/../../config/db.php';
 
 // ── Auth guard ───────────────────────────────────────────
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'buyer') {
-    header('Location: ../../login.php');
+if (!isset($_SESSION['user_id'])) {
+    header('Location: ../../login.php?redirect=' . urlencode($_SERVER['REQUEST_URI']));
     exit;
 }
 
@@ -278,12 +278,27 @@ img{max-width:100%;display:block;}
 .signout-btn:hover{background:var(--bg);color:var(--ink);}
 
 /* TOPBAR */
-.topbar{position:fixed;top:0;left:var(--sidebar);right:0;height:var(--top);background:var(--card);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 32px;z-index:99;}
-.topbar-left h1{font-family:'Playfair Display',serif;font-size:22px;font-weight:400;}
+.topbar{position:fixed;top:0;left:var(--sidebar);right:0;height:var(--top);background:var(--ink);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 32px;z-index:99;}
+.topbar-left h1{font-family:'Playfair Display',serif;font-size:22px;font-weight:400;color:var(--bg);}
 .buyer-chip{display:flex;align-items:center;gap:10px;background:var(--sand);border:1px solid var(--border);padding:5px 12px 5px 8px;border-radius:30px;}
 .buyer-chip .avatar{width:32px;height:32px;border-radius:50%;background:var(--sand);display:flex;align-items:center;justify-content:center;font-size:14px;color:#fff;font-weight:600;overflow:hidden;}
 .buyer-chip .avatar img{width:100%;height:100%;object-fit:cover;}
 .buyer-chip .name{font-size:13px;font-weight:500;}
+
+/* HAMBURGER DRAWER & OVERLAY */
+#nav-drawer{display:none;position:fixed;top:0;right:0;bottom:0;width:260px;background:var(--ink);z-index:200;padding:20px;transform:translateX(100%);transition:transform .3s ease;flex-direction:column;border-left:1px solid rgba(246,237,222,.1);}
+#nav-drawer.open{transform:translateX(0);display:flex;}
+#nav-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:199;}
+#nav-overlay.open{display:block;}
+.ham-btn{display:none;flex-direction:column;gap:4px;background:none;border:none;cursor:pointer;padding:4px;}
+.ham-btn span{width:22px;height:2px;background:var(--bg);border-radius:2px;transition:.2s;}
+.drawer-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:30px;border-bottom:1px solid rgba(246,237,222,.1);padding-bottom:15px;}
+.drawer-logo{font-family:'Playfair Display',serif;font-size:18px;color:var(--bg);font-weight:400;}
+.drawer-close{background:none;border:none;color:var(--bg);font-size:24px;cursor:pointer;}
+.drawer-links a{display:block;color:var(--bg);text-decoration:none;padding:12px 0;border-bottom:1px solid rgba(246,237,222,.05);font-size:14px;}
+.drawer-links a:hover{color:var(--sand);}
+.drawer-actions{margin-top:auto;padding-top:20px;border-top:1px solid rgba(246,237,222,.1);}
+.drawer-actions a{display:block;padding:10px 0;color:var(--bg);text-decoration:none;font-size:13px;}
 
 /* MAIN */
 .main{margin-left:var(--sidebar);padding-top:var(--top);min-height:100vh;}
@@ -301,7 +316,7 @@ img{max-width:100%;display:block;}
 .stat-label{font-size:11px;color:var(--muted);margin-top:4px;}
 
 /* TWO COLUMN LAYOUT */
-.two-col{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:28px;}
+.two-col{display:grid;grid-template-columns:1fr;gap:24px;margin-bottom:28px;max-width:560px;}
 
 /* PROFILE CARD */
 .profile-card{background:var(--card);border:1px solid var(--border);border-radius:16px;overflow:hidden;margin-bottom:24px;}
@@ -342,14 +357,6 @@ img{max-width:100%;display:block;}
 .status-badge.refunded{background:var(--sand);color:var(--ink);}
 .view-link{color:var(--ink);font-size:12px;}
 .view-link:hover{text-decoration:underline;}
-
-/* QUICK ACTIONS */
-.quick-actions{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-top:12px;}
-.quick-action{background:var(--sand);border-radius:12px;padding:16px;text-align:center;transition:all .15s;}
-.quick-action:hover{background:var(--border);transform:translateY(-2px);}
-.quick-action svg{color:var(--ink);margin-bottom:8px;}
-.quick-action h4{font-size:13px;font-weight:500;margin-bottom:4px;}
-.quick-action p{font-size:11px;color:var(--muted);}
 
 /* SUCCESS / ERROR MESSAGES */
 .success-msg{background:var(--sand);color:var(--ink);padding:12px 16px;border-radius:10px;margin-bottom:20px;border:1px solid var(--border);}
@@ -421,6 +428,9 @@ img{max-width:100%;display:block;}
     :root{--sidebar:0px;}
     .sidebar{display:none;}
     .topbar{left:0;padding:0 16px;}
+    .topbar-left h1{font-size:17px;}
+    .buyer-chip{display:none;}
+    .ham-btn{display:flex;}
     .content{padding:16px;}
     .stats-grid{grid-template-columns:1fr 1fr;}
     .btn-primary,.btn-secondary,.btn-reject,.btn-accept{width:100%;justify-content:center;}
@@ -451,7 +461,7 @@ img{max-width:100%;display:block;}
   <div class="sidebar-section">Account</div>
   <a href="account.php" class="nav-item active">
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
-    Account Overview
+    Overview
   </a>
   <a href="orders.php" class="nav-item">
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 7H4a2 2 0 00-2 2v6a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>
@@ -469,7 +479,7 @@ img{max-width:100%;display:block;}
 <!-- TOPBAR -->
 <header class="topbar">
   <div class="topbar-left"><h1>My Account</h1></div>
-  <div class="topbar-right">
+  <div class="topbar-right" style="display:flex;align-items:center;gap:12px;">
     <div class="buyer-chip">
       <div class="avatar">
         <?php if ($avatarUrl): ?>
@@ -480,6 +490,7 @@ img{max-width:100%;display:block;}
       </div>
       <span class="name"><?= htmlspecialchars($buyerName) ?></span>
     </div>
+    <button class="ham-btn" onclick="openDrawer()"><span></span><span></span><span></span></button>
   </div>
 </header>
 
@@ -773,36 +784,7 @@ img{max-width:100%;display:block;}
       </div>
     </div>
     
-    <!-- RIGHT: QUICK ACTIONS -->
-    <div class="profile-card" style="margin-bottom:0;">
-      <div class="card-header">Quick Actions</div>
-      <div class="card-body">
-        <div class="quick-actions">
-          <a href="../../artworks.php" class="quick-action">
-            <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9l4-4 4 4 4-4 4 4"/><circle cx="8.5" cy="14.5" r="1.5"/></svg>
-            <h4>Browse Art</h4>
-            <p>Discover new artworks</p>
-          </a>
-          <a href="../../commission.php" class="quick-action">
-            <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-            <h4>Commission Art</h4>
-            <p>Request custom artwork</p>
-          </a>
-          <a href="orders.php" class="quick-action">
-            <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M20 7H4a2 2 0 00-2 2v6a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>
-            <h4>Track Orders</h4>
-            <p>View order status</p>
-          </a>
-          <a href="../../cart.php" class="quick-action">
-            <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 002 1.61h9.72a2 2 0 002-1.61L23 6H6"/></svg>
-            <h4>My Cart</h4>
-            <p><?= $cartCount ?> item<?= $cartCount !== 1 ? 's' : '' ?></p>
-          </a>
-        </div>
-      </div>
     </div>
-    
-  </div>
 
   <!-- RECENT ORDERS -->
   <div class="profile-card">
@@ -838,7 +820,31 @@ img{max-width:100%;display:block;}
 </div>
 </main>
 
+<!-- NAV DRAWER (Mobile) -->
+<div id="nav-overlay" onclick="closeDrawer()"></div>
+<div id="nav-drawer">
+    <div class="drawer-top">
+        <div class="drawer-logo">Art Bazaar</div>
+        <button class="drawer-close" onclick="closeDrawer()">&times;</button>
+    </div>
+    <div class="drawer-links">
+        <a href="account.php">Overview</a>
+        <a href="orders.php">My Orders</a>
+    </div>
+    <div class="drawer-actions">
+        <a href="../../logout.php">Sign Out</a>
+    </div>
+</div>
+
 <script>
+  function openDrawer() {
+    document.getElementById('nav-drawer').classList.add('open');
+    document.getElementById('nav-overlay').classList.add('open');
+}
+function closeDrawer() {
+    document.getElementById('nav-drawer').classList.remove('open');
+    document.getElementById('nav-overlay').classList.remove('open');
+}
 function toggleEdit() {
   const viewMode = document.getElementById('viewProfile');
   const editMode = document.getElementById('editProfile');

@@ -4,9 +4,8 @@ require_once __DIR__ . '/config/db.php';
 
 
 // ── Auth guard ───────────────────────────────────────────
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'buyer') {
-    $_SESSION['redirect_after_login'] = 'cart.php';
-    header('Location: login.php');
+if (!isset($_SESSION['user_id'])) {
+    header('Location: login.php?redirect=cart.php');
     exit;
 }
 
@@ -401,8 +400,9 @@ img{max-width:100%;display:block;}
       <input type="text" placeholder="Search...">
     </div>
     <div class="nend">
-      <span style="font-size:12.5px;color:var(--bg);">Welcome, <?= htmlspecialchars($_SESSION['name'] ?? 'Buyer') ?></span>
-      <a href="logout.php" class="btn-ghost">Logout</a>
+      <span style="font-size:12.5px;color:var(--bg);">Welcome, <?= htmlspecialchars($_SESSION['name'] ?? '') ?></span>
+<a href="dashboard/buyer/account.php" class="btn-ghost">My Account</a>
+<a href="logout.php" class="btn-dark">Logout</a>
 
       <button class="ham-btn" aria-label="Open menu">
         <span></span><span></span><span></span>
@@ -656,8 +656,8 @@ img{max-width:100%;display:block;}
   </div>
   <div class="drawer-actions">
     <a href="cart.php" class="drawer-cart">🛒 Cart</a>
-    <a href="dashboard/buyer/account.php" class="drawer-btn-ghost">My Account</a>
-    <a href="logout.php" class="drawer-btn-dark">Logout</a>
+    <a href="dashboard/buyer/account.php" class="btn-ghost">My Account</a>
+<a href="logout.php" class="drawer-btn-dark">Logout</a>
   </div>
 </div>
 

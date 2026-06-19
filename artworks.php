@@ -3,17 +3,15 @@ session_start();
 require_once __DIR__ . '/config/db.php';
 
 // ── Handle Add to Cart POST ──────────────────────────────
- $isLoggedIn = isset($_SESSION['user_id']) && $_SESSION['role'] === 'buyer';
+ $isLoggedIn = isset($_SESSION['user_id']);
  $cartAdded = false;
  $cartError = false;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'add_to_cart') {
     if (!$isLoggedIn) {
-        $_SESSION['redirect_after_login'] = 'artworks.php';
-        header('Location: login.php');
-        exit;
-    }
-
+    header('Location: login.php?redirect=' . urlencode($_SERVER['REQUEST_URI']));
+    exit;
+}
     $artworkId = (int)($_POST['artwork_id'] ?? 0);
     $artworkTitle = trim($_POST['artwork_title'] ?? '');
     $artworkPrice = (float)($_POST['artwork_price'] ?? 0);
@@ -85,9 +83,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'ajax_
     header('Content-Type: application/json');
     
     if (!$isLoggedIn) {
-        echo json_encode(['success' => false, 'redirect' => 'login.php']);
-        exit;
-    }
+    echo json_encode(['success' => false, 'redirect' => 'login.php?redirect=' . urlencode($_SERVER['REQUEST_URI'])]);
+    exit;
+}
 
     $artworkId = (int)($_POST['artwork_id'] ?? 0);
     if (!$artworkId) {

@@ -3,10 +3,17 @@ session_start();
 require_once __DIR__ . '/config/db.php';
 
 if (isset($_SESSION['user_id'])) {
-    $role = $_SESSION['role'];
-    if ($role === 'admin') header('Location: dashboard/admin/index.php');
-    elseif ($role === 'artist') header('Location: dashboard/artist/index.php');
-    else header('Location: index.php');
+    $redirect = $_GET['redirect'] ?? '';
+    if (!empty($redirect) && strpos($redirect, '/') === 0 &&
+        strpos($redirect, 'http://') === false &&
+        strpos($redirect, 'https://') === false) {
+        header('Location: ' . $redirect);
+    } else {
+        $role = $_SESSION['role'];
+        if ($role === 'admin') header('Location: dashboard/admin/index.php');
+        elseif ($role === 'artist') header('Location: dashboard/artist/index.php');
+        else header('Location: index.php');
+    }
     exit;
 }
 
@@ -50,6 +57,9 @@ function sendOtpEmail(string $toEmail, string $toName, string $otp): bool {
     }
 }
 
+// Capture redirect parameter from GET or POST
+$redirect = $_GET['redirect'] ?? $_POST['redirect'] ?? '';
+
  $step  = 'login';
  $error = '';
  $info  = '';
@@ -76,6 +86,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'login
             $_SESSION['user_id'] = $user['id'];
             $_SESSION['name']    = $user['name'];
             $_SESSION['role']    = $user['role'];
+            
+            // Check for valid redirect URL
+            if (!empty($redirect)) {
+                // Security: Only allow internal redirects (must start with /)
+                if (strpos($redirect, '/') === 0 && 
+                    strpos($redirect, 'http://') === false && 
+                    strpos($redirect, 'https://') === false) {
+                    header('Location: ' . $redirect);
+                    exit;
+                }
+            }
+            
+            // Fallback to role-based redirect
             if ($user['role'] === 'admin') header('Location: dashboard/admin/index.php');
             elseif ($user['role'] === 'artist') header('Location: dashboard/artist/index.php');
             else header('Location: index.php');
@@ -270,6 +293,7 @@ button[type=submit]:hover{background:#0a5240;}
     <p class="sub">Enter your details to continue.</p>
     <form method="POST">
       <input type="hidden" name="action" value="login">
+      <input type="hidden" name="redirect" value="<?= htmlspecialchars($redirect) ?>">
       <div class="field">
         <label>Email Address</label>
         <input type="email" name="email" placeholder="you@example.com" value="<?= htmlspecialchars($_POST['email'] ?? '') ?>" required>

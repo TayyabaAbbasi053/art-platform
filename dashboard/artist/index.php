@@ -36,18 +36,17 @@ foreach ($statQueries as $key => $sql) {
 }
 
 // Commission stats (now bridge table + orders)
- $stats['total_commissions'] = (int)$conn->query("
-    SELECT COUNT(*) FROM commission_requests cr 
-    JOIN orders o ON cr.order_id = o.id 
-    WHERE cr.artist_id = $artistId AND o.order_type = 'commission'
+$stats['total_commissions'] = (int)$conn->query("
+   SELECT COUNT(*) FROM commission_requests cr 
+   JOIN orders o ON cr.order_id = o.id
+   WHERE cr.artist_id = $artistId AND o.order_type = 'commission' AND o.order_status NOT IN ('pending')
 ")->fetch_row()[0];
 
  $stats['new_commissions'] = (int)$conn->query("
     SELECT COUNT(*) FROM commission_requests cr 
     JOIN orders o ON cr.order_id = o.id 
-    WHERE cr.artist_id = $artistId AND o.order_type = 'commission' AND o.order_status = 'pending'
+    WHERE cr.artist_id = $artistId AND o.order_type = 'commission' AND o.order_status = 'assigned'
 ")->fetch_row()[0];
-
 // Order stats (from orders table)
  $stats['total_orders'] = (int)$conn->query("
     SELECT COUNT(DISTINCT o.id) FROM orders o
@@ -186,12 +185,12 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
 /* ── Topbar ──────────────────────────────────────────── */
 .topbar {
     position: fixed; top: 0; left: var(--sidebar); right: 0; height: var(--top);
-    background: var(--card); border-bottom: 1px solid var(--border);
+    background: var(--ink); border-bottom: 1px solid var(--ink);
     display: flex; align-items: center; justify-content: space-between;
     padding: 0 32px; z-index: 99;
 }
-.topbar-left h1 { font-family: 'Playfair Display', serif; font-size: 20px; font-weight: 400; color: var(--ink); }
-.topbar-left .date { font-size: 11px; color: var(--muted); margin-top: 1px; }
+.topbar-left h1 { font-family: 'Playfair Display', serif; font-size: 20px; font-weight: 400; color: var(--bg); }
+.topbar-left .date { font-size: 11px; color: var(--bg); margin-top: 1px; }
 .topbar-right { display: flex; align-items: center; gap: 20px; }
 .artist-chip {
     display: flex; align-items: center; gap: 8px;
@@ -374,7 +373,7 @@ tr:hover td { background: var(--sand); color: var(--ink); }
 #nav-overlay{display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:199;}
 #nav-overlay.open{display:block;}
 .ham-btn{display:none; flex-direction:column; gap:4px; background:none; border:none; cursor:pointer; padding:4px;}
-.ham-btn span{width:22px; height:2px; background:var(--ink); border-radius:2px; transition:.2s;}
+.ham-btn span{width:22px; height:2px; background:var(--bg); border-radius:2px; transition:.2s;}
 .drawer-top{display:flex; justify-content:space-between; align-items:center; margin-bottom:30px; border-bottom:1px solid rgba(246,237,222,.1); padding-bottom:15px;}
 .drawer-logo{font-family:'Playfair Display',serif; font-size:18px; color:var(--bg); font-weight:400;}
 .drawer-close{background:none; border:none; color:var(--bg); font-size:24px; cursor:pointer;}
@@ -410,6 +409,7 @@ tr:hover td { background: var(--sand); color: var(--ink); }
     .profile-banner { flex-direction: column; align-items: stretch; text-align: left; padding: 16px; }
     .banner-left { align-items: flex-start; }
     .banner-right-btn { width: 100%; justify-content: center; }
+    .artist-chip { display: none; }
 }
 </style>
 </head>
@@ -478,8 +478,7 @@ tr:hover td { background: var(--sand); color: var(--ink); }
 <!-- ══════════════ TOPBAR ══════════════ -->
 <header class="topbar">
     <div class="topbar-left">
-        <h1>Good <?= (date('H') < 12) ? 'morning' : ((date('H') < 18) ? 'afternoon' : 'evening') ?>, <?= htmlspecialchars(explode(' ', $artistName)[0]) ?></h1>
-        <div class="date"><?= $today ?></div>
+        <h1>Welcome, <?= htmlspecialchars(explode(' ', $artistName)[0]) ?></h1>        <div class="date"><?= $today ?></div>
     </div>
     <div class="topbar-right">
         <button class="ham-btn" onclick="openDrawer()"><span></span><span></span><span></span></button>

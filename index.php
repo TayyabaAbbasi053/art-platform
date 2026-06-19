@@ -42,7 +42,7 @@ function containsContactInfo(string $text): bool {
     return false;
 }
 
- $isLoggedIn = isset($_SESSION['user_id']) && $_SESSION['role'] === 'buyer';
+ $isLoggedIn = isset($_SESSION['user_id']);
  $inquirySuccess = false;
  $inquiryError = false;
  $cartAdded = false;
@@ -79,7 +79,7 @@ if ($preSelectedArtistId) {
 // ── Handle AJAX Add to Cart ───────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'ajax_add_to_cart') {
     header('Content-Type: application/json');
-    if (!$isLoggedIn) { echo json_encode(['success' => false, 'redirect' => 'login.php']); exit; }
+    if (!$isLoggedIn) { echo json_encode(['success' => false, 'redirect' => 'login.php?redirect=' . urlencode($_SERVER['REQUEST_URI'])]); exit; }
     $artworkId = (int)($_POST['artwork_id'] ?? 0);
     if (!$artworkId) { echo json_encode(['success' => false, 'error' => 'Invalid artwork']); exit; }
     
@@ -125,7 +125,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'ajax_
 
 // Handle add to cart (fallback)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'add_to_cart') {
-    if (!$isLoggedIn) { $_SESSION['redirect_after_login'] = 'index.php'; header('Location: login.php'); exit; }
+    if (!$isLoggedIn) { header('Location: login.php?redirect=' . urlencode($_SERVER['REQUEST_URI'])); exit; }
     $artworkId = (int)($_POST['artwork_id'] ?? 0);
     $artworkTitle = trim($_POST['artwork_title'] ?? '');
     $artworkPrice = (float)($_POST['artwork_price'] ?? 0);
@@ -698,7 +698,7 @@ h1.htitle em{font-style:italic;color:var(--ink);}
             <button type="submit" class="aw-add-cart">🛒 Add to Cart</button>
           </form>
         <?php else: ?>
-          <a href="login.php" class="aw-add-cart" style="text-decoration:none;">Login to Buy</a>
+          <a href="login.php?redirect=<?= urlencode($_SERVER['REQUEST_URI']) ?>" class="aw-add-cart" style="text-decoration:none;">Login to Buy</a>
         <?php endif; ?>
       </div>
       <?php endforeach; ?>
@@ -814,7 +814,7 @@ h1.htitle em{font-style:italic;color:var(--ink);}
           <button type="submit" class="aw-add-cart">🛒 Add to Cart</button>
         </form>
       <?php else: ?>
-        <a href="login.php" class="aw-add-cart" style="text-decoration:none;">Login to Buy</a>
+        <a href="login.php?redirect=<?= urlencode($_SERVER['REQUEST_URI']) ?>" class="aw-add-cart" style="text-decoration:none;">Login to Buy</a>
       <?php endif; ?>
     </div>
     <?php endforeach; ?>

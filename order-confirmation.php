@@ -3,9 +3,8 @@ session_start();
 require_once __DIR__ . '/config/db.php';
 
 // ── Auth guard ───────────────────────────────────────────
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'buyer') {
-    $_SESSION['redirect_after_login'] = 'order-confirmation.php';
-    header('Location: login.php');
+if (!isset($_SESSION['user_id'])) {
+    header('Location: login.php?redirect=' . urlencode($_SERVER['REQUEST_URI']));
     exit;
 }
 

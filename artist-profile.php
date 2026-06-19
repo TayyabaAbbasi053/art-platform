@@ -220,8 +220,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'commi
             ");
 
             // Redirect to buyer account page with confirmation flag
-            header('Location: dashboard/buyer/account.php?commission_submitted=1');
-            exit;
+            if ($isLoggedIn) {
+    header('Location: dashboard/buyer/account.php?commission_submitted=1');
+} else {
+    header('Location: artist-profile.php?id=' . $artistId . '&submitted=1');
+}
+exit;
         } else {
             $commissionError = "Failed to submit. Please try again.";
         }
@@ -467,11 +471,7 @@ img{max-width:100%;display:block;}
         <?php endif; ?>
       </a>
       <?php if ($isLoggedIn): ?>
-        <?php if ($_SESSION['role'] === 'buyer'): ?>
-          <a href="dashboard/buyer/account.php" class="btn-ghost">My Account</a>
-        <?php elseif ($_SESSION['role'] === 'artist'): ?>
-          <a href="dashboard/artist/" class="btn-ghost">My Dashboard</a>
-        <?php endif; ?>
+        <a href="dashboard/buyer/account.php" class="btn-ghost">My Account</a>
         <a href="logout.php" class="btn-dark">Logout</a>
       <?php else: ?>
         <a href="login.php" class="btn-ghost">Login</a>
@@ -587,6 +587,7 @@ img{max-width:100%;display:block;}
     <div class="mbd">
       <p style="font-size:11px;color:var(--ink);background:var(--sand);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:12px;line-height:1.6;">Submit your custom artwork request. The artist/platform will review the details, confirm pricing, timeline, and shipping before payment. <strong>Official payment instructions will only be shared by Art Bazaar Pakistan.</strong></p>
       <?php if ($commissionError): ?><div class="mmsg er"><?= htmlspecialchars($commissionError) ?></div><?php endif; ?>
+<?php if (isset($_GET['submitted'])): ?><div class="mmsg" style="background:var(--sand);border:1px solid var(--border);color:var(--ink);">✓ Commission request submitted! We'll be in touch via email soon.</div><?php endif; ?>
       <form method="POST" enctype="multipart/form-data">
         <input type="hidden" name="action" value="commission_request">
         
@@ -708,11 +709,7 @@ img{max-width:100%;display:block;}
   <div class="drawer-actions">
     <a href="cart.php" class="drawer-cart">🛒 Cart</a>
     <?php if ($isLoggedIn): ?>
-      <?php if ($_SESSION['role'] === 'buyer'): ?>
-          <a href="dashboard/buyer/account.php" class="drawer-btn-ghost">My Account</a>
-      <?php elseif ($_SESSION['role'] === 'artist'): ?>
-          <a href="dashboard/artist/" class="drawer-btn-ghost">My Dashboard</a>
-      <?php endif; ?>
+      <a href="dashboard/buyer/account.php" class="btn-ghost">My Account</a>
       <a href="logout.php" class="drawer-btn-dark">Logout</a>
     <?php else: ?>
       <a href="login.php" class="drawer-btn-ghost">Login</a>
@@ -756,7 +753,7 @@ document.querySelectorAll('.mbg').forEach(b => b.addEventListener('click', e => 
   if (e.target === b) b.classList.remove('open');
 }));
 
-<?php if ($commissionError): ?>document.getElementById('cm').classList.add('open');<?php endif; ?>
+<?php if ($commissionError || isset($_GET['submitted'])): ?>document.getElementById('cm').classList.add('open');<?php endif; ?>
 </script>
 </body>
 </html>

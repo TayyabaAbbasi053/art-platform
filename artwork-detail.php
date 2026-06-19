@@ -31,7 +31,7 @@ if (!$artworkId) {
     exit;
 }
 
- $isLoggedIn = isset($_SESSION['user_id']) && $_SESSION['role'] === 'buyer';
+ $isLoggedIn = isset($_SESSION['user_id']);
  $cartAdded = false;
 
 // ── Handle AJAX Add to Cart (returns JSON) ───────────────
@@ -39,7 +39,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'ajax_
     header('Content-Type: application/json');
     
     if (!$isLoggedIn) {
-        echo json_encode(['success' => false, 'redirect' => 'login.php?redirect=artwork-detail.php&id=' . $artworkId]);
+        echo json_encode(['success' => false, 'redirect' => 'login.php?redirect=' . urlencode($_SERVER['REQUEST_URI'])]);
         exit;
     }
 
@@ -117,10 +117,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'ajax_
 // Handle normal Add to Cart submission (fallback)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'add_to_cart') {
     if (!$isLoggedIn) {
-        $_SESSION['redirect_after_login'] = 'artwork-detail.php?id=' . $artworkId;
-        header('Location: login.php');
-        exit;
-    }
+    header('Location: login.php?redirect=' . urlencode('artwork-detail.php?id=' . $artworkId));
+    exit;
+}
 
     $buyerId = (int)$_SESSION['user_id'];
 
@@ -576,7 +575,7 @@ h1{font-family:'Playfair Display',serif;font-size:clamp(24px,2.5vw,32px);font-we
           <button type="submit" class="btn btn-terr">🛒 Add to Cart</button>
         </form>
       <?php else: ?>
-        <a href="login.php?redirect=artwork-detail.php?id=<?= $artworkId ?>" class="btn btn-terr" style="text-align:center;">🛒 Login to Add to Cart</a>
+        'login.php?redirect=' . urlencode($_SERVER['REQUEST_URI'])" class="btn btn-terr" style="text-align:center;">🛒 Login to Add to Cart</a>
       <?php endif; ?>
       <a href="commission.php?artist=<?= $artwork['artist_id'] ?>" class="btn btn-outline" style="text-align:center;">
         🎨 Request Similar Custom Work

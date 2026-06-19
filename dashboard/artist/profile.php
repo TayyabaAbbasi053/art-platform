@@ -271,11 +271,11 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
 /* ── Topbar ──────────────────────────────────────────── */
 .topbar {
     position: fixed; top: 0; left: var(--sidebar); right: 0; height: var(--top);
-    background: var(--card); border-bottom: 1px solid var(--border);
+    background: var(--ink); border-bottom: 1px solid var(--ink);
     display: flex; align-items: center; justify-content: space-between;
     padding: 0 32px; z-index: 99;
 }
-.topbar-left h1 { font-family: 'Playfair Display', serif; font-size: 20px; font-weight: 400; color: var(--ink); }
+.topbar-left h1 { font-family: 'Playfair Display', serif; font-size: 20px; font-weight: 400; color: var(--bg); }
 .topbar-right { display: flex; align-items: center; gap: 20px; }
 .artist-chip {
     display: flex; align-items: center; gap: 8px;
@@ -442,7 +442,7 @@ textarea.field-input { resize: vertical; min-height: 110px; line-height: 1.6; }
     .avatar-upload { flex-direction: column; text-align: center; }
     
     .ham-btn{display:inline-block;width:30px;height:24px;position:relative;background:none;border:none;cursor:pointer;z-index:2000;}
-    .ham-btn span{position:absolute;display:block;width:100%;height:2px;background:var(--ink);border-radius:2px;transition:all .3s;opacity:1;left:0;}
+    .ham-btn span{position:absolute;display:block;width:100%;height:2px;background:var(--bg);border-radius:2px;transition:all .3s;opacity:1;left:0;}
     .ham-btn span:nth-child(1){top:2px;}
     .ham-btn span:nth-child(2){top:10px;}
     .ham-btn span:nth-child(3){top:18px;}
@@ -511,17 +511,6 @@ textarea.field-input { resize: vertical; min-height: 110px; line-height: 1.6; }
 <header class="topbar">
     <div class="topbar-left"><h1>My Profile</h1></div>
     <div class="topbar-right">
-        <div class="artist-chip">
-            <div class="avatar">
-                <?php if ($avatarUrl): ?>
-                    <img src="<?= htmlspecialchars($avatarUrl) ?>" alt="">
-                <?php else: ?>
-                    <?= strtoupper(substr($artistName, 0, 1)) ?>
-                <?php endif; ?>
-            </div>
-            <span class="name"><?= htmlspecialchars($artistName) ?></span>
-            <span class="arrow">∨</span>
-        </div>
     </div>
 </header>
 
@@ -666,23 +655,27 @@ textarea.field-input { resize: vertical; min-height: 110px; line-height: 1.6; }
                 <h2>Payment Methods</h2>
                 <span class="hint">For receiving payouts — never shown publicly</span>
             </div>
-            <div class="profile-card-body">
-                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
-                    <label class="pay-toggle <?= ($profile['has_bank_account'] ?? 0) ? 'active' : '' ?>" onclick="togglePay('bank',this)">
-                        <input type="checkbox" name="has_bank_account" <?= ($profile['has_bank_account'] ?? 0) ? 'checked' : '' ?>> 🏦 Bank Account
-                    </label>
-                    <label class="pay-toggle <?= ($profile['has_easypaisa'] ?? 0) ? 'active' : '' ?>" onclick="togglePay('easypaisa',this)">
-                        <input type="checkbox" name="has_easypaisa" <?= ($profile['has_easypaisa'] ?? 0) ? 'checked' : '' ?>> Easypaisa
-                    </label>
-                    <label class="pay-toggle <?= ($profile['has_jazzcash'] ?? 0) ? 'active' : '' ?>" onclick="togglePay('jazzcash',this)">
-                        <input type="checkbox" name="has_jazzcash" <?= ($profile['has_jazzcash'] ?? 0) ? 'checked' : '' ?>> JazzCash
-                    </label>
-                    <label class="pay-toggle <?= ($profile['has_nayapay'] ?? 0) ? 'active' : '' ?>" onclick="togglePay('nayapay',this)">
-                        <input type="checkbox" name="has_nayapay" <?= ($profile['has_nayapay'] ?? 0) ? 'checked' : '' ?>> NayaPay
-                    </label>
-                    <label class="pay-toggle <?= ($profile['has_sadapay'] ?? 0) ? 'active' : '' ?>" onclick="togglePay('sadapay',this)">
-                        <input type="checkbox" name="has_sadapay" <?= ($profile['has_sadapay'] ?? 0) ? 'checked' : '' ?>> SadaPay
-                    </label>
+            <<div class="profile-card-body">
+    <p style="font-size:11px;color:var(--muted);margin-bottom:12px;line-height:1.5;">
+        Tap a method below to add its details. Click <strong>Remove this payment method</strong> inside an open method to delete it. Don't forget to hit <strong>Save Changes</strong> at the bottom to confirm any changes.
+    </p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
+                   <label class="pay-toggle <?= ($profile['has_bank_account'] ?? 0) ? 'active' : '' ?>">
+    <input type="checkbox" name="has_bank_account" data-key="bank" <?= ($profile['has_bank_account'] ?? 0) ? 'checked' : '' ?>> 🏦 Bank Account
+</label>
+<label class="pay-toggle <?= ($profile['has_easypaisa'] ?? 0) ? 'active' : '' ?>">
+    <input type="checkbox" name="has_easypaisa" data-key="easypaisa" <?= ($profile['has_easypaisa'] ?? 0) ? 'checked' : '' ?>> Easypaisa
+</label>
+<label class="pay-toggle <?= ($profile['has_jazzcash'] ?? 0) ? 'active' : '' ?>">
+    <input type="checkbox" name="has_jazzcash" data-key="jazzcash" <?= ($profile['has_jazzcash'] ?? 0) ? 'checked' : '' ?>> JazzCash
+</label>
+<label class="pay-toggle <?= ($profile['has_nayapay'] ?? 0) ? 'active' : '' ?>">
+    <input type="checkbox" name="has_nayapay" data-key="nayapay" <?= ($profile['has_nayapay'] ?? 0) ? 'checked' : '' ?>> NayaPay
+</label>
+<label class="pay-toggle <?= ($profile['has_sadapay'] ?? 0) ? 'active' : '' ?>">
+    <input type="checkbox" name="has_sadapay" data-key="sadapay" <?= ($profile['has_sadapay'] ?? 0) ? 'checked' : '' ?>> SadaPay
+</label>
+
                 </div>
 
                 <div id="pay-bank" class="pay-fields <?= ($profile['has_bank_account'] ?? 0) ? 'show' : '' ?>">
@@ -823,15 +816,15 @@ document.getElementById('removeBtn').addEventListener('click', function(e) {
 });
 
 // ── Payment toggle ─────────────────────────────────────
-function togglePay(key, el) {
-    el.classList.toggle('active');
-    const cb = el.querySelector('input[type=checkbox]');
-    cb.checked = !cb.checked;
-    const field = document.getElementById('pay-' + key);
-    if (field) {
-        field.classList.toggle('show', cb.checked);
-    }
-}
+// NEW — add this in its place
+document.querySelectorAll('.pay-toggle input[type=checkbox]').forEach(function(cb) {
+    cb.addEventListener('change', function() {
+        const key = this.dataset.key;
+        this.closest('.pay-toggle').classList.toggle('active', this.checked);
+        const field = document.getElementById('pay-' + key);
+        if (field) field.classList.toggle('show', this.checked);
+    });
+});
 
 // ── Drawer Logic ───────────────────────────────────────
 const drawer = document.querySelector('body');
