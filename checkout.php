@@ -71,13 +71,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_calculate_shippi
     $buyerCity = trim($_POST['buyer_city'] ?? '');
 
     $items = [];
-    $cartQuery = $conn->prepare("SELECT sc.item_type, sc.item_id FROM shopping_cart sc WHERE sc.buyer_id = ?");
-    $cartQuery->bind_param('i', $buyerId);
-    $cartQuery->execute();
-    $res = $cartQuery->get_result();
-    while ($r = $res->fetch_assoc()) {
-        $items[] = ['type' => $r['item_type'], 'id' => $r['item_id']];
-    }
+$ajaxArtworkId = (int)($_POST['artwork_id'] ?? 0);
+if ($ajaxArtworkId > 0) {
+    $items[] = ['type' => 'artwork', 'id' => $ajaxArtworkId];
+}
 
     // Check if this is a commission checkout
 $commissionOrderIdAjax = isset($_POST['commission_order_id']) ? (int)$_POST['commission_order_id'] : 0;
@@ -172,64 +169,49 @@ if ($isCommissionCheckout) {
     }
 
 } else {
-    // ── Flow: Cart ───────────────────────────────────────────
-    $cartQuery = $conn->prepare("
-        SELECT sc.item_type, sc.item_id, sc.quantity,
-               a.id AS artwork_id, a.title AS artwork_title, a.price AS artwork_price, 
-               a.status AS artwork_status, a.reserved_by AS artwork_reserved_by, a.artist_id AS artwork_artist_id,
-               (SELECT ai.image_path FROM artwork_images ai WHERE ai.artwork_id = a.id AND ai.is_cover = 1 LIMIT 1) AS cover_image,
-               ua.name AS artwork_artist_name
-        FROM shopping_cart sc
-        LEFT JOIN artworks a ON sc.item_type = 'artwork' AND sc.item_id = a.id AND a.status = 'approved'
-        LEFT JOIN users ua ON a.artist_id = ua.id
-        WHERE sc.buyer_id = ?
-    ");
-    $cartQuery->bind_param('i', $buyerId);
-    $cartQuery->execute();
-    $cartResult = $cartQuery->get_result();
-
-    while ($row = $cartResult->fetch_assoc()) {
-        if ($row['item_type'] === 'artwork' && $row['artwork_id']) {
-            $price = $row['artwork_price'];
-            $item = [
-                'type' => 'artwork',
-                'id' => $row['artwork_id'],
-                'title' => $row['artwork_title'],
-                'price' => $price,
-                'quantity' => $row['quantity'],
-                'artist_id' => $row['artwork_artist_id'],
-                'artist_name' => $row['artwork_artist_name'],
-                'cover_image' => $row['cover_image'],
-                'status' => $row['artwork_status'],
-                'reserved_by' => $row['artwork_reserved_by']
-            ];
-            $subtotal += $price * $row['quantity'];
-            $cartItems[] = $item;
-        } 
-    }
-
-    if (empty($cartItems)) {
-        header('Location: cart.php');
+    // ── Flow: Direct Artwork Purchase ─────────────────────────
+    $artworkId = (int)($_GET['artwork_id'] ?? 0);
+    if (!$artworkId) {
+        header('Location: artworks.php');
         exit;
     }
 
-    // Block checkout if any artwork is sold or reserved by someone else
-    foreach ($cartItems as $ci) {
-        if ($ci['type'] === 'artwork') {
-            if (($ci['status'] ?? '') === 'sold') {
-                $_SESSION['cart_error'] = 'One or more artworks in your cart have been sold. Please remove them before checking out.';
-                header('Location: cart.php');
-                exit;
-            }
-            if (!empty($ci['reserved_by']) && (int)$ci['reserved_by'] !== $buyerId) {
-                $_SESSION['cart_error'] = 'One or more artworks in your cart are no longer available. Please remove them before checking out.';
-                header('Location: cart.php');
-                exit;
-            }
-        }
+    $awQuery = $conn->prepare("
+        SELECT a.id, a.title, a.price, a.status, a.artist_id,
+               (SELECT ai.image_path FROM artwork_images ai WHERE ai.artwork_id = a.id AND ai.is_cover = 1 LIMIT 1) AS cover_image,
+               ua.name AS artist_name
+        FROM artworks a
+        JOIN users ua ON a.artist_id = ua.id
+        WHERE a.id = ?
+    ");
+    $awQuery->bind_param('i', $artworkId);
+    $awQuery->execute();
+    $artworkRow = $awQuery->get_result()->fetch_assoc();
+
+    if (!$artworkRow) {
+        header('Location: artworks.php');
+        exit;
     }
 
-    // Default shipping is 0 until user enters city
+    if ($artworkRow['status'] === 'sold') {
+        $_SESSION['error_msg'] = 'Sorry, this artwork was just sold.';
+        header('Location: artwork-detail.php?id=' . $artworkId);
+        exit;
+    }
+
+    $price = $artworkRow['price'];
+    $cartItems[] = [
+        'type' => 'artwork',
+        'id' => $artworkRow['id'],
+        'title' => $artworkRow['title'],
+        'price' => $price,
+        'quantity' => 1,
+        'artist_id' => $artworkRow['artist_id'],
+        'artist_name' => $artworkRow['artist_name'],
+        'cover_image' => $artworkRow['cover_image'],
+        'status' => $artworkRow['status'],
+    ];
+    $subtotal = $price;
     $shippingFee = 0;
     $total = $subtotal;
 }
@@ -366,13 +348,11 @@ $stmt->bind_param('ssssssddi', $paymentMethod, $screenshotPath, $address, $city,
 
                         // Mark artwork as sold and release reservation
                         if ($item['type'] === 'artwork') {
-                            $soldStmt = $conn->prepare("UPDATE artworks SET status = 'sold', reserved_by = NULL WHERE id = ?");
+                            $soldStmt = $conn->prepare("UPDATE artworks SET status = 'sold' WHERE id = ?");
                             $soldStmt->bind_param('i', $item['id']);
                             $soldStmt->execute();
                         }
                     }
-                    
-                    $conn->query("DELETE FROM shopping_cart WHERE buyer_id = $buyerId");
                     
                     $placedNote = $isCod
                         ? 'Order placed with Cash on Delivery.'
@@ -456,9 +436,6 @@ img{max-width:100%;display:block;}
 .nsearch input::placeholder{color:var(--ink);opacity:0.6;}
 .nsearch svg{color:var(--ink);opacity:0.6;flex-shrink:0;}
 .nend{display:flex;align-items:center;gap:8px;flex-shrink:0;position:relative;margin-left:auto;}
-.cart-icon{position:relative;display:flex;align-items:center;padding:6px 10px;border-radius:6px;transition:background .12s;cursor:pointer;color:var(--bg);}
-.cart-icon:hover{background:var(--sand);color:var(--ink);}
-.cart-count{position:absolute;top:-5px;right:-5px;background:var(--sand);color:var(--ink);font-size:9px;font-weight:600;padding:2px 5px;border-radius:20px;min-width:16px;text-align:center;}
 .btn-ghost{font-size:12.5px;color:var(--bg);padding:7px 14px;border-radius:6px;border:1px solid var(--bg);background:transparent;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .12s;}
 .btn-ghost:hover{border-color:var(--sand);background:var(--sand);color:var(--ink);}
 .btn-dark{font-size:12.5px;color:var(--ink);padding:7px 16px;border-radius:6px;border:none;background:var(--sand);cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:500;transition:background .12s;}
@@ -584,7 +561,6 @@ img{max-width:100%;display:block;}
   .drawer-links a{color:var(--bg);font-size:14px;padding:13px 20px;border-bottom:1px solid rgba(246,237,222,0.07);transition:background 0.12s;}
   .drawer-links a:hover{background:rgba(246,237,222,0.06);}
   .drawer-actions{margin-top:auto;padding:20px;display:flex;flex-direction:column;gap:10px;border-top:1px solid rgba(246,237,222,0.1);}
-  .drawer-cart{color:var(--bg);font-size:13.5px;padding:8px 0;}
   .drawer-btn-ghost{font-size:13px;color:var(--bg);padding:9px 14px;border-radius:6px;border:1px solid rgba(246,237,222,0.4);text-align:center;}
   .drawer-btn-ghost:hover{border-color:var(--sand);background:rgba(246,237,222,0.08);}
   .drawer-btn-dark{font-size:13px;color:var(--ink);padding:9px 14px;border-radius:6px;background:var(--sand);text-align:center;font-weight:500;}
@@ -889,7 +865,6 @@ img{max-width:100%;display:block;}
     <a href="contact.php">Contact</a>
   </div>
   <div class="drawer-actions">
-    <a href="cart.php" class="drawer-cart">🛒 Cart</a>
     <a href="dashboard/buyer/account.php" class="drawer-btn-ghost">My Account</a>
     <a href="logout.php" class="drawer-btn-dark">Logout</a>
   </div>
@@ -942,8 +917,11 @@ document.addEventListener('DOMContentLoaded', () => {
     function fetchShipping(city) {
         const formData = new FormData();
         formData.append('ajax_calculate_shipping', '1');
-formData.append('buyer_city', city);
-formData.append('commission_order_id', '<?php echo $commissionOrderId; ?>');
+        if (!isCommission) {
+            formData.append('artwork_id', <?= (int)($cartItems[0]['id'] ?? 0) ?>);
+        }
+        formData.append('buyer_city', city);
+        formData.append('commission_order_id', '<?php echo $commissionOrderId; ?>');
 
         fetch('checkout.php', {
             method: 'POST',

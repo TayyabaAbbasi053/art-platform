@@ -1,165 +1,7 @@
 <?php
 session_start();
 require_once __DIR__ . '/config/db.php';
-
-// ── Handle Add to Cart POST ──────────────────────────────
- $isLoggedIn = isset($_SESSION['user_id']);
- $cartAdded = false;
- $cartError = false;
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'add_to_cart') {
-    if (!$isLoggedIn) {
-    header('Location: login.php?redirect=' . urlencode($_SERVER['REQUEST_URI']));
-    exit;
-}
-    $artworkId = (int)($_POST['artwork_id'] ?? 0);
-    $artworkTitle = trim($_POST['artwork_title'] ?? '');
-    $artworkPrice = (float)($_POST['artwork_price'] ?? 0);
-    $artistName = trim($_POST['artist_name'] ?? '');
-    $artistId = (int)($_POST['artist_id'] ?? 0);
-    $artworkImage = trim($_POST['artwork_image'] ?? '');
-    
-    if ($artworkId && $artworkTitle && $artworkPrice) {
-        $buyerId = (int)$_SESSION['user_id'];
-
-        // Check artwork is still available and not reserved by someone else
-        $chkStmt = $conn->prepare("SELECT status, reserved_by FROM artworks WHERE id = ? AND status = 'approved'");
-        $chkStmt->bind_param('i', $artworkId);
-        $chkStmt->execute();
-        $chkAw = $chkStmt->get_result()->fetch_assoc();
-
-        if (!$chkAw || (!empty($chkAw['reserved_by']) && (int)$chkAw['reserved_by'] !== $buyerId)) {
-            $cartError = true;
-        } else {
-            $itemType = 'artwork';
-            $qty = 1;
-            $ins = $conn->prepare("
-                INSERT INTO shopping_cart (buyer_id, item_type, item_id, quantity) 
-                VALUES (?, ?, ?, ?) 
-                ON DUPLICATE KEY UPDATE quantity = quantity + 1
-            ");
-            $ins->bind_param('isii', $buyerId, $itemType, $artworkId, $qty);
-            $ins->execute();
-
-            // Mark artwork as reserved by this buyer
-            $resStmt = $conn->prepare("UPDATE artworks SET reserved_by = ?, reserved_until = DATE_ADD(NOW(), INTERVAL 2 HOUR) WHERE id = ?");
-            $resStmt->bind_param('ii', $buyerId, $artworkId);
-            $resStmt->execute();
-
-            $cartAdded = true;
-
-            // Keep session in sync
-            $found = false;
-            if (!isset($_SESSION['cart'])) $_SESSION['cart'] = [];
-            foreach ($_SESSION['cart'] as &$ci) {
-                if (($ci['type'] ?? '') === 'artwork' && ($ci['id'] ?? 0) == $artworkId) {
-                    $ci['quantity'] = ($ci['quantity'] ?? 0) + 1;
-                    $found = true;
-                    break;
-                }
-            }
-            unset($ci);
-            if (!$found) {
-                $_SESSION['cart'][] = [
-                    'type' => 'artwork',
-                    'id' => $artworkId,
-                    'artwork_id' => $artworkId,
-                    'quantity' => 1,
-                    'artwork_title' => $artworkTitle,
-                    'artwork_price' => $artworkPrice,
-                    'artist_name' => $artistName,
-                    'artist_id' => $artistId,
-                    'artwork_image' => $artworkImage
-                ];
-            }
-        }
-    } else {
-        $cartError = true;
-    }
-}
-
-// ── Handle AJAX Add to Cart (returns JSON) ───────────────
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'ajax_add_to_cart') {
-    header('Content-Type: application/json');
-    
-    if (!$isLoggedIn) {
-    echo json_encode(['success' => false, 'redirect' => 'login.php?redirect=' . urlencode($_SERVER['REQUEST_URI'])]);
-    exit;
-}
-
-    $artworkId = (int)($_POST['artwork_id'] ?? 0);
-    if (!$artworkId) {
-        echo json_encode(['success' => false, 'error' => 'Invalid artwork']);
-        exit;
-    }
-
-    // Fetch artwork details from DB to ensure accuracy
-    $awStmt = $conn->prepare("SELECT a.id, a.title, a.price, a.status, a.reserved_by, u.name AS artist_name, u.id AS artist_id, (SELECT ai.image_path FROM artwork_images ai WHERE ai.artwork_id = a.id AND ai.is_cover = 1 LIMIT 1) AS cover_image FROM artworks a JOIN users u ON a.artist_id = u.id WHERE a.id = ? AND a.status = 'approved'");
-    $awStmt->bind_param('i', $artworkId);
-    $awStmt->execute();
-    $aw = $awStmt->get_result()->fetch_assoc();
-
-    if (!$aw) {
-        echo json_encode(['success' => false, 'error' => 'This artwork is not available']);
-        exit;
-    }
-
-    $buyerId = (int)$_SESSION['user_id'];
-
-    // Block if reserved by a different buyer
-    if (!empty($aw['reserved_by']) && (int)$aw['reserved_by'] !== $buyerId) {
-        echo json_encode(['success' => false, 'error' => 'This artwork is already in someone else\'s cart']);
-        exit;
-    }
-
-    $itemType = 'artwork';
-    $qty = 1;
-
-    $ins = $conn->prepare("
-        INSERT INTO shopping_cart (buyer_id, item_type, item_id, quantity) 
-        VALUES (?, ?, ?, ?) 
-        ON DUPLICATE KEY UPDATE quantity = quantity + 1
-    ");
-    $ins->bind_param('isii', $buyerId, $itemType, $artworkId, $qty);
-    $ins->execute();
-
-    // Mark artwork as reserved by this buyer
-    $resStmt = $conn->prepare("UPDATE artworks SET reserved_by = ?, reserved_until = DATE_ADD(NOW(), INTERVAL 2 HOUR) WHERE id = ?");
-    $resStmt->bind_param('ii', $buyerId, $artworkId);
-    $resStmt->execute();
-
-    // Get updated cart count
-    $res = $conn->query("SELECT SUM(quantity) as total FROM shopping_cart WHERE buyer_id = $buyerId");
-    $count = (int)($res->fetch_assoc()['total'] ?? 0);
-
-    // Keep session in sync
-    if (!isset($_SESSION['cart'])) $_SESSION['cart'] = [];
-    $found = false;
-    foreach ($_SESSION['cart'] as &$ci) {
-        if (($ci['type'] ?? '') === 'artwork' && ($ci['id'] ?? 0) == $artworkId) {
-            $ci['quantity'] = ($ci['quantity'] ?? 0) + 1;
-            $found = true;
-            break;
-        }
-    }
-    unset($ci);
-    if (!$found) {
-        $_SESSION['cart'][] = [
-            'type' => 'artwork',
-            'id' => $artworkId,
-            'artwork_id' => $artworkId,
-            'quantity' => 1,
-            'artwork_title' => $aw['title'],
-            'artwork_price' => $aw['price'],
-            'artist_name' => $aw['artist_name'],
-            'artist_id' => $aw['artist_id'],
-            'artwork_image' => $aw['cover_image'] ?? ''
-        ];
-    }
-
-    echo json_encode(['success' => true, 'count' => $count]);
-    exit;
-}
+$isLoggedIn = isset($_SESSION['user_id']);
 
 // ── Filters ──────────────────────────────────────────────
  $search     = trim($_GET['q'] ?? '');
@@ -284,17 +126,6 @@ function getImgUrl($p) {
     if (strpos($p, 'uploads/') !== false) return $p;
     return 'uploads/artworks/' . $p;
 }
-
-// Cart count for nav badge
-function getCartCount() {
-    global $conn;
-    if (isset($_SESSION['user_id']) && $_SESSION['role'] === 'buyer') {
-        $bid = (int)$_SESSION['user_id'];
-        $res = $conn->query("SELECT SUM(quantity) as total FROM shopping_cart WHERE buyer_id = $bid");
-        return (int)($res->fetch_assoc()['total'] ?? 0);
-    }
-    return 0;
-}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -321,11 +152,6 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--ink);font
 a{text-decoration:none;color:inherit;}
 img{display:block;max-width:100%;}
 
-/* TOAST NOTIFICATION */
-.toast{position:fixed;bottom:24px;right:24px;background:var(--ink);color:#fff;padding:12px 20px;border-radius:8px;font-size:13px;z-index:600;display:flex;align-items:center;gap:10px;transform:translateX(400px);transition:transform .3s ease;box-shadow:0 4px 12px rgba(0,0,0,.15);}
-.toast.show{transform:translateX(0);}
-.toast a{color:var(--sand);text-decoration:underline;margin-left:8px;}
-
 /* ─── NAV ─── */
 .nav{background:var(--ink);border-bottom:1px solid var(--ink);position:sticky;top:0;z-index:200;}
 .nw{max-width:var(--w);margin:0 auto;padding:0 28px;height:58px;display:flex;align-items:center;gap:16px;}
@@ -342,9 +168,6 @@ img{display:block;max-width:100%;}
 .nsearch input::placeholder{color:var(--ink); opacity: 0.6;}
 .nsearch svg{color:var(--ink); opacity: 0.6; flex-shrink:0;}
 .nend{display:flex;align-items:center;gap:8px;flex-shrink:0;position:relative;margin-left:auto;}
-.cart-icon{position:relative;display:flex;align-items:center;padding:6px 10px;border-radius:6px;transition:background .12s;cursor:pointer; color: var(--bg);}
-.cart-icon:hover{background:var(--sand); color: var(--ink);}
-.cart-count{position:absolute;top:-5px;right:-5px;background:var(--ink);color:var(--bg);font-size:9px;font-weight:600;padding:2px 5px;border-radius:20px;min-width:16px;text-align:center;}
 .btn-ghost{font-size:12.5px;color:var(--bg);padding:7px 14px;border-radius:6px;border:1px solid var(--bg);background:transparent;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .12s;}
 .btn-ghost:hover{border-color:var(--sand);background:var(--sand); color: var(--ink);}
 .btn-dark{font-size:12.5px;color:var(--ink);padding:7px 16px;border-radius:6px;border:none;background:var(--sand);cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:500;transition:background .12s;}
@@ -510,7 +333,6 @@ img{display:block;max-width:100%;}
   .drawer-links a:hover { background:rgba(246,237,222,0.06); }
   
   .drawer-actions { margin-top:auto; padding:20px; display:flex; flex-direction:column; gap:10px; border-top:1px solid rgba(246,237,222,0.1); }
-  .drawer-cart { color:var(--bg); font-size:13.5px; padding:8px 0; }
   .drawer-btn-ghost { font-size:13px; color:var(--bg); padding:9px 14px; border-radius:6px; border:1px solid rgba(246,237,222,0.4); text-align:center; transition:all 0.12s; }
   .drawer-btn-ghost:hover { border-color:var(--sand); background:rgba(246,237,222,0.08); }
   .drawer-btn-dark { font-size:13px; color:var(--ink); padding:9px 14px; border-radius:6px; background:var(--sand); text-align:center; font-weight:500; transition:background 0.12s; }
@@ -560,12 +382,6 @@ img{display:block;max-width:100%;}
       <input type="text" placeholder="Search artworks, artists..." value="<?= htmlspecialchars($search) ?>" onkeydown="if(event.key==='Enter'){window.location='artworks.php?q='+encodeURIComponent(this.value);}">
     </div>
     <div class="nend">
-      <a href="cart.php" class="cart-icon">
-        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 002 1.61h9.72a2 2 0 002-1.61L23 6H6"/></svg>
-        <?php $cartCount = getCartCount(); if ($cartCount > 0): ?>
-        <span class="cart-count"><?= $cartCount ?></span>
-        <?php endif; ?>
-      </a>
       <?php if ($isLoggedIn): ?>
         <span style="font-size:12.5px;color:var(--bg);">Hi, <?= htmlspecialchars($_SESSION['name'] ?? 'Buyer') ?></span>
         <a href="dashboard/buyer/account.php" class="btn-ghost">My Account</a>
@@ -677,30 +493,13 @@ img{display:block;max-width:100%;}
           <span class="aw-cat"><?= htmlspecialchars($art['category_name']) ?></span>
         </div>
       </div>
-      <?php
-        $awReservedByMe = $isLoggedIn && !empty($art['reserved_by']) && (int)$art['reserved_by'] === (int)($_SESSION['user_id'] ?? 0);
-        $awReservedByOther = !empty($art['reserved_by']) && !$awReservedByMe;
-      ?>
       <?php if ($art['status'] === 'sold'): ?>
-        <button class="aw-add-cart" disabled style="opacity:0.5;cursor:not-allowed;">🚫 Sold Out</button>
-      <?php elseif ($awReservedByOther): ?>
-        <button class="aw-add-cart" disabled style="opacity:0.5;cursor:not-allowed;">🔒 In Someone's Cart</button>
-      <?php elseif ($awReservedByMe): ?>
-        <a href="cart.php" class="aw-add-cart" style="text-decoration:none;">✓ In Your Cart</a>
-      <?php elseif ($isLoggedIn): ?>
-        <form method="POST" class="add-to-cart-form" style="margin:0 12px 12px;">
-          <input type="hidden" name="action" value="add_to_cart">
-          <input type="hidden" name="artwork_id" value="<?= $art['id'] ?>">
-          <input type="hidden" name="artwork_title" value="<?= htmlspecialchars($art['title']) ?>">
-          <input type="hidden" name="artwork_price" value="<?= $art['price'] ?>">
-          <input type="hidden" name="artist_name" value="<?= htmlspecialchars($art['artist_name']) ?>">
-          <input type="hidden" name="artist_id" value="<?= $art['artist_id'] ?>">
-          <input type="hidden" name="artwork_image" value="<?= htmlspecialchars($img ?? '') ?>">
-          <button type="submit" class="aw-add-cart">🛒 Add to Cart</button>
-        </form>
-      <?php else: ?>
-        <a href="artwork-detail.php?id=<?= $art['id'] ?>" class="aw-view-btn">View Details</a>
-      <?php endif; ?>
+  <button class="aw-add-cart" disabled style="opacity:0.5;cursor:not-allowed;">🚫 Sold Out</button>
+<?php elseif ($isLoggedIn): ?>
+  <a href="checkout.php?artwork_id=<?= $art['id'] ?>" class="aw-add-cart" style="text-decoration:none;">🛒 Buy Now</a>
+<?php else: ?>
+  <a href="artwork-detail.php?id=<?= $art['id'] ?>" class="aw-view-btn">View Details</a>
+<?php endif; ?>
     </div>
     <?php endforeach; ?>
   </div>
@@ -725,12 +524,6 @@ img{display:block;max-width:100%;}
   </div>
   <?php endif; ?>
   <?php endif; ?>
-</div>
-
-<!-- TOAST NOTIFICATION -->
-<div id="toast" class="toast">
-  <span id="toastMessage"></span>
-  <a href="cart.php">View Cart →</a>
 </div>
 
 <!-- FOOTER -->
@@ -762,8 +555,7 @@ img{display:block;max-width:100%;}
     <a href="about.php">About Us</a>
     <a href="contact.php">Contact</a>
   </div>
-  <div class="drawer-actions">
-    <a href="cart.php" class="drawer-cart">🛒 Cart</a>
+  <div class="drawer-actions"> 
     <?php if ($isLoggedIn): ?>
       <a href="dashboard/buyer/account.php" class="drawer-btn-ghost">My Account</a>
       <a href="logout.php" class="drawer-btn-dark">Logout</a>
@@ -783,62 +575,7 @@ function closeDrawer(){ navDrawer.classList.remove('open'); navOverlay.classList
 if(hamBtn) hamBtn.addEventListener('click', openDrawer);
 if(navOverlay) navOverlay.addEventListener('click', closeDrawer);
 document.querySelector('.drawer-close')?.addEventListener('click', closeDrawer);
-
-function showToast(message) {
-  const toast = document.getElementById('toast');
-  const toastMessage = document.getElementById('toastMessage');
-  toastMessage.textContent = message;
-  toast.classList.add('show');
-  setTimeout(() => {
-    toast.classList.remove('show');
-  }, 3000);
-}
-
-// Handle add to cart form submissions with AJAX
-document.querySelectorAll('.add-to-cart-form').forEach(form => {
-  form.addEventListener('submit', function(e) {
-    e.preventDefault();
-    const formData = new FormData(this);
-    formData.set('action', 'ajax_add_to_cart'); // Switch to AJAX handler
-    
-    fetch('artworks.php', {
-      method: 'POST',
-      body: formData
-    }).then(r => r.json()).then(data => {
-      if (data.success) {
-        showToast('✓ Added to cart!');
-        const cartIcon = document.querySelector('.cart-icon');
-        const existingCount = document.querySelector('.cart-count');
-        const newCount = data.count || 0;
-        if (newCount > 0) {
-          if (existingCount) {
-            existingCount.textContent = newCount;
-          } else if (cartIcon) {
-            const newSpan = document.createElement('span');
-            newSpan.className = 'cart-count';
-            newSpan.textContent = newCount;
-            cartIcon.appendChild(newSpan);
-          }
-        } else if (existingCount) {
-          existingCount.remove();
-        }
-        // Reload the page so the button state updates to "In Your Cart"
-        setTimeout(() => location.reload(), 800);
-      } else if (data.redirect) {
-        window.location.href = data.redirect;
-      } else if (data.error) {
-        showToast('⚠ ' + data.error);
-      }
-    }).catch(() => {
-      // Fallback: change action back and submit normally
-      this.submit();
-    });
-  });
-});
-
-<?php if ($cartAdded): ?>
-showToast('✓ Added to cart!');
-<?php endif; ?>
 </script>
+
 </body>
 </html>
