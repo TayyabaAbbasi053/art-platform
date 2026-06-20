@@ -1,6 +1,70 @@
 <?php
 session_start();
 require_once __DIR__ . '/../../config/db.php';
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\Exception;
+require_once __DIR__ . '/../../vendor/autoload.php';
+function sendArtistCommissionEmail(mysqli $conn, int $orderId, string $type = 'payment_confirmed'): bool {
+    $stmt = $conn->prepare("
+        SELECT u.email AS artist_email, u.name AS artist_name,
+               o.order_number, o.commission_description
+        FROM orders o
+        JOIN commission_requests cr ON cr.order_id = o.id
+        JOIN users u ON cr.artist_id = u.id
+        WHERE o.id = ?
+        LIMIT 1
+    ");
+    $stmt->bind_param('i', $orderId);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    if (!$row || empty($row['artist_email'])) return false;
+
+    $desc = $row['commission_description'] ? mb_substr($row['commission_description'], 0, 120) : 'a custom artwork';
+
+    if ($type === 'assigned') {
+        $subject = "Art Bazaar — New Commission Assigned: #{$row['order_number']}";
+        $heading = 'New Commission Assigned';
+        $intro   = "Hi {$row['artist_name']}, you've been assigned a new commission request.";
+        $altBody = "New commission assigned to you — #{$row['order_number']}. {$desc}. Log in to your dashboard to view details.";
+    } else {
+        $subject = "Art Bazaar — Payment Confirmed: Commission #{$row['order_number']}";
+        $heading = 'Payment Confirmed';
+        $intro   = "Hi {$row['artist_name']}, the buyer's payment has been confirmed. You're clear to begin work.";
+        $altBody = "Payment confirmed for commission #{$row['order_number']}. {$desc}. Log in to your dashboard to begin work.";
+    }
+
+    $mail = new PHPMailer(true);
+    try {
+        $mail->isSMTP();
+        $mail->Host       = 'smtp.gmail.com';
+        $mail->SMTPAuth   = true;
+        $mail->Username   = 'teamartbazaar.pk@gmail.com';
+        $mail->Password   = 'REMOVED';
+        $mail->SMTPSecure = 'tls';
+        $mail->Port       = 587;
+        $mail->setFrom('teamartbazaar.pk@gmail.com', 'Art Bazaar');
+        $mail->addReplyTo('teamartbazaar.pk@gmail.com', 'Art Bazaar');
+        $mail->addAddress($row['artist_email'], $row['artist_name']);
+        $mail->isHTML(true);
+        $mail->CharSet = 'UTF-8';
+
+        $mail->Subject = $subject;
+        $mail->AltBody = $altBody;
+        $mail->Body    = "
+        <div style='font-family:sans-serif;max-width:420px;margin:auto;padding:32px;background:#fff;border-radius:12px'>
+            <p style='font-size:13px;color:#555;margin:0 0 8px'>Art Bazaar</p>
+            <h2 style='font-size:24px;font-weight:400;color:#0a0a0a;margin:0 0 20px;font-family:Georgia,serif'>{$heading}</h2>
+            <p style='font-size:14px;color:#444;line-height:1.6;margin:0 0 16px'>{$intro}</p>
+            <p style='font-size:13px;color:#666;margin:0 0 8px'><strong>Commission #{$row['order_number']}</strong></p>
+            <p style='font-size:13px;color:#666;margin:0 0 24px'>{$desc}</p>
+            <p style='font-size:12px;color:#aaa;margin:0'>Log in to your dashboard to view full details.</p>
+        </div>";
+        $mail->send();
+        return true;
+    } catch (Exception $e) {
+        return false;
+    }
+}
 
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
     header('Location: ../../login.php');
@@ -188,6 +252,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'assig
             if ($artistId > 0) {
                 $conn->query("UPDATE commission_requests SET artist_id = $artistId WHERE order_id = $id");
                 $conn->query("UPDATE orders SET order_status = 'assigned' WHERE id = $id AND order_status = 'pending'");
+                if ($conn->affected_rows > 0) {
+                    sendArtistCommissionEmail($conn, $id, 'assigned');
+                }
                 $adminId = (int)$_SESSION['user_id'];
                 $stmtH = $conn->prepare("INSERT INTO order_status_history (order_id, status_from, status_to, changed_by_role, changed_by_id, notes) VALUES (?, 'pending', 'assigned', 'admin', ?, 'Artist assigned')");
                 $stmtH->bind_param('ii', $id, $adminId);
@@ -202,6 +269,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'assig
             if ($artistId > 0) {
                 $conn->query("INSERT INTO commission_requests (order_id, artist_id) VALUES ($id, $artistId)");
                 $conn->query("UPDATE orders SET order_status = 'assigned' WHERE id = $id AND order_status = 'pending'");
+                if ($conn->affected_rows > 0) {
+                    sendArtistCommissionEmail($conn, $id, 'assigned');
+                }
                 $adminId = (int)$_SESSION['user_id'];
                 $stmtH = $conn->prepare("INSERT INTO order_status_history (order_id, status_from, status_to, changed_by_role, changed_by_id, notes) VALUES (?, 'pending', 'assigned', 'admin', ?, 'Artist assigned')");
                 $stmtH->bind_param('ii', $id, $adminId);
@@ -258,6 +328,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'mark_
         $stmt = $conn->prepare("UPDATE orders SET payment_status = 'paid', order_status = 'payment_confirmed' WHERE id = ? AND order_status = 'payment_review'");
         $stmt->bind_param('i', $id);
         $stmt->execute();
+        if ($stmt->affected_rows > 0) {
+            sendArtistCommissionEmail($conn, $id);
+        }
         $adminId = (int)$_SESSION['user_id'];
         $stmtH = $conn->prepare("INSERT INTO order_status_history (order_id, status_from, status_to, changed_by_role, changed_by_id, notes) VALUES (?, 'payment_review', 'payment_confirmed', 'admin', ?, 'Admin verified payment. Artist notified to begin work.')");
         $stmtH->bind_param('ii', $id, $adminId);
@@ -272,6 +345,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'appro
     $id = (int)($_POST['id'] ?? 0);
     if ($id) {
         $conn->query("UPDATE orders SET order_status = 'payment_confirmed', payment_status = 'paid' WHERE id = $id AND order_status = 'payment_review'");
+        if ($conn->affected_rows > 0) {
+            sendArtistCommissionEmail($conn, $id);
+        }
         $adminId = (int)$_SESSION['user_id'];
         $stmtH = $conn->prepare("INSERT INTO order_status_history (order_id, status_from, status_to, changed_by_role, changed_by_id, notes) VALUES (?, 'payment_review', 'payment_confirmed', 'admin', ?, 'Admin verified payment. Artist should now begin work.')");
         $stmtH->bind_param('ii', $id, $adminId);

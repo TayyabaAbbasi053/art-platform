@@ -1,7 +1,52 @@
 <?php
 session_start();
 require_once __DIR__ . '/../../config/db.php';
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\Exception;
+require_once __DIR__ . '/../../vendor/autoload.php';
+function sendArtistOrderEmail(mysqli $conn, int $orderId, string $orderType): string {
+    $stmt = $conn->prepare("
+        SELECT u.email AS artist_email, u.name AS artist_name,
+               a.title AS artwork_title, o.order_number
+        FROM orders o
+        JOIN order_items oi ON o.id = oi.order_id
+        JOIN artworks a ON oi.item_id = a.id AND oi.item_type = 'artwork'
+        JOIN users u ON a.artist_id = u.id
+        WHERE o.id = ?
+        LIMIT 1
+    ");
+    $stmt->bind_param('i', $orderId);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
 
+    if (!$row) return 'DEBUG: no matching order/artwork/artist row for order_id ' . $orderId;
+    if (empty($row['artist_email'])) return 'DEBUG: row found but artist_email is empty';
+
+    $mail = new PHPMailer(true);
+    try {
+        $mail->isSMTP();
+        $mail->Host       = 'smtp.gmail.com';
+        $mail->SMTPAuth   = true;
+        $mail->Username   = 'teamartbazaar.pk@gmail.com';
+        $mail->Password   = 'REMOVED';
+        $mail->SMTPSecure = 'tls';
+        $mail->Port       = 587;
+        $mail->setFrom('teamartbazaar.pk@gmail.com', 'Art Bazaar');
+        $mail->addReplyTo('teamartbazaar.pk@gmail.com', 'Art Bazaar');
+        $mail->addAddress($row['artist_email'], $row['artist_name']);
+        $mail->isHTML(true);
+        $mail->CharSet = 'UTF-8';
+
+        $label = $orderType === 'cod' ? 'New COD Order' : 'Payment Confirmed';
+        $mail->Subject = "Art Bazaar — {$label}: Order #{$row['order_number']}";
+        $mail->AltBody = "New order ({$label}) for \"{$row['artwork_title']}\" — Order #{$row['order_number']}.";
+        $mail->Body    = "<p>Hi {$row['artist_name']}, new order for <strong>{$row['artwork_title']}</strong>. Order #{$row['order_number']}.</p>";
+        $mail->send();
+        return 'OK: sent to ' . $row['artist_email'];
+    } catch (Exception $e) {
+        return 'DEBUG: PHPMailer error — ' . $mail->ErrorInfo;
+    }
+}
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
     header('Location: ../../login.php');
     exit;
@@ -33,6 +78,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'mark_
             $stmt = $conn->prepare("UPDATE orders SET payment_status = 'paid', order_status = 'payment_confirmed' WHERE id = ?");
             $stmt->bind_param('i', $id);
             $stmt->execute();
+            $emailDebug = sendArtistOrderEmail($conn, $id, 'payment_confirmed');
+$toast = 'Order marked as paid and confirmed. [' . $emailDebug . ']';
             
             // Add status history
             $adminId = (int)$_SESSION['user_id'];
@@ -41,7 +88,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'mark_
             $stmtH->bind_param('iis', $id, $adminId, $note);
             $stmtH->execute();
             
-            $toast = 'Order marked as paid and confirmed.';
+            $toast = 'Order marked as paid and confirmed. [' . $emailDebug . ']';
         }
     }
 }
@@ -109,13 +156,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'forwa
     $deliveryStatus = $_POST['delivery_status'] ?? 'pending';
 
     if ($id) {
-        $orderRow = $conn->query("SELECT payment_method FROM orders WHERE id = $id")->fetch_assoc();
+        $orderRow = $conn->query("SELECT payment_method, order_status FROM orders WHERE id = $id")->fetch_assoc();
+        $oldOrderStatus = $orderRow['order_status'] ?? '';
         $isCod = ($orderRow && $orderRow['payment_method'] === 'cod');
 $newForwardStatus = $isCod ? 'cod' : 'payment_confirmed';
 
         $stmt = $conn->prepare("UPDATE orders SET order_status = ? WHERE id = ?");
         $stmt->bind_param('si', $newForwardStatus, $id);
         $stmt->execute();
+
+        if (!in_array($oldOrderStatus, ['cod', 'payment_confirmed'], true)) {
+            sendArtistOrderEmail($conn, $id, $newForwardStatus);
+        }
 
         $itemRes = $conn->query("SELECT item_id FROM order_items WHERE order_id = $id AND item_type = 'artwork' LIMIT 1");
         if ($itemRow = $itemRes->fetch_assoc()) {
