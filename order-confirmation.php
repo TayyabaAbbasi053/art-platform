@@ -165,9 +165,6 @@ img{max-width:100%;display:block;}
 .nsearch input::placeholder{color:var(--ink);opacity:0.6;}
 .nsearch svg{color:var(--ink);opacity:0.6;flex-shrink:0;}
 .nend{display:flex;align-items:center;gap:8px;flex-shrink:0;position:relative;margin-left:auto;}
-.cart-icon{position:relative;display:flex;align-items:center;padding:6px 10px;border-radius:6px;transition:background .12s;cursor:pointer;color:var(--bg);}
-.cart-icon:hover{background:var(--sand);color:var(--ink);}
-.cart-count{position:absolute;top:-5px;right:-5px;background:var(--sand);color:var(--ink);font-size:9px;font-weight:600;padding:2px 5px;border-radius:20px;min-width:16px;text-align:center;}
 .btn-ghost{font-size:12.5px;color:var(--bg);padding:7px 14px;border-radius:6px;border:1px solid var(--bg);background:transparent;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .12s;}
 .btn-ghost:hover{border-color:var(--sand);background:var(--sand);color:var(--ink);}
 .btn-dark{font-size:12.5px;color:var(--ink);padding:7px 16px;border-radius:6px;border:none;background:var(--sand);cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:500;transition:background .12s;}
@@ -328,7 +325,6 @@ img{max-width:100%;display:block;}
   .drawer-links a{color:var(--bg);font-size:14px;padding:13px 20px;border-bottom:1px solid rgba(246,237,222,0.07);transition:background 0.12s;}
   .drawer-links a:hover{background:rgba(246,237,222,0.06);}
   .drawer-actions{margin-top:auto;padding:20px;display:flex;flex-direction:column;gap:10px;border-top:1px solid rgba(246,237,222,0.1);}
-  .drawer-cart{color:var(--bg);font-size:13.5px;padding:8px 0;}
   .drawer-btn-ghost{font-size:13px;color:var(--bg);padding:9px 14px;border-radius:6px;border:1px solid rgba(246,237,222,0.4);text-align:center;}
   .drawer-btn-ghost:hover{border-color:var(--sand);background:rgba(246,237,222,0.08);}
   .drawer-btn-dark{font-size:13px;color:var(--ink);padding:9px 14px;border-radius:6px;background:var(--sand);text-align:center;font-weight:500;}
@@ -688,7 +684,6 @@ img{max-width:100%;display:block;}
     <a href="contact.php">Contact</a>
   </div>
   <div class="drawer-actions">
-    <a href="cart.php" class="drawer-cart">🛒 Cart</a>
     <a href="dashboard/buyer/account.php" class="drawer-btn-ghost">My Account</a>
     <a href="logout.php" class="drawer-btn-dark">Logout</a>
   </div>

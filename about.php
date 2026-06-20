@@ -2,28 +2,7 @@
 session_start();
 require_once __DIR__ . '/config/db.php';
 
-// Initialize cart if not exists
-if (!isset($_SESSION['cart'])) {
-    $_SESSION['cart'] = [];
-}
 
-// Helper function to get cart count
-function getCartCount() {
-    global $conn;
-    if (isset($_SESSION['user_id']) && $_SESSION['role'] === 'buyer') {
-        $buyerId = (int)$_SESSION['user_id'];
-        $res = $conn->query("SELECT SUM(quantity) as total FROM shopping_cart WHERE buyer_id = $buyerId");
-        $row = $res->fetch_assoc();
-        return (int)($row['total'] ?? 0);
-    }
-    $count = 0;
-    foreach ($_SESSION['cart'] as $item) {
-        if (($item['type'] ?? 'artwork') === 'artwork') {
-            $count += $item['quantity'];
-        }
-    }
-    return $count;
-}
 
  $isLoggedIn = isset($_SESSION['user_id']) && $_SESSION['role'] === 'buyer';
 ?>
@@ -65,9 +44,6 @@ img{max-width:100%;display:block;}
 .nsearch input::placeholder{color:var(--ink);opacity:0.6;}
 .nsearch svg{color:var(--ink);opacity:0.6;flex-shrink:0;}
 .nend{display:flex;align-items:center;gap:8px;flex-shrink:0;position:relative;margin-left:auto;}
-.cart-icon{position:relative;display:flex;align-items:center;padding:6px 10px;border-radius:6px;transition:background .12s;cursor:pointer;color:var(--bg);}
-.cart-icon:hover{background:var(--sand);color:var(--ink);}
-.cart-count{position:absolute;top:-5px;right:-5px;background:var(--sand);color:var(--ink);font-size:9px;font-weight:600;padding:2px 5px;border-radius:20px;min-width:16px;text-align:center;}
 .btn-ghost{font-size:12.5px;color:var(--bg);padding:7px 14px;border-radius:6px;border:1px solid var(--bg);background:transparent;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .12s;}
 .btn-ghost:hover{border-color:var(--sand);background:var(--sand);color:var(--ink);}
 .btn-dark{font-size:12.5px;color:var(--ink);padding:7px 16px;border-radius:6px;border:none;background:var(--sand);cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:500;transition:background .12s;}
@@ -171,7 +147,6 @@ img{max-width:100%;display:block;}
   .drawer-links a{color:var(--bg);font-size:14px;padding:13px 20px;border-bottom:1px solid rgba(246,237,222,0.07);transition:background 0.12s;}
   .drawer-links a:hover{background:rgba(246,237,222,0.06);}
   .drawer-actions{margin-top:auto;padding:20px;display:flex;flex-direction:column;gap:10px;border-top:1px solid rgba(246,237,222,0.1);}
-  .drawer-cart{color:var(--bg);font-size:13.5px;padding:8px 0;}
   .drawer-btn-ghost{font-size:13px;color:var(--bg);padding:9px 14px;border-radius:6px;border:1px solid rgba(246,237,222,0.4);text-align:center;}
   .drawer-btn-ghost:hover{border-color:var(--sand);background:rgba(246,237,222,0.08);}
   .drawer-btn-dark{font-size:13px;color:var(--ink);padding:9px 14px;border-radius:6px;background:var(--sand);text-align:center;font-weight:500;}
@@ -209,13 +184,7 @@ img{max-width:100%;display:block;}
       <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
       <input type="text" placeholder="Search...">
     </div>
-    <div class="nend">
-      <a href="cart.php" class="cart-icon">
-        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 002 1.61h9.72a2 2 0 002-1.61L23 6H6"/></svg>
-        <?php $cartCount = getCartCount(); if ($cartCount > 0): ?>
-        <span class="cart-count"><?= $cartCount ?></span>
-        <?php endif; ?>
-      </a>
+    <div class="nend"> 
 
       <?php if ($isLoggedIn): ?>
         <span style="font-size:12.5px;color:var(--bg);">Hi, <?= htmlspecialchars($_SESSION['name'] ?? 'Buyer') ?></span>
@@ -368,8 +337,7 @@ if ($r) $cityCount = (int)$r->fetch_assoc()['cnt'];
     <a href="about.php">About Us</a>
     <a href="contact.php">Contact</a>
   </div>
-  <div class="drawer-actions">
-    <a href="cart.php" class="drawer-cart">🛒 Cart</a>
+  <div class="drawer-actions"> 
     <?php if ($isLoggedIn): ?>
       <a href="dashboard/buyer/account.php" class="drawer-btn-ghost">My Account</a>
       <a href="logout.php" class="drawer-btn-dark">Logout</a>
