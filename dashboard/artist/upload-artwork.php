@@ -79,7 +79,7 @@ $stmt->bind_param('iisssssiddsii', $artistId, $categoryId, $title, $description,
 
             $files = $_FILES['images'];
             $uploadedCount = 0;
-            $allowedExt = ['jpg', 'jpeg', 'png', 'webp'];
+            $allowedExt = ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif'];
 
             // Loop through the files array provided by the DataTransfer object in JS
             for ($i = 0; $i < count($files['name']); $i++) {
@@ -89,7 +89,7 @@ $stmt->bind_param('iisssssiddsii', $artistId, $categoryId, $title, $description,
                     $fileSize = $files['size'][$i];
                     
                     // 3MB max per image
-                    if ($fileSize > 3 * 1024 * 1024) {
+                    if ($fileSize > 10 * 1024 * 1024) {
                         continue; // Skip oversized files
                     }
 
@@ -98,12 +98,22 @@ $stmt->bind_param('iisssssiddsii', $artistId, $categoryId, $title, $description,
                         continue; // Skip invalid types
                     }
 
-                    // Generate unique filename
-                    $newName = 'art_' . $artworkId . '_' . time() . '_' . $i . '.' . $ext;
-                    $destPath = $uploadDir . $newName;
+                    // Generate unique filename + handle HEIC conversion
+if (in_array($ext, ['heic', 'heif'])) {
+    $newName = 'art_' . $artworkId . '_' . time() . '_' . $i . '.jpg';
+    $destPath = $uploadDir . $newName;
+    exec("convert " . escapeshellarg($fileTmp) . " " . escapeshellarg($destPath));
+    $dbPath = 'uploads/artworks/' . $newName;
+    $converted = file_exists($destPath); // ImageMagick doesn't return true/false like move_uploaded_file
+} else {
+    $newName = 'art_' . $artworkId . '_' . time() . '_' . $i . '.' . $ext;
+    $destPath = $uploadDir . $newName;
+    $converted = move_uploaded_file($fileTmp, $destPath);
+    $dbPath = 'uploads/artworks/' . $newName;
+}
 
-                    if (move_uploaded_file($fileTmp, $destPath)) {
-                        $dbPath = 'uploads/artworks/' . $newName;
+if ($converted) {
+    $dbPath = 'uploads/artworks/' . $newName;
                         // First image is cover
                         $isCover = ($uploadedCount === 0) ? 1 : 0;
 
@@ -411,7 +421,7 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
             <div class="upload-area" id="dropZone">
                 <svg class="upload-icon" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                 <div class="upload-title">Click to upload images</div>
-                <div class="upload-hint">Up to 5 images · Max 3MB each · First image will be the cover.</div>
+                <div class="upload-hint">Up to 5 images · Max 10MB each · First image will be the cover.</div>
 <div style="margin-top:14px;text-align:left;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px 14px;">
     <div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;font-weight:600;color:var(--ink);margin-bottom:8px;">Image Guidelines</div>
     <ul style="list-style:none;display:flex;flex-direction:column;gap:5px;">
@@ -423,7 +433,7 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
     </ul>
     <div style="font-size:10px;color:var(--ink);opacity:0.6;margin-top:8px;border-top:1px solid var(--border);padding-top:8px;">Violations may result in artwork rejection or account suspension.</div>
 </div>
-                <input type="file" name="images[]" id="fileInput" accept="image/jpeg,image/png,image/webp" multiple hidden>
+                <input type="file" name="images[]" id="fileInput" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" multiple hidden>
             </div>
 
             <div class="preview-header">
@@ -595,8 +605,7 @@ fileInput.addEventListener('change', function(e) {
     
     // Add new files to currentFiles array
     newFiles.forEach(file => {
-        if (file.type.startsWith('image/')) {
-            currentFiles.push(file);
+        if (file.type.startsWith('image/') || file.name.match(/\.(heic|heif)$/i)) {            currentFiles.push(file);
         }
     });
     
