@@ -34,7 +34,7 @@ if (!$artist) {
            (SELECT image_path FROM artwork_images WHERE artwork_id = a.id ORDER BY is_cover DESC LIMIT 1) AS cover_image
     FROM artworks a
     JOIN categories c ON a.category_id = c.id
-    WHERE a.artist_id = ? AND a.status IN ('approved', 'sold')
+    WHERE a.artist_id = ? AND a.status IN ('active', 'sold')
     ORDER BY a.created_at DESC
 ");
  $artworks->bind_param('i', $artistId);
