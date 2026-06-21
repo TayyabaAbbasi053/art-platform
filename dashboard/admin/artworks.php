@@ -692,19 +692,24 @@ tr:hover td { background: var(--sand); box-shadow: 0 4px 12px rgba(12,63,48,.06)
                 <tr>
                     <td>
                         <?php
-                        $awData = json_encode([
-                            'title'         => $aw['title'],
+$imgRes = $conn->query("SELECT image_path FROM artwork_images WHERE artwork_id = {$aw['id']} ORDER BY is_cover DESC, sort_order ASC");
+$allImages = [];
+while ($imgRow = $imgRes->fetch_assoc()) $allImages[] = $imgRow['image_path'];
+
+$awData = json_encode([
+    'title'         => $aw['title'],
                             'artist'        => $aw['artist_name'],
                             'category'      => $aw['category_name'],
                             'price'         => $aw['price'],
                             'city'          => $aw['city'] ?? '',
-                            'dimensions'    => ($aw['width'] ?? '') && ($aw['height'] ?? '') ? $aw['width'].' × '.$aw['height'].' cm' : ($aw['dimensions'] ?? ''),
+                            'dimensions' => $aw['size'] ?? '',
                             'framed'        => $aw['is_framed'] ?? $aw['framed'] ?? 0,
                             'status'        => $aw['status'],
                             'created_at'    => date('d M Y', strtotime($aw['created_at'])),
                             'artist_status' => ucfirst($aw['artist_status'] ?? ''),
                             'description'   => $aw['description'] ?? '',
                             'cover_image'   => $aw['cover_image'] ?? '',
+'images'        => $allImages,
                         ]);
                         ?>
                         <?php if ($aw['cover_image']): ?>
@@ -730,7 +735,6 @@ tr:hover td { background: var(--sand); box-shadow: 0 4px 12px rgba(12,63,48,.06)
                                 <button type="button" class="act-btn red" onclick="openRejectModal(<?= $aw['id'] ?>)" title="Reject">Reject</button>
                             <?php elseif ($aw['status'] === 'approved'): ?>
                                 <form method="POST" style="display:inline"><input type="hidden" name="action" value="feature"><input type="hidden" name="id" value="<?= $aw['id'] ?>"><button type="submit" class="act-btn amber" title="Toggle featured"><?= $aw['is_featured'] ? 'Unfeature' : 'Feature' ?></button></form>
-                                <form method="POST" style="display:inline"><input type="hidden" name="action" value="hide"><input type="hidden" name="id" value="<?= $aw['id'] ?>"><button type="submit" class="act-btn" title="Hide">Hide</button></form>
                             <?php elseif ($aw['status'] === 'rejected' || $aw['status'] === 'hidden'): ?>
                                 <form method="POST" style="display:inline"><input type="hidden" name="action" value="approve"><input type="hidden" name="id" value="<?= $aw['id'] ?>"><button type="submit" class="act-btn green" title="Re-approve">Approve</button></form>
                             <?php else: ?>
@@ -738,7 +742,6 @@ tr:hover td { background: var(--sand); box-shadow: 0 4px 12px rgba(12,63,48,.06)
     <button type="button" class="act-btn red" onclick="openRejectModal(<?= $aw['id'] ?>)">Reject</button>
 <?php endif; ?>
                             <button type="button" class="act-btn blue" onclick='openView(<?= htmlspecialchars($awData, ENT_QUOTES) ?>)'>View</button>
-                            <a href="artwork-edit.php?id=<?= $aw['id'] ?>" class="act-btn blue" title="Edit details">Edit</a>
                             <button type="button" class="act-btn red" onclick="openDelete(<?= $aw['id'] ?>, '<?= htmlspecialchars(addslashes($aw['title'])) ?>')" title="Delete permanently">Delete</button>
                         </div>
                     </td>
@@ -789,14 +792,8 @@ tr:hover td { background: var(--sand); box-shadow: 0 4px 12px rgba(12,63,48,.06)
         </div>
         <div class="modal-body" style="padding:0 28px 24px;">
 
-            <!-- Image with zoom -->
-            <div style="position:relative;margin-bottom:20px;">
-                <img id="viewImage" src="" alt=""
-                     style="width:100%;max-height:320px;object-fit:contain;border-radius:10px;border:1px solid var(--border);cursor:zoom-in;background:var(--sand);"
-                     onclick="openZoom(this.src)">
-                <span style="position:absolute;bottom:8px;right:10px;font-size:10px;background:rgba(12,63,48,.6);color:#fff;padding:3px 8px;border-radius:20px;">Click to zoom</span>
-            </div>
-
+            <!-- Image gallery -->
+<div id="viewGallery" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px;"></div>
             <!-- Details grid -->
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px 20px;">
                 <div>
@@ -975,7 +972,13 @@ function openView(data) {
     document.getElementById('viewDate').textContent     = data.created_at;
     document.getElementById('viewArtistStatus').textContent = data.artist_status || '—';
     document.getElementById('viewDesc').textContent     = data.description || 'No description provided.';
-    document.getElementById('viewImage').src            = data.cover_image ? '../../' + data.cover_image : '';
+    const gallery = document.getElementById('viewGallery');
+const imgs = data.images && data.images.length ? data.images : (data.cover_image ? [data.cover_image] : []);
+const w = imgs.length === 1 ? '100%' : 'calc(50% - 4px)';
+gallery.innerHTML = imgs.map(src =>
+    `<img src="../../${src}" onclick="openZoom('../../${src}')"
+     style="width:${w};aspect-ratio:1;object-fit:cover;border-radius:8px;border:1px solid var(--border);cursor:zoom-in;">`
+).join('');
     document.getElementById('viewModal').classList.add('open');
 }
 function closeView() {

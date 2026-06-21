@@ -7,7 +7,11 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'artist') {
     header('Location: ../../login.php');
     exit;
 }
-$__userStatus = $conn->query("SELECT status, status_reason FROM users WHERE id = {$_SESSION['user_id']}")->fetch_assoc();
+$__stmtStatus = $conn->prepare("SELECT status, status_reason FROM users WHERE id = ?");
+$__stmtStatus->bind_param('i', $_SESSION['user_id']);
+$__stmtStatus->execute();
+$__userStatus = $__stmtStatus->get_result()->fetch_assoc();
+$__stmtStatus->close();
 if ($__userStatus['status'] === 'blocked') {
     session_destroy();
     header('Location: ../../login.php?blocked=1&reason=' . urlencode($__userStatus['status_reason'] ?? ''));
@@ -20,9 +24,33 @@ $artistId = (int) $_SESSION['user_id'];  // ← whatever comes next in the file
  $artistName = $_SESSION['name'] ?? 'Artist';
  $errorMsg   = '';
  $successMsg = '';
+ // ── CSRF Token ───────────────────────────────────────
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+
+// ── Upload Token (per page-load, prevents duplicate/multi-tab submission) ──
+if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    $_SESSION['upload_token'] = bin2hex(random_bytes(16));
+}
 
 // ── Fetch categories ─────────────────────────────────
  $categories = $conn->query("SELECT id, name FROM categories ORDER BY name ASC")->fetch_all(MYSQLI_ASSOC);
+
+// ── HEIC support health check ────────────────────────
+// Cached in session for 1 hour so we're not shelling out on every page load
+$heicSupported = false;
+if (isset($_SESSION['heic_support_checked']) && (time() - $_SESSION['heic_support_checked']) < 3600) {
+    $heicSupported = $_SESSION['heic_support_ok'] ?? false;
+} else {
+    $heicSupported = function_exists('exec')
+        && !in_array('exec', array_map('trim', explode(',', ini_get('disable_functions'))))
+        && trim((string) @shell_exec('which convert')) !== ''
+        && trim((string) @shell_exec('which timeout')) !== ''
+        && stripos((string) @shell_exec('convert -list format 2>/dev/null | grep -i heic'), 'HEIC') !== false;
+    $_SESSION['heic_support_checked'] = time();
+    $_SESSION['heic_support_ok'] = $heicSupported;
+}
 
 // ── Fetch New Orders Count for Sidebar Badge ────────────
  $newOrdersCount = 0;
@@ -40,6 +68,24 @@ $artistId = (int) $_SESSION['user_id'];  // ← whatever comes next in the file
 // ── Handle form submission ───────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
+    // CSRF check
+    if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
+        $errorMsg = 'Invalid session token. Please refresh the page and try again.';
+        goto skip_processing;
+    }
+
+    // Prevent double/multi-tab submission — token is single-use
+    if (
+        !isset($_POST['upload_token']) ||
+        !isset($_SESSION['upload_token']) ||
+        !hash_equals($_SESSION['upload_token'], $_POST['upload_token'])
+    ) {
+        header("Location: my-artworks.php?msg=uploaded");
+        exit;
+    }
+    // Invalidate immediately so a second tab/request with the same token can't slip through
+    unset($_SESSION['upload_token']);
+
     $title                  = trim($_POST['title'] ?? '');
     $categoryId             = (int) ($_POST['category'] ?? 0);
     $medium                 = trim($_POST['medium'] ?? '');
@@ -55,19 +101,30 @@ $is_framed              = isset($_POST['is_framed']) ? 1 : 0;
 
     // Validation: Check if the 'images' input actually has files
     $hasFiles = isset($_FILES['images']) && isset($_FILES['images']['name'][0]) && $_FILES['images']['name'][0] !== '';
+    $imageCount = $hasFiles ? count($_FILES['images']['name']) : 0;
 
     if ($title === '' || $price <= 0 || $categoryId === 0 || !$hasFiles) {
         $errorMsg = 'Please fill in all required fields and upload at least one image.';
+    } elseif ($imageCount > 5) {
+        $errorMsg = 'You can only upload up to 5 images.';
     } else {
         
         // 1. Insert Artwork
-        $stmt = $conn->prepare("
+        $conn->begin_transaction();
+
+$stmt = $conn->prepare("
     INSERT INTO artworks 
     (artist_id, category_id, title, description, tags, medium, size, is_framed, weight_kg, price, city, delivery_available, similar_work_available, status)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
 ");
-$stmt->bind_param('iisssssiddsii', $artistId, $categoryId, $title, $description, $tags, $medium, $size, $is_framed, $weight_kg, $price, $city, $delivery_available, $similar_work_available);
-        
+
+if (!$stmt) {
+    error_log('Failed to prepare artwork insert statement: ' . $conn->error);
+    $conn->rollback();
+    $errorMsg = 'Could not save artwork. Please try again.';
+} else {
+    $stmt->bind_param('iisssssiddsii', $artistId, $categoryId, $title, $description, $tags, $medium, $size, $is_framed, $weight_kg, $price, $city, $delivery_available, $similar_work_available);
+
         if ($stmt->execute()) {
             $artworkId = $conn->insert_id;
             
@@ -81,6 +138,19 @@ $stmt->bind_param('iisssssiddsii', $artistId, $categoryId, $title, $description,
             $uploadedCount = 0;
             $allowedExt = ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif'];
 
+            // Open finfo handle once, outside the loop
+            $finfo = finfo_open(FILEINFO_MIME_TYPE);
+
+            // Prepare the image-insert statement once, outside the loop
+            $stmtImg = $conn->prepare("INSERT INTO artwork_images (artwork_id, image_path, is_cover, sort_order) VALUES (?, ?, ?, ?)");
+            if (!$stmtImg) {
+                error_log('Failed to prepare image insert statement: ' . $conn->error);
+                $conn->rollback();
+                $errorMsg = 'Could not process images. Please try again.';
+                goto skip_image_loop;
+            }
+            $savedFilePaths = []; // track physical files so we can clean up on failure
+
             // Loop through the files array provided by the DataTransfer object in JS
             for ($i = 0; $i < count($files['name']); $i++) {
                 if ($files['error'][$i] === UPLOAD_ERR_OK) {
@@ -88,7 +158,7 @@ $stmt->bind_param('iisssssiddsii', $artistId, $categoryId, $title, $description,
                     $fileTmp  = $files['tmp_name'][$i];
                     $fileSize = $files['size'][$i];
                     
-                    // 3MB max per image
+                    // 10MB max per image
                     if ($fileSize > 10 * 1024 * 1024) {
                         continue; // Skip oversized files
                     }
@@ -97,48 +167,105 @@ $stmt->bind_param('iisssssiddsii', $artistId, $categoryId, $title, $description,
                     if (!in_array($ext, $allowedExt)) {
                         continue; // Skip invalid types
                     }
+                    if (in_array($ext, ['heic', 'heif']) && !$heicSupported) {
+                        error_log("HEIC upload skipped — server lacks ImageMagick/timeout support for file: {$fileName}");
+                        continue; // Skip HEIC if the server can't convert it
+                    }
+
+                    // MIME type check — don't trust the extension alone.
+                    // HEIC/HEIF is special-cased: many hosts report it as application/octet-stream
+                    // even for genuinely valid files, so if the server has confirmed HEIC support
+                    // and the extension matches, we trust the extension instead of the MIME sniff.
+                    $mime  = finfo_file($finfo, $fileTmp);
+                    $allowedMime = [
+                        'image/jpeg', 'image/png', 'image/webp',
+                        'image/heic', 'image/heif'
+                    ];
+                    $isTrustedHeic = $heicSupported && in_array($ext, ['heic', 'heif']);
+                    if (!$isTrustedHeic && !in_array($mime, $allowedMime)) {
+                        continue; // Skip files whose real content doesn't match an allowed image type
+                    }
+
+                    // Dimension check — protect against decompression-bomb style images
+                    // getimagesize() doesn't reliably read HEIC/HEIF, so only check formats it supports
+                    if (!in_array($ext, ['heic', 'heif'])) {
+                        $dimensions = @getimagesize($fileTmp);
+                        if ($dimensions === false) {
+                            continue; // Not a readable image despite passing MIME check — skip it
+                        }
+                        [$imgWidth, $imgHeight] = $dimensions;
+                        if ($imgWidth > 8000 || $imgHeight > 8000) {
+                            continue; // Skip excessively large images
+                        }
+                    }
 
                     // Generate unique filename + handle HEIC conversion
+$uniqueId = bin2hex(random_bytes(8));
 if (in_array($ext, ['heic', 'heif'])) {
-    $newName = 'art_' . $artworkId . '_' . time() . '_' . $i . '.jpg';
+    $newName = 'art_' . $artworkId . '_' . $uniqueId . '.jpg';
     $destPath = $uploadDir . $newName;
-    exec("convert " . escapeshellarg($fileTmp) . " " . escapeshellarg($destPath));
+    $cmd = "timeout 15 convert " . escapeshellarg($fileTmp) . " " . escapeshellarg($destPath) . " 2>&1";
+    exec($cmd, $cmdOutput, $cmdStatus);
     $dbPath = 'uploads/artworks/' . $newName;
-    $converted = file_exists($destPath); // ImageMagick doesn't return true/false like move_uploaded_file
+    $converted = ($cmdStatus === 0) && file_exists($destPath) && filesize($destPath) > 0;
+    if (!$converted) {
+        error_log("HEIC conversion failed for {$fileName}: " . implode("\n", $cmdOutput));
+    } else {
+        chmod($destPath, 0644);
+    }
 } else {
-    $newName = 'art_' . $artworkId . '_' . time() . '_' . $i . '.' . $ext;
+    $newName = 'art_' . $artworkId . '_' . $uniqueId . '.' . $ext;
     $destPath = $uploadDir . $newName;
     $converted = move_uploaded_file($fileTmp, $destPath);
     $dbPath = 'uploads/artworks/' . $newName;
+    if ($converted) {
+        chmod($destPath, 0644);
+    }
 }
 
 if ($converted) {
     $dbPath = 'uploads/artworks/' . $newName;
+
                         // First image is cover
                         $isCover = ($uploadedCount === 0) ? 1 : 0;
 
-                        $stmtImg = $conn->prepare("INSERT INTO artwork_images (artwork_id, image_path, is_cover, sort_order) VALUES (?, ?, ?, ?)");
                         $stmtImg->bind_param('isii', $artworkId, $dbPath, $isCover, $uploadedCount);
-                        $stmtImg->execute();
-                        
-                        $uploadedCount++;
+                        if ($stmtImg->execute()) {
+                            $savedFilePaths[] = $destPath;
+                            $uploadedCount++;
+                        } else {
+                            error_log('Image insert failed: ' . $stmtImg->error);
+                            @unlink($destPath); // this specific insert failed — remove its file immediately
+                        }
                     }
                 }
             }
 
+            $stmtImg->close();
+
             if ($uploadedCount > 0) {
+                $conn->commit();
                 header("Location: my-artworks.php?msg=uploaded");
                 exit;
             } else {
-                $conn->query("DELETE FROM artworks WHERE id = $artworkId"); // Cleanup if no images saved
+                $conn->rollback();
+                // Clean up any files saved before the rollback decision
+                foreach ($savedFilePaths as $orphanPath) {
+                    @unlink($orphanPath);
+                }
                 $errorMsg = 'Artwork saved but images failed to upload. Please try again.';
             }
+            skip_image_loop:
 
         } else {
-            $errorMsg = 'Database error: Could not save artwork.';
+            $conn->rollback();
+            error_log('Artwork insert failed: ' . $stmt->error);
+            $errorMsg = 'Could not save artwork. Please try again.';
         }
     }
+    skip_processing:
 }
+} // closes "if ($_SERVER['REQUEST_METHOD'] === 'POST')"
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -343,6 +470,45 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
     .btn-primary { width: 100%; }
     .ham-btn { display: flex; }
 }
+.btn-ghost:hover { border-color: var(--ink); color: var(--ink); }
+
+/* ── Upload Overlay ──────────────────────────────────── */
+.upload-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(12, 63, 48, 0.6);
+    backdrop-filter: blur(6px);
+    z-index: 9999;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+}
+.upload-overlay.active { display: flex; }
+.upload-overlay-text {
+    font-family: 'Playfair Display', serif;
+    font-size: 18px;
+    color: var(--bg);
+    font-weight: 400;
+}
+.upload-overlay-sub {
+    font-size: 12px;
+    color: rgba(246,237,222,0.7);
+    margin-top: -12px;
+}
+.dots-loader { display: flex; gap: 12px; }
+.dots-loader span {
+    width: 14px; height: 14px; border-radius: 50%;
+    background: #DDCDAE;
+    animation: dotBounce 1.2s infinite ease-in-out;
+}
+.dots-loader span:nth-child(1) { animation-delay: 0s; }
+.dots-loader span:nth-child(2) { animation-delay: 0.2s; }
+@keyframes dotBounce {
+    0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+    40% { transform: scale(1.2); opacity: 1; }
+}
 </style>
 </head>
 <body>
@@ -414,6 +580,8 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
     <?php endif; ?>
 
     <form method="POST" enctype="multipart/form-data" id="uploadForm">
+    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
+    <input type="hidden" name="upload_token" value="<?= htmlspecialchars($_SESSION['upload_token']) ?>">
 
         <div class="card">
             
@@ -421,7 +589,12 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
             <div class="upload-area" id="dropZone">
                 <svg class="upload-icon" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                 <div class="upload-title">Click to upload images</div>
-                <div class="upload-hint">Up to 5 images · Max 10MB each · First image will be the cover.</div>
+                <div class="upload-hint">
+                    Up to 5 images · Max 10MB each · First image will be the cover.
+                    <?php if (!$heicSupported): ?>
+                        <br><strong>Note:</strong> iPhone HEIC photos aren't supported right now — please upload JPG or PNG.
+                    <?php endif; ?>
+                </div>
 <div style="margin-top:14px;text-align:left;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px 14px;">
     <div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;font-weight:600;color:var(--ink);margin-bottom:8px;">Image Guidelines</div>
     <ul style="list-style:none;display:flex;flex-direction:column;gap:5px;">
@@ -433,7 +606,7 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
     </ul>
     <div style="font-size:10px;color:var(--ink);opacity:0.6;margin-top:8px;border-top:1px solid var(--border);padding-top:8px;">Violations may result in artwork rejection or account suspension.</div>
 </div>
-                <input type="file" name="images[]" id="fileInput" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" multiple hidden>
+                <input type="file" name="images[]" id="fileInput" accept="image/jpeg,image/png,image/webp<?= $heicSupported ? ',image/heic,image/heif' : '' ?>" multiple hidden>
             </div>
 
             <div class="preview-header">
@@ -590,132 +763,215 @@ const previewCounter = document.getElementById('previewCounter');
 const uploadForm = document.getElementById('uploadForm');
 
 let currentFiles = [];
+let compressedFiles = [];
+let compressionPromise = null;
+let isSubmitting = false;
 
 dropZone.addEventListener('click', () => fileInput.click());
 
 fileInput.addEventListener('change', function(e) {
     const newFiles = Array.from(e.target.files);
     
-    // Check max file limit (5)
     if (currentFiles.length + newFiles.length > 5) {
         alert('You can only upload up to 5 images. Please remove some before adding more.');
-        fileInput.value = ''; // Reset input to allow re-selection if needed, although currentFiles holds state
+        fileInput.value = '';
         return;
     }
     
-    // Add new files to currentFiles array
     newFiles.forEach(file => {
-        if (file.type.startsWith('image/') || file.name.match(/\.(heic|heif)$/i)) {            currentFiles.push(file);
+        if (file.type.startsWith('image/') || file.name.match(/\.(heic|heif)$/i)) {
+            currentFiles.push(file);
         }
     });
     
     renderPreviews();
+    compressionPromise = compressAllInBackground(); // ← compress immediately in background, track the promise
 });
 
-function renderPreviews() {
-    previewGrid.innerHTML = '';
-    
-    currentFiles.forEach((file, index) => {
+function compressImage(file, maxWidth = 1400, quality = 0.70) {
+    return new Promise((resolve) => {
+        if (file.name.match(/\.(heic|heif)$/i)) { resolve(file); return; }
+        if (file.size < 2 * 1024 * 1024) { resolve(file); return; } // skip compression for small files
         const reader = new FileReader();
         reader.onload = (e) => {
-            const div = document.createElement('div');
-            div.className = 'preview-item';
-            div.setAttribute('data-index', index);
-            div.innerHTML = `
-                <img src="${e.target.result}" alt="Preview ${index + 1}">
-                ${index === 0 ? '<span class="preview-badge">Cover</span>' : ''}
-                <button type="button" class="remove-preview" data-index="${index}" title="Remove image">×</button>
-            `;
-            previewGrid.appendChild(div);
-            
-            // Attach remove event listener to the newly created button
-            div.querySelector('.remove-preview').addEventListener('click', function(e) {
-                e.stopPropagation(); // Prevent triggering dropZone click
-                const idx = parseInt(this.getAttribute('data-index'));
-                removeFileAtIndex(idx);
-            });
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                let width = img.width, height = img.height;
+                if (width > maxWidth) { height = Math.round((height * maxWidth) / width); width = maxWidth; }
+                canvas.width = width; canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                if (!ctx) {
+                    console.error('Canvas context unavailable:', file.name);
+                    resolve(file);
+                    return;
+                }
+                ctx.drawImage(img, 0, 0, width, height);
+
+                // Preserve transparency for PNGs — don't force-convert to JPG (which has no alpha channel)
+                const isPng = file.type === 'image/png' || /\.png$/i.test(file.name);
+                const outputType = isPng ? 'image/png' : 'image/jpeg';
+                const outputExt = isPng ? '.png' : '.jpg';
+                const outputQuality = isPng ? undefined : quality; // PNG toBlob ignores quality anyway
+
+                canvas.toBlob((blob) => {
+                    if (!blob) {
+                        console.error('Compression failed:', file.name);
+                        resolve(file); // Upload original file instead
+                        return;
+                    }
+                    resolve(new File([blob], file.name.replace(/\.(png|webp)$/i, outputExt), { type: outputType, lastModified: Date.now() }));
+                }, outputType, outputQuality);
+            };
+            img.onerror = () => {
+                console.error('Image decode failed:', file.name);
+                resolve(file);
+            };
+            img.src = e.target.result;
+        };
+        reader.onerror = () => {
+            console.error('File read failed:', file.name);
+            resolve(file);
         };
         reader.readAsDataURL(file);
     });
-    
-    // Update counter text
+}
+
+async function compressAllInBackground() {
+    compressedFiles = await Promise.all(currentFiles.map(f => compressImage(f)));
+}
+
+let previewUrls = []; // track object URLs so we can revoke them and avoid memory leaks
+
+function renderPreviews() {
+    // Revoke old object URLs before re-rendering
+    previewUrls.forEach(url => URL.revokeObjectURL(url));
+    previewUrls = [];
+
+    previewGrid.innerHTML = '';
+    currentFiles.forEach((file, index) => {
+        const objectUrl = URL.createObjectURL(file);
+        previewUrls.push(objectUrl);
+
+        const div = document.createElement('div');
+        div.className = 'preview-item';
+        div.setAttribute('data-index', index);
+        div.innerHTML = `
+            <img src="${objectUrl}" alt="Preview ${index + 1}">
+            ${index === 0 ? '<span class="preview-badge">Cover</span>' : ''}
+            <button type="button" class="remove-preview" data-index="${index}" title="Remove image">×</button>
+        `;
+        previewGrid.appendChild(div);
+        div.querySelector('.remove-preview').addEventListener('click', function(e) {
+            e.stopPropagation();
+            removeFileAtIndex(parseInt(this.getAttribute('data-index')));
+        });
+    });
     previewCounter.innerHTML = `${currentFiles.length} / 5 images selected`;
 }
 
 function removeFileAtIndex(index) {
     currentFiles.splice(index, 1);
     renderPreviews();
+    compressionPromise = compressAllInBackground();
 }
 
-// ── Form Submission via Fetch & FormData ──────────────────────────────────
+// ── Form Submission ──────────────────────────────────────────────────────
 uploadForm.addEventListener('submit', async function(e) {
     e.preventDefault();
 
-    // Validate files presence
-    if (currentFiles.length === 0) {
-        alert('Please upload at least one image.');
-        return;
-    }
+    if (currentFiles.length === 0) { alert('Please upload at least one image.'); return; }
+    if (isSubmitting) return;
+    isSubmitting = true;
 
     const submitBtn = uploadForm.querySelector('button[type="submit"]');
     const originalText = submitBtn.innerHTML;
     submitBtn.disabled = true;
-    submitBtn.textContent = 'Uploading…';
+    submitBtn.textContent = 'Preparing images…';
+    document.getElementById('uploadOverlay').classList.add('active');
+    document.getElementById('overlayProgressText').textContent = 'Preparing images…';
 
     const formData = new FormData(uploadForm);
-    
-    // Delete any existing 'images' entries from the native form data 
-    // (in case the hidden input somehow retained default values)
-    formData.delete('images');
+    formData.delete('images[]');
 
-    // Append the files from our JS array
-    currentFiles.forEach(file => {
-        formData.append('images[]', file);
+    // Wait for any in-flight background compression instead of redoing it
+    if (compressionPromise) {
+        await compressionPromise;
+    }
+    const filesToUpload = compressedFiles.length === currentFiles.length
+        ? compressedFiles
+        : await Promise.all(currentFiles.map(f => compressImage(f)));
+
+    filesToUpload.forEach(file => formData.append('images[]', file));
+
+    submitBtn.textContent = 'Uploading…';
+    document.getElementById('overlayProgressText').textContent = 'Please wait';
+
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', window.location.href, true);
+
+    xhr.upload.addEventListener('progress', function(e) {
+        if (e.lengthComputable) {
+            const pct = Math.round((e.loaded / e.total) * 100);
+            document.getElementById('overlayProgressText').textContent = `${pct}% complete`;
+        }
     });
 
-    try {
-        const response = await fetch(window.location.href, {
-            method: 'POST',
-            body: formData
-        });
+    xhr.onload = function() {
+        document.getElementById('uploadOverlay').classList.remove('active');
+        console.log('Status:', xhr.status);
+        console.log('Response:', xhr.responseText);
 
-        if (response.redirected) {
-            // PHP header("Location: ...") was successful
-            window.location.href = response.url;
+        if (xhr.responseURL && xhr.responseURL !== window.location.href) {
+            window.location.href = xhr.responseURL;
         } else {
-            // Request finished but no redirect => Server-side validation error occurred
-            const text = await response.text();
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(text, 'text/html');
+            const doc = new DOMParser().parseFromString(xhr.responseText, 'text/html');
             const errorDiv = doc.querySelector('.msg');
-            
-            // Remove any existing error messages on the current page
             const existingMsg = document.querySelector('.msg');
             if (existingMsg) existingMsg.remove();
-            
+
             if (errorDiv) {
-                // Insert the server-generated error message before the form
                 uploadForm.parentNode.insertBefore(errorDiv, uploadForm);
+            } else {
+                alert('Upload failed. Please try again or contact support.');
+                console.log('No .msg element found. Full response logged above.');
             }
-            
-            // Re-enable the submit button
+
             submitBtn.disabled = false;
             submitBtn.innerHTML = originalText;
+            isSubmitting = false;
         }
-    } catch (error) {
-        console.error('Upload failed:', error);
+    };
+
+    xhr.onerror = function() {
+        document.getElementById('uploadOverlay').classList.remove('active');
+        console.error('Upload failed.');
         alert('An error occurred during upload. Please try again.');
         submitBtn.disabled = false;
         submitBtn.innerHTML = originalText;
-    }
+        isSubmitting = false;
+    };
+
+    xhr.send(formData);
 });
 
-// Optional: Clear all on form reset (if you add a reset button)
 uploadForm.addEventListener('reset', function() {
+    previewUrls.forEach(url => URL.revokeObjectURL(url));
+    previewUrls = [];
     currentFiles = [];
+    compressedFiles = [];
     renderPreviews();
 });
 </script>
+
+<div class="upload-overlay" id="uploadOverlay">
+    <div class="dots-loader">
+        <span></span>
+        <span></span>
+    </div>
+    <div class="upload-overlay-text">Uploading your artwork…</div>
+    <div class="upload-overlay-sub" id="overlayProgressText">Please wait</div>
+</div>
 
 </body>
 </html>
