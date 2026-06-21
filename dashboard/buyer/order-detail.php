@@ -21,6 +21,7 @@ if (!$orderId) {
  $stmt = $conn->prepare("
     SELECT o.*, 
            c.name AS commission_category_name,
+           c.slug AS commission_category_slug,
            ua.name AS commission_artist_name,
            (SELECT COUNT(*) FROM order_items WHERE order_id = o.id) AS item_count
     FROM orders o
@@ -111,19 +112,48 @@ function containsContactInfo(string $text): bool {
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'send_message' && $isCommission) {
     $message = trim($_POST['message'] ?? '');
-    
-    if ($message) {
-        if (containsContactInfo($message)) {
-            $chatError = 'Message blocked: Contact information (phone, email, social handles) cannot be shared.';
-        } else {
+    $hasAttachment = isset($_FILES['attachment']) && $_FILES['attachment']['error'] === UPLOAD_ERR_OK;
+
+    if ($message && containsContactInfo($message)) {
+        $chatError = 'Message blocked: Contact information (phone, email, social handles) cannot be shared.';
+    } elseif (!$message && !$hasAttachment) {
+        $chatError = 'Please enter a message or attach an image.';
+    } else {
+        $attachmentPath = null;
+        $messageType = 'text';
+
+        if ($hasAttachment) {
+            $ext = strtolower(pathinfo($_FILES['attachment']['name'], PATHINFO_EXTENSION));
+            $allowedExt = ['jpg', 'jpeg', 'png', 'webp'];
+            if (!in_array($ext, $allowedExt)) {
+                $chatError = 'Invalid image type. Allowed: JPG, PNG, WEBP.';
+            } elseif ($_FILES['attachment']['size'] > 10 * 1024 * 1024) {
+                $chatError = 'Image must be under 10MB.';
+            } else {
+                $chatDir = __DIR__ . '/../../uploads/commission_chat/';
+                if (!is_dir($chatDir)) {
+                    mkdir($chatDir, 0755, true);
+                }
+                $fileName = 'chat_' . $orderId . '_' . bin2hex(random_bytes(8)) . '.' . $ext;
+                if (move_uploaded_file($_FILES['attachment']['tmp_name'], $chatDir . $fileName)) {
+                    chmod($chatDir . $fileName, 0644);
+                    $attachmentPath = 'uploads/commission_chat/' . $fileName;
+                    $messageType = 'image';
+                } else {
+                    $chatError = 'Failed to upload image. Please try again.';
+                }
+            }
+        }
+
+        if (empty($chatError)) {
             $stmt = $conn->prepare("
-                INSERT INTO order_messages (order_id, sender_role, sender_id, sender_name, message, is_read_by_admin, is_read_by_artist, is_read_by_buyer)
-                VALUES (?, 'buyer', ?, ?, ?, 0, 0, 1)
+                INSERT INTO order_messages (order_id, sender_role, sender_id, sender_name, message, attachment_path, message_type, is_read_by_admin, is_read_by_artist, is_read_by_buyer)
+                VALUES (?, 'buyer', ?, ?, ?, ?, ?, 0, 0, 1)
             ");
-            $stmt->bind_param('iiss', $orderId, $buyerId, $buyerName, $message);
+            $stmt->bind_param('iissss', $orderId, $buyerId, $buyerName, $message, $attachmentPath, $messageType);
             $stmt->execute();
             $chatSuccess = true;
-            
+
             // Refresh messages
             $msgQuery = $conn->prepare("SELECT * FROM order_messages WHERE order_id = ? ORDER BY created_at ASC");
             $msgQuery->bind_param('i', $orderId);
@@ -131,6 +161,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             $messages = $msgQuery->get_result()->fetch_all(MYSQLI_ASSOC);
         }
     }
+}
+
+// ── Handle "Approve Final Artwork" (commission only) ─────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'approve_final' && $isCommission) {
+    $approvedMessageId = (int)($_POST['approved_message_id'] ?? 0);
+    $stmt = $conn->prepare("UPDATE orders SET commission_final_approved = 1, approved_message_id = ? WHERE id = ? AND buyer_id = ?");
+    $approvedMessageIdOrNull = $approvedMessageId > 0 ? $approvedMessageId : null;
+    $stmt->bind_param('iii', $approvedMessageIdOrNull, $orderId, $buyerId);
+    $stmt->execute();
+
+    $stmtH = $conn->prepare("INSERT INTO order_status_history (order_id, status_from, status_to, changed_by_role, changed_by_id, notes) VALUES (?, ?, ?, 'buyer', ?, 'Buyer approved the final design.')");
+    $currentStatus = $order['order_status'];
+    $stmtH->bind_param('issi', $orderId, $currentStatus, $currentStatus, $buyerId);
+    $stmtH->execute();
+
+    $order['commission_final_approved'] = 1;
+    header('Location: order-detail.php?id=' . $orderId . '&msg=approved');
+    exit;
 }
 
 // ── Handle order cancellation request ────────────────────
@@ -522,6 +570,16 @@ img{max-width:100%;display:block;}
   </div>
   <?php endif; ?>
 
+  <?php if ($isCommission && $order['order_status'] === 'delivered' && ($order['commission_category_slug'] ?? '') === 'digital-art' && !empty($order['commission_digital_file_path'])): ?>
+  <div class="items-card" style="padding:20px;text-align:center;">
+    <p style="font-size:13px;margin-bottom:12px;color:var(--ink);">Your commissioned digital artwork is ready.</p>
+    <a href="download-artwork.php?order_id=<?= $orderId ?>&commission=1"
+       style="display:inline-block;padding:10px 20px;background:var(--ink);color:var(--bg);border-radius:8px;font-size:13px;font-weight:500;text-decoration:none;">
+      ⬇ Download Final Artwork
+    </a>
+  </div>
+  <?php endif; ?>
+
   <!-- ORDER ITEMS (shown for artwork orders) -->
   <?php if (!$isCommission && !empty($items)): ?>
   <div class="items-card">
@@ -608,7 +666,17 @@ img{max-width:100%;display:block;}
           $roleClass = $msg['sender_role'] === 'buyer' ? 'buyer' : ($msg['sender_role'] === 'artist' ? 'artist' : 'admin');
         ?>
           <div class="message <?= $roleClass ?>">
-            <div class="message-bubble"><?= nl2br(htmlspecialchars($msg['message'])) ?></div>
+            <?php if (($msg['message_type'] ?? 'text') === 'image' && !empty($msg['attachment_path'])): ?>
+              <img src="../../<?= htmlspecialchars($msg['attachment_path']) ?>" alt="Attachment" style="max-width:220px;border-radius:8px;display:block;margin-bottom:<?= $msg['message'] ? '6px' : '0' ?>;">
+              <?php if (empty($order['commission_final_approved'])): ?>
+                <form method="POST" style="margin-top:6px;">
+                  <input type="hidden" name="action" value="approve_final">
+                  <input type="hidden" name="approved_message_id" value="<?= (int)$msg['id'] ?>">
+                  <button type="submit" style="font-size:11px;padding:5px 10px;border-radius:6px;background:#2E7D32;color:#fff;border:none;cursor:pointer;" onclick="return confirm('Approve this version as final? The artist will then prepare your final deliverable.')">✓ Approve This Version</button>
+                </form>
+              <?php endif; ?>
+            <?php endif; ?>
+            <?php if (!empty($msg['message'])): ?><div class="message-bubble"><?= nl2br(htmlspecialchars($msg['message'])) ?></div><?php endif; ?>
             <div class="message-meta">
               <span><?= htmlspecialchars($msg['sender_name']) ?></span>
               <span>•</span>
@@ -618,9 +686,17 @@ img{max-width:100%;display:block;}
         <?php endforeach; ?>
       <?php endif; ?>
     </div>
-    <form method="POST" class="chat-input-area" onsubmit="return validateMessage(this)">
+    <div id="chatAttachPreview" style="display:none;align-items:center;gap:10px;margin-top:10px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:8px 12px;">
+      <img id="chatAttachPreviewImg" src="" alt="" style="width:48px;height:48px;object-fit:cover;border-radius:6px;border:1px solid var(--border);">
+      <span style="font-size:11px;color:var(--muted);flex:1;">Image attached</span>
+      <button type="button" id="chatAttachRemoveBtn" style="background:none;border:none;color:var(--ink);font-size:16px;cursor:pointer;line-height:1;">×</button>
+    </div>
+    <form method="POST" enctype="multipart/form-data" class="chat-input-area" onsubmit="return validateMessage(this)">
       <input type="hidden" name="action" value="send_message">
-      <input type="text" name="message" placeholder="Discuss commission details (No phone/email/social handles)" autocomplete="off" required>
+      <label style="cursor:pointer;display:flex;align-items:center;padding:0 4px;" title="Attach image">
+        📎<input type="file" name="attachment" id="chatAttachInput" accept="image/jpeg,image/png,image/webp" style="display:none;">
+      </label>
+      <input type="text" name="message" placeholder="Discuss commission details (No phone/email/social handles)" autocomplete="off">
       <button type="submit">Send</button>
     </form>
     <div class="chat-warning">
@@ -648,6 +724,31 @@ img{max-width:100%;display:block;}
 const chatContainer = document.getElementById('chatMessages');
 if (chatContainer) {
   chatContainer.scrollTop = chatContainer.scrollHeight;
+}
+
+// ── Chat image attachment preview ──────────────────────
+const chatAttachInput = document.getElementById('chatAttachInput');
+const chatAttachPreview = document.getElementById('chatAttachPreview');
+const chatAttachPreviewImg = document.getElementById('chatAttachPreviewImg');
+const chatAttachRemoveBtn = document.getElementById('chatAttachRemoveBtn');
+
+if (chatAttachInput) {
+    chatAttachInput.addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) { chatAttachPreview.style.display = 'none'; return; }
+        const reader = new FileReader();
+        reader.onload = function(ev) {
+            chatAttachPreviewImg.src = ev.target.result;
+            chatAttachPreview.style.display = 'flex';
+        };
+        reader.readAsDataURL(file);
+    });
+}
+if (chatAttachRemoveBtn) {
+    chatAttachRemoveBtn.addEventListener('click', function() {
+        chatAttachInput.value = '';
+        chatAttachPreview.style.display = 'none';
+    });
 }
 
 // Drawer Logic
