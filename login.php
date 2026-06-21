@@ -25,12 +25,12 @@ function sendOtpEmail(string $toEmail, string $toName, string $otp): bool {
     $mail = new PHPMailer(true);
     try {
         $mail->isSMTP();
-        $mail->Host       = 'smtp.gmail.com';
+        $mail->Host       = 'smtp-relay.brevo.com';
         $mail->SMTPAuth   = true;
-        $mail->Username   = 'teamartbazaar.pk@gmail.com';
+        $mail->Username   = 'af785b001@smtp-brevo.com';
         // ╔═══════════════════════════════════════════════╗
-        // ║  PASTE YOUR GMAIL APP PASSWORD HERE          ║
-        // ║  Go to Google → Security → App Passwords     ║
+        // ║  Brevo SMTP key — rotate in Brevo dashboard   ║
+        // ║  if this value is ever exposed                ║
         // ╚═══════════════════════════════════════════════╝
         $mail->Password   = 'REMOVED';
         $mail->SMTPSecure = 'tls';
