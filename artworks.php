@@ -18,7 +18,7 @@ $isLoggedIn = isset($_SESSION['user_id']);
  $offset     = ($page - 1) * $perPage;
 
 // ── Build query ──────────────────────────────────────────
- $where = ["a.status IN ('approved', 'sold')"];
+ $where = ["a.status IN ('active', 'sold')"];
  $params = [];
  $types = '';
 
@@ -58,11 +58,11 @@ if ($maxPrice) {
     $types .= 'i';
 }
 if ($avail === 'available') {
-    $where[] = "a.status = 'approved'";
+    $where[] = "a.status = 'active'";
 }
 if ($avail === 'sold') {
     $where[] = "a.status = 'sold'";
-    $where = array_filter($where, fn($w) => $w !== "a.status = 'approved'");
+    $where = array_filter($where, fn($w) => $w !== "a.status = 'active'");
 }
 if ($featured) {
     $where[] = "a.is_featured = 1";
@@ -117,8 +117,8 @@ if ($allParams) {
 
 // Sidebar data
  $categories = $conn->query("SELECT id, name FROM categories ORDER BY name ASC")->fetch_all(MYSQLI_ASSOC);
- $cities = $conn->query("SELECT DISTINCT city FROM artworks WHERE status = 'approved' AND city IS NOT NULL AND city != '' ORDER BY city ASC")->fetch_all(MYSQLI_ASSOC);
- $mediums = $conn->query("SELECT DISTINCT medium FROM artworks WHERE status = 'approved' AND medium IS NOT NULL AND medium != '' ORDER BY medium ASC")->fetch_all(MYSQLI_ASSOC);
+ $cities = $conn->query("SELECT DISTINCT city FROM artworks WHERE status = 'active' AND city IS NOT NULL AND city != '' ORDER BY city ASC")->fetch_all(MYSQLI_ASSOC);
+ $mediums = $conn->query("SELECT DISTINCT medium FROM artworks WHERE status = 'active' AND medium IS NOT NULL AND medium != '' ORDER BY medium ASC")->fetch_all(MYSQLI_ASSOC);
 
 function getImgUrl($p) {
     if (!$p) return null;

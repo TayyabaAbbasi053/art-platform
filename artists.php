@@ -60,7 +60,7 @@ if ($params) {
  $sql = "
     SELECT u.id, u.name, u.profile_picture, u.created_at,
            ap.bio, ap.city, ap.art_style, ap.accepts_commissions, ap.is_featured,
-           (SELECT COUNT(*) FROM artworks WHERE artist_id = u.id AND status = 'approved') AS artwork_count
+           (SELECT COUNT(*) FROM artworks WHERE artist_id = u.id AND status = 'active') AS artwork_count
     FROM users u
     LEFT JOIN artist_profiles ap ON u.id = ap.user_id
     WHERE $whereSQL
