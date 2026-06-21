@@ -35,7 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 }
 
 // ── Fetch categories ─────────────────────────────────
- $categories = $conn->query("SELECT id, name FROM categories ORDER BY name ASC")->fetch_all(MYSQLI_ASSOC);
+ $categories = $conn->query("SELECT id, name, slug FROM categories ORDER BY name ASC")->fetch_all(MYSQLI_ASSOC);
 
 // ── HEIC support health check ────────────────────────
 // Cached in session for 1 hour so we're not shelling out on every page load
@@ -99,14 +99,32 @@ $similar_work_available = isset($_POST['similar_work_available']) ? 1 : 0;
 $is_framed              = isset($_POST['is_framed']) ? 1 : 0;
     $weight_kg              = (float)($_POST['weight_kg'] ?? 1.00);
 
+    // Determine if the selected category is "Digital Art"
+    $catSlugRes = $conn->prepare("SELECT slug FROM categories WHERE id = ?");
+    $catSlugRes->bind_param('i', $categoryId);
+    $catSlugRes->execute();
+    $catSlugRow = $catSlugRes->get_result()->fetch_assoc();
+    $isDigitalCategory = ($catSlugRow && $catSlugRow['slug'] === 'digital-art');
+
     // Validation: Check if the 'images' input actually has files
     $hasFiles = isset($_FILES['images']) && isset($_FILES['images']['name'][0]) && $_FILES['images']['name'][0] !== '';
     $imageCount = $hasFiles ? count($_FILES['images']['name']) : 0;
+
+    // Digital Art listings must include the deliverable file
+    $hasDigitalFile = isset($_FILES['digital_file']) && $_FILES['digital_file']['error'] === UPLOAD_ERR_OK;
+    $digitalFileExt = $hasDigitalFile ? strtolower(pathinfo($_FILES['digital_file']['name'], PATHINFO_EXTENSION)) : '';
+    $allowedDigitalExt = ['zip', 'psd', 'ai', 'png', 'jpg', 'jpeg', 'pdf'];
 
     if ($title === '' || $price <= 0 || $categoryId === 0 || !$hasFiles) {
         $errorMsg = 'Please fill in all required fields and upload at least one image.';
     } elseif ($imageCount > 5) {
         $errorMsg = 'You can only upload up to 5 images.';
+    } elseif ($isDigitalCategory && !$hasDigitalFile) {
+        $errorMsg = 'Please upload the digital artwork file buyers will receive after purchase.';
+    } elseif ($isDigitalCategory && !in_array($digitalFileExt, $allowedDigitalExt)) {
+        $errorMsg = 'Invalid digital file type. Allowed: ZIP, PSD, AI, PNG, JPG, PDF.';
+    } elseif ($isDigitalCategory && $_FILES['digital_file']['size'] > 50 * 1024 * 1024) {
+        $errorMsg = 'Digital file must be under 50MB.';
     } else {
         
         // 1. Insert Artwork
@@ -127,7 +145,29 @@ if (!$stmt) {
 
         if ($stmt->execute()) {
             $artworkId = $conn->insert_id;
-            
+
+            // 1b. Handle Digital File (only for Digital Art category)
+            if ($isDigitalCategory && $hasDigitalFile) {
+                $digitalDir = __DIR__ . '/../../uploads/digital_files/';
+                if (!is_dir($digitalDir)) {
+                    mkdir($digitalDir, 0755, true);
+                }
+                $digitalName = 'digital_' . $artworkId . '_' . bin2hex(random_bytes(8)) . '.' . $digitalFileExt;
+                $digitalDest = $digitalDir . $digitalName;
+
+                if (move_uploaded_file($_FILES['digital_file']['tmp_name'], $digitalDest)) {
+                    chmod($digitalDest, 0644);
+                    $dbDigitalPath = 'uploads/digital_files/' . $digitalName;
+                    $stmtDigital = $conn->prepare("UPDATE artworks SET digital_file_path = ? WHERE id = ?");
+                    $stmtDigital->bind_param('si', $dbDigitalPath, $artworkId);
+                    $stmtDigital->execute();
+                } else {
+                    $conn->rollback();
+                    $errorMsg = 'Failed to save digital artwork file. Please try again.';
+                    goto skip_image_loop;
+                }
+            }
+
             // 2. Handle Images
             $uploadDir = __DIR__ . '/../../uploads/artworks/';
             if (!is_dir($uploadDir)) {
@@ -626,16 +666,24 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
             <div class="form-grid">
                 <div class="field-group">
                     <label>Category <span>*</span></label>
-                    <select name="category" class="field-select" required>
+                    <select name="category" class="field-select" id="categorySelect" required>
                         <option value="">Select category</option>
                         <?php foreach ($categories as $cat): ?>
-                            <option value="<?= $cat['id'] ?>"><?= htmlspecialchars($cat['name']) ?></option>
+                            <option value="<?= $cat['id'] ?>" data-slug="<?= htmlspecialchars($cat['slug']) ?>"><?= htmlspecialchars($cat['name']) ?></option>
                         <?php endforeach; ?>
                     </select>
                 </div>
                 <div class="field-group">
                     <label>Medium <span>*</span></label>
                     <input type="text" name="medium" class="field-input" placeholder="e.g. Oil on Canvas" required>
+                </div>
+            </div>
+
+            <div class="form-grid full" id="digitalFileGroup" style="display:none;">
+                <div class="field-group">
+                    <label>Digital Artwork File <span>*</span></label>
+                    <input type="file" name="digital_file" id="digitalFileInput" class="field-input" accept=".zip,.psd,.ai,.png,.jpg,.jpeg,.pdf">
+                    <p style="font-size:11px;color:var(--muted);margin-top:6px;">This is the actual file the buyer will download after payment is confirmed. Not shown publicly. Max 50MB. Allowed: ZIP, PSD, AI, PNG, JPG, PDF.</p>
                 </div>
             </div>
 
@@ -768,6 +816,20 @@ let compressionPromise = null;
 let isSubmitting = false;
 
 dropZone.addEventListener('click', () => fileInput.click());
+
+// ── Toggle Digital File field based on category ──────────────────────────
+const categorySelect = document.getElementById('categorySelect');
+const digitalFileGroup = document.getElementById('digitalFileGroup');
+const digitalFileInput = document.getElementById('digitalFileInput');
+
+function updateDigitalFileVisibility() {
+    const selected = categorySelect.options[categorySelect.selectedIndex];
+    const isDigital = selected && selected.dataset.slug === 'digital-art';
+    digitalFileGroup.style.display = isDigital ? 'block' : 'none';
+    digitalFileInput.required = isDigital;
+}
+categorySelect.addEventListener('change', updateDigitalFileVisibility);
+updateDigitalFileVisibility();
 
 fileInput.addEventListener('change', function(e) {
     const newFiles = Array.from(e.target.files);

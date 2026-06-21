@@ -15,6 +15,7 @@ if (!isset($_SESSION['user_id'])) {
 // ── Determine checkout flow ──────────────────────────────
  $commissionOrderId = isset($_GET['order_id']) && ($_GET['type'] ?? '') === 'commission' ? (int)$_GET['order_id'] : 0;
  $isCommissionCheckout = $commissionOrderId > 0;
+ $isDigitalItem = false;
 
  $cartItems = [];
  $subtotal = 0;
@@ -179,9 +180,11 @@ if ($isCommissionCheckout) {
     $awQuery = $conn->prepare("
         SELECT a.id, a.title, a.price, a.status, a.artist_id,
                (SELECT ai.image_path FROM artwork_images ai WHERE ai.artwork_id = a.id AND ai.is_cover = 1 LIMIT 1) AS cover_image,
-               ua.name AS artist_name
+               ua.name AS artist_name,
+               c.slug AS category_slug
         FROM artworks a
         JOIN users ua ON a.artist_id = ua.id
+        LEFT JOIN categories c ON a.category_id = c.id
         WHERE a.id = ?
     ");
     $awQuery->bind_param('i', $artworkId);
@@ -200,6 +203,7 @@ if ($isCommissionCheckout) {
     }
 
     $price = $artworkRow['price'];
+    $isDigitalItem = (($artworkRow['category_slug'] ?? '') === 'digital-art');
     $cartItems[] = [
         'type' => 'artwork',
         'id' => $artworkRow['id'],
@@ -210,6 +214,7 @@ if ($isCommissionCheckout) {
         'artist_name' => $artworkRow['artist_name'],
         'cover_image' => $artworkRow['cover_image'],
         'status' => $artworkRow['status'],
+        'is_digital' => $isDigitalItem,
     ];
     $subtotal = $price;
     $shippingFee = 0;
@@ -237,8 +242,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
     $saveAddress = isset($_POST['save_address']) ? 1 : 0;
     $notes = trim($_POST['notes'] ?? '');
 
-    // COD is never allowed for commissions, regardless of what was posted
-    $allowedMethods = $isCommissionCheckout
+    // COD is never allowed for commissions or digital artworks, regardless of what was posted
+    $allowedMethods = ($isCommissionCheckout || $isDigitalItem)
         ? ['jazzcash', 'easypaisa', 'nayapay']
         : ['jazzcash', 'easypaisa', 'nayapay', 'cod'];
     $isCod = ($paymentMethod === 'cod');
@@ -275,9 +280,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
         if (!$fullName || !$address || !$phone) {
             $orderError = 'Please fill in all required fields.';
         } elseif (!in_array($paymentMethod, $allowedMethods)) {
-            $orderError = $isCommissionCheckout
-                ? 'Cash on Delivery is not available for commissions. Please choose JazzCash, Easypaisa, or Nayapay.'
-                : 'Invalid payment method.';
+            if ($isCommissionCheckout) {
+                $orderError = 'Cash on Delivery is not available for commissions. Please choose JazzCash, Easypaisa, or Nayapay.';
+            } elseif ($isDigitalItem) {
+                $orderError = 'Cash on Delivery is not available for digital artworks. Please choose JazzCash, Easypaisa, or Nayapay.';
+            } else {
+                $orderError = 'Invalid payment method.';
+            }
         } elseif (!$isCod && !$screenshotPath) {
              $orderError = 'Payment screenshot is required.';
         } else {
@@ -793,17 +802,17 @@ img{max-width:100%;display:block;}
               Account Number: 03304780888
             </div>
 
-            <?php if (!$isCommissionCheckout): ?>
-            <!-- COD -->
-            <div class="payment-option<?= $total > 10000 ? '' : '' ?>" onclick="selectPayment('cod')" id="cod-option">
-              <input type="radio" name="payment_method" value="cod">
-              <span>💵 Cash on Delivery</span>
-            </div>
-            <div id="details-cod" class="payment-details">
-              <strong>Cash on Delivery</strong>
-              Pay in cash when your order arrives. Only available for orders under PKR 10,000 (including shipping).
-            </div>
-            <?php endif; ?>
+            <?php if (!$isCommissionCheckout && !$isDigitalItem): ?>
+<!-- COD -->
+<div class="payment-option<?= $total > 10000 ? '' : '' ?>" onclick="selectPayment('cod')" id="cod-option">
+  <input type="radio" name="payment_method" value="cod">
+  <span>💵 Cash on Delivery</span>
+</div>
+<div id="details-cod" class="payment-details">
+  <strong>Cash on Delivery</strong>
+  Pay in cash when your order arrives. Only available for orders under PKR 10,000 (including shipping).
+</div>
+<?php endif; ?>
             
             <!-- Payment Screenshot Upload (hidden for COD) -->
             <div class="upload-section" id="upload-section">
@@ -818,9 +827,9 @@ img{max-width:100%;display:block;}
               </div>
             </div>
 
-            <?php if (!$isCommissionCheckout): ?>
-            <p id="cod-warning" style="display:none;font-size:11px;color:#7D2A14;margin-top:8px;">Cash on Delivery is only available for orders under PKR 10,000 (including shipping). Please choose another payment method.</p>
-            <?php endif; ?>
+            <?php if (!$isCommissionCheckout && !$isDigitalItem): ?>
+<p id="cod-warning" style="display:none;font-size:11px;color:#7D2A14;margin-top:8px;">Cash on Delivery is only available for orders under PKR 10,000 (including shipping). Please choose another payment method.</p>
+<?php endif; ?>
           </div>
           
           <button type="submit" name="place_order" class="place-order-btn" id="placeOrderBtn" <?= ($shippingFee === 0 && !$isCommissionCheckout) ? 'disabled' : '' ?>><?= $isCommissionCheckout ? 'Confirm & Pay' : 'Place Order' ?></button>
@@ -891,6 +900,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     const subtotal = <?php echo $subtotal; ?>;
     const isCommission = <?php echo $isCommissionCheckout ? 'true' : 'false'; ?>;
+    const isDigital = <?php echo $isDigitalItem ? 'true' : 'false'; ?>;
     const COD_LIMIT = 10000;
     
     let timeoutId;
@@ -1014,6 +1024,15 @@ function updateCodAvailability(currentTotal) {
   const codOption = document.getElementById('cod-option');
   const codWarning = document.getElementById('cod-warning');
   if (!codOption) return; // commission checkout has no COD option
+
+  if (isDigital) {
+    codOption.style.display = 'none';
+    const codRadioDigital = codOption.querySelector('input[name="payment_method"]');
+    if (codRadioDigital) codRadioDigital.disabled = true;
+    if (codRadioDigital && codRadioDigital.checked) selectPayment('jazzcash');
+    if (codWarning) codWarning.style.display = 'none';
+    return;
+  }
 
   const codRadio = codOption.querySelector('input[name="payment_method"]');
   const overLimit = currentTotal > COD_LIMIT;

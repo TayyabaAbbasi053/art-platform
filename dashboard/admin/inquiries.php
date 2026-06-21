@@ -74,21 +74,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'mark_
         if ($methodRow && $methodRow['payment_method'] === 'cod') {
             $toast = 'This order is Cash on Delivery — there is no screenshot to verify.';
         } else {
-            // Update payment status and move order to confirmed
-            $stmt = $conn->prepare("UPDATE orders SET payment_status = 'paid', order_status = 'payment_confirmed' WHERE id = ?");
-            $stmt->bind_param('i', $id);
-            $stmt->execute();
-            $emailDebug = sendArtistOrderEmail($conn, $id, 'payment_confirmed');
-$toast = 'Order marked as paid and confirmed. [' . $emailDebug . ']';
-            
-            // Add status history
+            // Check if this order's artwork is Digital Art — if so, it's delivered immediately
+            $digitalRes = $conn->query("
+                SELECT c.slug AS category_slug
+                FROM order_items oi
+                JOIN artworks a ON oi.item_id = a.id AND oi.item_type = 'artwork'
+                JOIN categories c ON a.category_id = c.id
+                WHERE oi.order_id = $id
+                LIMIT 1
+            ");
+            $digitalRow = $digitalRes ? $digitalRes->fetch_assoc() : null;
+            $isDigitalOrder = $digitalRow && $digitalRow['category_slug'] === 'digital-art';
+
             $adminId = (int)$_SESSION['user_id'];
-            $note = 'Payment verified by admin. Order confirmed.';
-            $stmtH = $conn->prepare("INSERT INTO order_status_history (order_id, status_from, status_to, changed_by_role, changed_by_id, notes) VALUES (?, 'pending', 'payment_confirmed', 'admin', ?, ?)");
-            $stmtH->bind_param('iis', $id, $adminId, $note);
-            $stmtH->execute();
-            
-            $toast = 'Order marked as paid and confirmed. [' . $emailDebug . ']';
+
+            if ($isDigitalOrder) {
+                // Digital artwork — nothing to ship, mark paid AND delivered in one step
+                $stmt = $conn->prepare("UPDATE orders SET payment_status = 'paid', order_status = 'delivered' WHERE id = ?");
+                $stmt->bind_param('i', $id);
+                $stmt->execute();
+
+                $note = 'Payment verified by admin. Digital artwork auto-delivered.';
+                $stmtH = $conn->prepare("INSERT INTO order_status_history (order_id, status_from, status_to, changed_by_role, changed_by_id, notes) VALUES (?, 'pending', 'delivered', 'admin', ?, ?)");
+                $stmtH->bind_param('iis', $id, $adminId, $note);
+                $stmtH->execute();
+
+                $toast = 'Order marked as paid. Digital artwork delivered to buyer.';
+            } else {
+                // Update payment status and move order to confirmed
+                $stmt = $conn->prepare("UPDATE orders SET payment_status = 'paid', order_status = 'payment_confirmed' WHERE id = ?");
+                $stmt->bind_param('i', $id);
+                $stmt->execute();
+                $emailDebug = sendArtistOrderEmail($conn, $id, 'payment_confirmed');
+
+                $note = 'Payment verified by admin. Order confirmed.';
+                $stmtH = $conn->prepare("INSERT INTO order_status_history (order_id, status_from, status_to, changed_by_role, changed_by_id, notes) VALUES (?, 'pending', 'payment_confirmed', 'admin', ?, ?)");
+                $stmtH->bind_param('iis', $id, $adminId, $note);
+                $stmtH->execute();
+
+                $toast = 'Order marked as paid and confirmed. [' . $emailDebug . ']';
+            }
         }
     }
 }

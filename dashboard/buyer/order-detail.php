@@ -50,10 +50,12 @@ if (!$order) {
            (SELECT ai.image_path FROM artwork_images ai WHERE ai.artwork_id = a.id AND ai.is_cover = 1 LIMIT 1) AS cover_image, 
            a.artist_id,
            a.delivery_status AS artwork_delivery_status,
-           u.name AS artist_name
+           u.name AS artist_name,
+           c.slug AS category_slug
     FROM order_items oi
     LEFT JOIN artworks a ON oi.item_type = 'artwork' AND oi.item_id = a.id
     LEFT JOIN users u ON a.artist_id = u.id
+    LEFT JOIN categories c ON a.category_id = c.id
     WHERE oi.order_id = ?
 ");
  $itemQuery->bind_param('i', $orderId);
@@ -549,6 +551,12 @@ img{max-width:100%;display:block;}
       <div class="item-price">
         <div class="price">PKR <?= number_format($item['price']) ?></div>
         <div class="qty">Qty: <?= $item['quantity'] ?></div>
+        <?php if ($order['order_status'] === 'delivered' && ($item['category_slug'] ?? '') === 'digital-art'): ?>
+          <a href="download-artwork.php?order_id=<?= $orderId ?>&artwork_id=<?= (int)$item['item_id'] ?>"
+             style="display:inline-block;margin-top:8px;padding:8px 16px;background:var(--ink);color:var(--bg);border-radius:8px;font-size:12px;font-weight:500;text-decoration:none;">
+            ⬇ Download Artwork
+          </a>
+        <?php endif; ?>
       </div>
     </div>
     <?php endforeach; ?>
