@@ -74,7 +74,7 @@ while ($row = $awResult->fetch_assoc()) {
     $artworks[] = $row;
 }
 
- $artworkCounts = ['pending' => 0, 'approved' => 0, 'rejected' => 0, 'sold' => 0, 'hidden' => 0];
+ $artworkCounts = ['active' => 0, 'sold' => 0, 'hidden' => 0];
 foreach ($artworks as $aw) {
     $status = $aw['status'];
     if (isset($artworkCounts[$status])) {
@@ -85,13 +85,7 @@ foreach ($artworks as $aw) {
 // Handle admin actions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
-    if ($action === 'approve') {
-        // Change 3: Clear reason on approve
-        $conn->query("UPDATE users SET status = 'active', status_reason = NULL WHERE id = $id");
-        $artist['status'] = 'active';
-        $artist['status_reason'] = null;
-        $toast = 'Artist approved.';
-    } elseif ($action === 'block') {
+    if ($action === 'block') {
         // Change 2: Update the block action to save the reason
         $reason = $conn->real_escape_string(trim($_POST['status_reason'] ?? ''));
         $conn->query("UPDATE users SET status = 'blocked', status_reason = '$reason' WHERE id = $id");
@@ -413,11 +407,7 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
             </div>
         </div>
         <div class="profile-actions">
-            <?php if ($artist['status'] === 'pending'): ?>
-                <form method="POST" style="display:inline"><input type="hidden" name="action" value="approve"><button type="submit" class="btn btn-green btn-sm">Approve</button></form>
-                <!-- Change 6: Replace pending block button with modal trigger -->
-                <button type="button" class="btn btn-red btn-sm" onclick="openBlock()">Block</button>
-            <?php elseif ($artist['status'] === 'active'): ?>
+            <?php if ($artist['status'] === 'active'): ?>
                 <form method="POST" style="display:inline"><input type="hidden" name="action" value="toggle_featured"><button type="submit" class="btn btn-amber btn-sm"><?= $artist['is_featured'] ? 'Unfeature' : 'Feature' ?></button></form>
                 <form method="POST" style="display:inline"><input type="hidden" name="action" value="toggle_commissions"><button type="submit" class="btn btn-blue btn-sm"><?= $artist['accepts_commissions'] ? 'Disable Commissions' : 'Enable Commissions' ?></button></form>
                 <!-- Change 6: Replace active block button with modal trigger -->
@@ -432,10 +422,9 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
     <!-- Stats -->
     <div class="stats-row">
         <div class="mini-stat"><div class="num"><?= count($artworks) ?></div><div class="lbl">Total</div></div>
-        <div class="mini-stat"><div class="num"><?= $artworkCounts['approved'] ?></div><div class="lbl">Approved</div></div>
-        <div class="mini-stat"><div class="num"><?= $artworkCounts['pending'] ?></div><div class="lbl">Pending</div></div>
+        <div class="mini-stat"><div class="num"><?= $artworkCounts['active'] ?></div><div class="lbl">Active</div></div>
         <div class="mini-stat"><div class="num"><?= $artworkCounts['sold'] ?></div><div class="lbl">Sold</div></div>
-        <div class="mini-stat"><div class="num"><?= $artworkCounts['rejected'] + $artworkCounts['hidden'] ?></div><div class="lbl">Rejected/Hidden</div></div>
+        <div class="mini-stat"><div class="num"><?= $artworkCounts['hidden'] ?></div><div class="lbl">Hidden</div></div>
     </div>
 
     <!-- Two col info -->

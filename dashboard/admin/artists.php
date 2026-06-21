@@ -10,17 +10,6 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
  $adminName = $_SESSION['name'] ?? 'Admin';
  $toast = '';
 
-// ── Handle actions ──────────────────────────────────────
-
-// Approve artist
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'approve') {
-    $id = (int)($_POST['id'] ?? 0);
-    if ($id) {
-        $conn->query("UPDATE users SET status = 'active' WHERE id = $id AND role = 'artist'");
-        $toast = 'Artist approved and activated.';
-    }
-}
-
 // Block artist
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'block') {
     $id = (int)($_POST['id'] ?? 0);
@@ -85,7 +74,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
  $types   = '';
 
  $statusFilter = $_GET['status'] ?? '';
-if (in_array($statusFilter, ['active','pending','blocked'])) {
+if (in_array($statusFilter, ['active','blocked'])) {
     $where[] = "u.status = ?";
     $params[] = $statusFilter;
     $types .= 's';
@@ -136,10 +125,9 @@ if ($params) {
     SELECT u.id, u.name, u.email, u.phone, u.status, u.profile_picture, u.created_at,
            ap.city, ap.art_style, ap.bio, ap.accepts_commissions, ap.is_featured, ap.profile_complete,
            (SELECT COUNT(*) FROM artworks WHERE artist_id = u.id) AS art_count,
-           (SELECT COUNT(*) FROM artworks WHERE artist_id = u.id AND status = 'approved') AS approved_count,
+           (SELECT COUNT(*) FROM artworks WHERE artist_id = u.id AND status = 'active') AS approved_count,
            (SELECT COUNT(*) FROM artworks WHERE artist_id = u.id AND status = 'sold') AS sold_count,
-           (SELECT COUNT(*) FROM artworks WHERE artist_id = u.id AND status = 'pending') AS pending_count,
-           (SELECT COUNT(*) FROM artworks WHERE artist_id = u.id AND status IN ('rejected','hidden')) AS rejected_count
+           (SELECT COUNT(*) FROM artworks WHERE artist_id = u.id AND status = 'hidden') AS rejected_count
     FROM users u
     LEFT JOIN artist_profiles ap ON ap.user_id = u.id
     WHERE $whereSQL
@@ -159,7 +147,7 @@ while ($row = $res->fetch_assoc()) $artists[] = $row;
 
 // Status counts
  $statusCounts = [];
-foreach (['active','pending','blocked'] as $s) {
+foreach (['active','blocked'] as $s) {
     $r = $conn->query("SELECT COUNT(*) FROM users WHERE role='artist' AND status='$s'");
     $statusCounts[$s] = (int)$r->fetch_row()[0];
 }
@@ -564,7 +552,6 @@ tr:hover td { background: var(--bg); box-shadow: 0 4px 12px rgba(12,63,48,.06); 
     <a href="artists.php" class="nav-item active">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
         Artists
-        <?php if ($statusCounts['pending'] > 0): ?><span class="badge amber"><?= $statusCounts['pending'] ?></span><?php endif; ?>
     </a>
     <a href="blogs.php" class="nav-item">
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16a1 1 0 011 1v14a1 1 0 01-1 1H4a1 1 0 01-1-1V5a1 1 0 011-1z"/><path d="M7 8h10M7 12h6"/></svg>
@@ -624,8 +611,8 @@ tr:hover td { background: var(--bg); box-shadow: 0 4px 12px rgba(12,63,48,.06); 
     <!-- Tabs -->
     <div class="tabs">
         <a href="?<?= buildQS(['status' => null, 'featured' => null]) ?>" class="tab <?= !$statusFilter && !isset($_GET['featured']) ? 'active' : '' ?>">All <span class="count"><?= $statusCounts['all'] ?></span></a>
-        <?php foreach (['active','pending','blocked'] as $s): ?>
-        <a href="?<?= buildQS(['status' => $s, 'featured' => null]) ?>" class="tab <?= $statusFilter === $s ? 'active' : '' ?>"><?= ucfirst($s) ?> <span class="count <?= ($s === 'pending' && $statusCounts[$s] > 0) ? 'hot' : '' ?>"><?= $statusCounts[$s] ?></span></a>
+        <?php foreach (['active','blocked'] as $s): ?>
+        <a href="?<?= buildQS(['status' => $s, 'featured' => null]) ?>" class="tab <?= $statusFilter === $s ? 'active' : '' ?>"><?= ucfirst($s) ?> <span class="count"><?= $statusCounts[$s] ?></span></a>
         <?php endforeach; ?>
         <a href="?<?= buildQS(['featured' => '1', 'status' => null]) ?>" class="tab <?= (isset($_GET['featured']) && $_GET['featured'] === '1' && !$statusFilter) ? 'active' : '' ?>">★ Featured</a>
     </div>
@@ -689,9 +676,6 @@ tr:hover td { background: var(--bg); box-shadow: 0 4px 12px rgba(12,63,48,.06); 
                         <div class="td-stats">
                             <span><span class="num"><?= $a['approved_count'] ?></span> approved</span>
                             <span><span class="num"><?= $a['sold_count'] ?></span> sold</span>
-                            <?php if ($a['pending_count'] > 0): ?>
-                            <span><span class="num"><?= $a['pending_count'] ?></span> pending</span>
-                            <?php endif; ?>
                             <?php if ($a['rejected_count'] > 0): ?>
                             <span><span class="num"><?= $a['rejected_count'] ?></span> rejected</span>
                             <?php endif; ?>
@@ -709,10 +693,7 @@ tr:hover td { background: var(--bg); box-shadow: 0 4px 12px rgba(12,63,48,.06); 
                     </td>
                     <td data-label="Actions">
                         <div class="td-actions">
-                            <?php if ($a['status'] === 'pending'): ?>
-                                <form method="POST" style="display:inline"><input type="hidden" name="action" value="approve"><input type="hidden" name="id" value="<?= $a['id'] ?>"><button type="submit" class="act-btn approve">Approve</button></form>
-                                <button type="button" class="act-btn red" onclick="openBlock(<?= $a['id'] ?>, '<?= htmlspecialchars(addslashes($a['name'])) ?>')">Block</button>
-                            <?php elseif ($a['status'] === 'active'): ?>
+                            <?php if ($a['status'] === 'active'): ?>
                                 <form method="POST" style="display:inline"><input type="hidden" name="action" value="feature"><input type="hidden" name="id" value="<?= $a['id'] ?>"><button type="submit" class="act-btn amber"><?= $a['is_featured'] ? 'Unfeature' : 'Feature' ?></button></form>
                                 <button type="button" class="act-btn red" onclick="openBlock(<?= $a['id'] ?>, '<?= htmlspecialchars(addslashes($a['name'])) ?>')">Block</button>
                             <?php elseif ($a['status'] === 'blocked'): ?>

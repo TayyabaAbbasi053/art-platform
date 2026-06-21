@@ -13,27 +13,12 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
 
 // ── Handle actions ──────────────────────────────────────
 
-// Approve
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'approve') {
+// Unhide (restore to active)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'unhide') {
     $id = (int)($_POST['id'] ?? 0);
     if ($id) {
-        $conn->query("UPDATE artworks SET status = 'approved', rejection_reason = NULL WHERE id = $id");
-        $toast = 'Artwork approved.';
-    }
-}
-
-// Reject (Now with Reason)
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'reject') {
-    $id = (int)($_POST['id'] ?? 0);
-    $reason = trim($_POST['rejection_reason'] ?? '');
-    
-    if ($id && !empty($reason)) {
-        $stmt = $conn->prepare("UPDATE artworks SET status = 'rejected', rejection_reason = ? WHERE id = ?");
-        $stmt->bind_param('si', $reason, $id);
-        $stmt->execute();
-        $toast = 'Artwork rejected. Artist will be notified.';
-    } elseif (empty($reason)) {
-        $toast = 'Please provide a rejection reason.';
+        $conn->query("UPDATE artworks SET status = 'active' WHERE id = $id");
+        $toast = 'Artwork unhidden.';
     }
 }
 
@@ -84,7 +69,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
 
 // Status filter
  $statusFilter = $_GET['status'] ?? '';
-if (in_array($statusFilter, ['pending','approved','rejected','sold','hidden'])) {
+if (in_array($statusFilter, ['active','sold','hidden'])) {
     $where[] = "a.status = ?";
     $params[] = $statusFilter;
     $types .= 's';
@@ -171,7 +156,7 @@ while ($row = $catRes->fetch_assoc()) $categories[] = $row;
 
 // Status counts for tabs
  $statusCounts = [];
-foreach (['pending','approved','rejected','sold','hidden'] as $s) {
+foreach (['active','sold','hidden'] as $s) {
     $r = $conn->query("SELECT COUNT(*) FROM artworks WHERE status='$s'");
     $statusCounts[$s] = (int)$r->fetch_row()[0];
 }
@@ -450,9 +435,7 @@ tr:hover td { background: var(--sand); box-shadow: 0 4px 12px rgba(12,63,48,.06)
 
 /* ── Pills ───────────────────────────────────────────── */
 .pill { display: inline-block; font-size: 9px; letter-spacing: .5px; text-transform: uppercase; font-weight: 600; padding: 3px 9px; border-radius: 20px; white-space: nowrap; }
-.pill.pending   { background: var(--sand); color: var(--ink); }
-.pill.approved  { background: var(--ink); color: var(--bg); }
-.pill.rejected  { background: var(--sand); color: var(--ink); border: 1px solid var(--border); }
+.pill.active    { background: var(--ink); color: var(--bg); }
 .pill.sold      { background: var(--ink); color: var(--bg); }
 .pill.hidden    { background: var(--sand); color: var(--ink); }
 .featured-star { color: var(--ink); font-size: 13px; margin-left: 4px; }
@@ -563,7 +546,7 @@ tr:hover td { background: var(--sand); box-shadow: 0 4px 12px rgba(12,63,48,.06)
     <a href="artworks.php" class="nav-item active">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9l4-4 4 4 4-4 4 4"/><circle cx="8.5" cy="14.5" r="1.5"/></svg>
         Artworks
-        <?php if ($statusCounts['pending'] > 0): ?><span class="badge"><?= $statusCounts['pending'] ?></span><?php endif; ?>
+        <?php if ($statusCounts['hidden'] > 0): ?><span class="badge"><?= $statusCounts['hidden'] ?></span><?php endif; ?>
     </a>
     <a href="artists.php" class="nav-item">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
@@ -631,10 +614,10 @@ tr:hover td { background: var(--sand); box-shadow: 0 4px 12px rgba(12,63,48,.06)
         <a href="?<?= buildQS(['status' => null]) ?>" class="tab <?= !$statusFilter ? 'active' : '' ?>">
             All <span class="count"><?= $statusCounts['all'] ?></span>
         </a>
-        <?php foreach (['pending','approved','rejected','sold','hidden'] as $s): ?>
+        <?php foreach (['active','sold','hidden'] as $s): ?>
         <a href="?<?= buildQS(['status' => $s]) ?>" class="tab <?= $statusFilter === $s ? 'active' : '' ?>">
             <?= ucfirst($s) ?>
-            <span class="count <?= ($s === 'pending' && $statusCounts[$s] > 0) ? 'hot' : '' ?>"><?= $statusCounts[$s] ?></span>
+            <span class="count"><?= $statusCounts[$s] ?></span>
         </a>
         <?php endforeach; ?>
         <a href="?<?= buildQS(['featured' => '1', 'status' => null]) ?>" class="tab <?= (isset($_GET['featured']) && $_GET['featured'] === '1' && !$statusFilter) ? 'active' : '' ?>">
@@ -730,17 +713,12 @@ $awData = json_encode([
                     <td><span class="pill <?= $aw['status'] ?>"><?= ucfirst($aw['status']) ?></span></td>
                     <td>
                         <div class="td-actions">
-                            <?php if ($aw['status'] === 'pending'): ?>
-                                <form method="POST" style="display:inline"><input type="hidden" name="action" value="approve"><input type="hidden" name="id" value="<?= $aw['id'] ?>"><button type="submit" class="act-btn green" title="Approve">Approve</button></form>
-                                <button type="button" class="act-btn red" onclick="openRejectModal(<?= $aw['id'] ?>)" title="Reject">Reject</button>
-                            <?php elseif ($aw['status'] === 'approved'): ?>
+                            <?php if ($aw['status'] === 'active'): ?>
                                 <form method="POST" style="display:inline"><input type="hidden" name="action" value="feature"><input type="hidden" name="id" value="<?= $aw['id'] ?>"><button type="submit" class="act-btn amber" title="Toggle featured"><?= $aw['is_featured'] ? 'Unfeature' : 'Feature' ?></button></form>
-                            <?php elseif ($aw['status'] === 'rejected' || $aw['status'] === 'hidden'): ?>
-                                <form method="POST" style="display:inline"><input type="hidden" name="action" value="approve"><input type="hidden" name="id" value="<?= $aw['id'] ?>"><button type="submit" class="act-btn green" title="Re-approve">Approve</button></form>
-                            <?php else: ?>
-    <form method="POST" style="display:inline"><input type="hidden" name="action" value="approve"><input type="hidden" name="id" value="<?= $aw['id'] ?>"><button type="submit" class="act-btn green">Approve</button></form>
-    <button type="button" class="act-btn red" onclick="openRejectModal(<?= $aw['id'] ?>)">Reject</button>
-<?php endif; ?>
+                                <form method="POST" style="display:inline"><input type="hidden" name="action" value="hide"><input type="hidden" name="id" value="<?= $aw['id'] ?>"><button type="submit" class="act-btn red" title="Hide">Hide</button></form>
+                            <?php elseif ($aw['status'] === 'hidden'): ?>
+                                <form method="POST" style="display:inline"><input type="hidden" name="action" value="unhide"><input type="hidden" name="id" value="<?= $aw['id'] ?>"><button type="submit" class="act-btn green" title="Unhide">Unhide</button></form>
+                            <?php endif; ?>
                             <button type="button" class="act-btn blue" onclick='openView(<?= htmlspecialchars($awData, ENT_QUOTES) ?>)'>View</button>
                             <button type="button" class="act-btn red" onclick="openDelete(<?= $aw['id'] ?>, '<?= htmlspecialchars(addslashes($aw['title'])) ?>')" title="Delete permanently">Delete</button>
                         </div>
@@ -868,25 +846,6 @@ $awData = json_encode([
     </div>
 </div>
 
-<!-- ══════════════ REJECT MODAL ══════════════ -->
-<div class="modal-overlay" id="rejectModal">
-    <div class="modal">
-        <div class="modal-head"><h3>Reject Artwork</h3></div>
-        <div class="modal-body">
-            <p class="confirm-text" style="margin-bottom:12px;">Please provide a reason for rejection. The artist will see this message.</p>
-            <form method="POST">
-                <input type="hidden" name="action" value="reject">
-                <input type="hidden" name="id" id="rejectId">
-                <textarea name="rejection_reason" class="modal-input" rows="4" required placeholder="e.g. Low quality images, Wrong category, Copyright issue..."></textarea>
-                <div class="modal-foot" style="padding-top:16px;">
-                    <button type="button" class="btn btn-ghost" onclick="closeReject()">Cancel</button>
-                    <button type="submit" class="btn btn-danger">Reject Artwork</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
 <!-- NAV DRAWER (Mobile) -->
 <div id="nav-overlay" onclick="closeDrawer()"></div>
 <div id="nav-drawer">
@@ -950,15 +909,6 @@ function closeDelete() {
     document.getElementById('deleteModal').classList.remove('open');
 }
 
-// Reject modal
-function openRejectModal(id) {
-    document.getElementById('rejectId').value = id;
-    document.getElementById('rejectModal').classList.add('open');
-}
-function closeReject() {
-    document.getElementById('rejectModal').classList.remove('open');
-}
-
 // View Details modal
 function openView(data) {
     document.getElementById('viewTitle').textContent    = data.title;
@@ -1011,7 +961,6 @@ document.querySelectorAll('.modal-overlay').forEach(overlay => {
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
         closeDelete();
-        closeReject();
     }
 });
 </script>
