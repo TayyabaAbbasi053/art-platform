@@ -80,9 +80,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'login
             $error = 'Wrong password. Try again.';
         } elseif ($user['status'] === 'blocked') {
             $error = 'Your account has been suspended.' . (!empty($user['status_reason']) ? ' Reason: ' . $user['status_reason'] : ' Please contact support.');
-        } elseif ($user['status'] === 'pending') {
-            $error = 'Your account is pending approval.';
-        } else {
+        } 
+        else {
             $_SESSION['user_id'] = $user['id'];
             $_SESSION['name']    = $user['name'];
             $_SESSION['role']    = $user['role'];

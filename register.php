@@ -131,7 +131,7 @@ $hasSadapay     = isset($_POST['has_sadapay'])       ? 1 : 0;
             $error = 'An account with this email already exists.';
         } else {
             $hash   = password_hash($password, PASSWORD_BCRYPT);
-            $status = $role === 'artist' ? 'pending' : 'active';
+            $status = 'active';
             $stmt   = $conn->prepare("INSERT INTO users (name, email, phone, password_hash, role, status) VALUES (?, ?, ?, ?, ?, ?)");
             $stmt->bind_param('ssssss', $name, $email, $phone, $hash, $role, $status);
 
@@ -171,7 +171,7 @@ $hasSadapay     = isset($_POST['has_sadapay'])       ? 1 : 0;
                         $hasSadapay,   $spName, $spNum
                     );
                     $profile->execute();
-                    $success = 'Artist account created! Please wait for admin approval before logging in.';
+                    $success = 'Artist account created! You can log in right away.';
                 } else {
                     $success = 'Account created successfully! You can now log in.';
                 }
@@ -312,8 +312,6 @@ $hasSadapay     = isset($_POST['has_sadapay'])       ? 1 : 0;
                         <div class="field"><label>Mobile Number</label><input type="tel" name="sadapay_number" placeholder="03XX XXXXXXX" value="<?= htmlspecialchars($formData['sadapay_number'] ?? '') ?>"></div>
                     </div>
                 </div>
-
-                <div id="artist-note" style="font-size:10px;color:#0C3F30;background:#f0f8f5;border:1px solid #c8e6d8;border-radius:6px;padding:7px 10px;margin-bottom:10px;line-height:1.5;">🎨 Artist profiles are reviewed before appearing publicly.</div>
             </div>
 
             <div style="display:flex;align-items:flex-start;gap:8px;margin:10px 0 8px;">

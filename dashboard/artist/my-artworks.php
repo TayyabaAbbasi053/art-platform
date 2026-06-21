@@ -55,7 +55,7 @@ if (isset($_GET['delete'])) {
 
 // ── Filtering ─────────────────────────────────────────
  $filterStatus = $_GET['status'] ?? '';
- $allowedFilters = ['all', 'pending', 'approved', 'sold', 'rejected'];
+ $allowedFilters = ['all', 'active', 'sold', 'hidden'];
 if (!in_array($filterStatus, $allowedFilters)) {
     $filterStatus = 'all';
 }
@@ -79,16 +79,15 @@ if ($filterStatus !== 'all') {
 
 // ── Stats for Tabs ───────────────────────────────────
  $counts = [
-    'all'      => (int) $conn->query("SELECT COUNT(*) FROM artworks WHERE artist_id = $artistId")->fetch_row()[0],
-    'pending'  => (int) $conn->query("SELECT COUNT(*) FROM artworks WHERE artist_id = $artistId AND status = 'pending'")->fetch_row()[0],
-    'approved' => (int) $conn->query("SELECT COUNT(*) FROM artworks WHERE artist_id = $artistId AND status = 'approved'")->fetch_row()[0],
-    'sold'     => (int) $conn->query("SELECT COUNT(*) FROM artworks WHERE artist_id = $artistId AND status = 'sold'")->fetch_row()[0],
-    'rejected' => (int) $conn->query("SELECT COUNT(*) FROM artworks WHERE artist_id = $artistId AND status = 'rejected'")->fetch_row()[0],
+    'all'    => (int) $conn->query("SELECT COUNT(*) FROM artworks WHERE artist_id = $artistId")->fetch_row()[0],
+    'active' => (int) $conn->query("SELECT COUNT(*) FROM artworks WHERE artist_id = $artistId AND status = 'active'")->fetch_row()[0],
+    'sold'   => (int) $conn->query("SELECT COUNT(*) FROM artworks WHERE artist_id = $artistId AND status = 'sold'")->fetch_row()[0],
+    'hidden' => (int) $conn->query("SELECT COUNT(*) FROM artworks WHERE artist_id = $artistId AND status = 'hidden'")->fetch_row()[0],
 ];
 
 // ── Messages ─────────────────────────────────────────
 if (isset($_GET['msg'])) {
-    if ($_GET['msg'] === 'uploaded') $successMsg = 'Artwork submitted successfully! Waiting for admin approval.';
+    if ($_GET['msg'] === 'uploaded') $successMsg = 'Artwork uploaded and live on the marketplace!';
     if ($_GET['msg'] === 'deleted') $successMsg = 'Artwork deleted successfully.';
 }
 ?>
@@ -185,10 +184,9 @@ tr:hover td { background: var(--sand); }
 
 /* ── Badges ─────────────────────────────────────────── */
 .pill { display: inline-block; font-size: 9px; letter-spacing: .5px; text-transform: uppercase; font-weight: 600; padding: 4px 10px; border-radius: 20px; }
-.pill.pending  { background: var(--sand); color: var(--ink); }
-.pill.approved { background: var(--ink); color: var(--bg); }
-.pill.rejected { background: var(--sand); color: var(--ink); border: 1px solid var(--ink); }
+.pill.active   { background: var(--ink); color: var(--bg); }
 .pill.sold     { background: var(--sand); color: var(--ink); }
+.pill.hidden   { background: var(--sand); color: var(--ink); border: 1px solid var(--ink); }
 
 /* ── Rejection Reason ───────────────────────────────── */
 .reject-reason { 
@@ -326,10 +324,9 @@ tr:hover td { background: var(--sand); }
     <div class="header-actions">
         <div class="tabs">
             <button class="tab-btn <?= $filterStatus === 'all' ? 'active' : '' ?>" onclick="location.href='?status=all'">All (<?= $counts['all'] ?>)</button>
-            <button class="tab-btn <?= $filterStatus === 'pending' ? 'active' : '' ?>" onclick="location.href='?status=pending'">Pending (<?= $counts['pending'] ?>)</button>
-            <button class="tab-btn <?= $filterStatus === 'approved' ? 'active' : '' ?>" onclick="location.href='?status=approved'">Approved (<?= $counts['approved'] ?>)</button>
+            <button class="tab-btn <?= $filterStatus === 'active' ? 'active' : '' ?>" onclick="location.href='?status=active'">Live (<?= $counts['active'] ?>)</button>
             <button class="tab-btn <?= $filterStatus === 'sold' ? 'active' : '' ?>" onclick="location.href='?status=sold'">Sold (<?= $counts['sold'] ?>)</button>
-            <button class="tab-btn <?= $filterStatus === 'rejected' ? 'active' : '' ?>" onclick="location.href='?status=rejected'">Rejected (<?= $counts['rejected'] ?>)</button>
+            <button class="tab-btn <?= $filterStatus === 'hidden' ? 'active' : '' ?>" onclick="location.href='?status=hidden'">Hidden (<?= $counts['hidden'] ?>)</button>
         </div>
         <a href="upload-artwork.php" class="btn btn-primary">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -373,11 +370,6 @@ tr:hover td { background: var(--sand); }
                             <td class="price">PKR <?= number_format($art['price']) ?></td>
                             <td>
                                 <span class="pill <?= $art['status'] ?>"><?= ucfirst($art['status']) ?></span>
-                                <?php if ($art['status'] === 'rejected' && !empty($art['rejection_reason'])): ?>
-                                    <span class="reject-reason" title="<?= htmlspecialchars($art['rejection_reason']) ?>">
-                                        <?= htmlspecialchars(substr($art['rejection_reason'], 0, 40)) ?>...
-                                    </span>
-                                <?php endif; ?>
                             </td>
                             <td>
                                 <div class="actions">

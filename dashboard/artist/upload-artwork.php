@@ -133,7 +133,7 @@ $is_framed              = isset($_POST['is_framed']) ? 1 : 0;
 $stmt = $conn->prepare("
     INSERT INTO artworks 
     (artist_id, category_id, title, description, tags, medium, size, is_framed, weight_kg, price, city, delivery_available, similar_work_available, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
 ");
 
 if (!$stmt) {
@@ -761,7 +761,7 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
             <div class="form-actions">
                 <a href="my-artworks.php" class="btn btn-ghost">Cancel</a>
                 <button type="submit" class="btn btn-primary">
-                    Submit for Review
+                    Publish Artwork
                 </button>
             </div>
 
