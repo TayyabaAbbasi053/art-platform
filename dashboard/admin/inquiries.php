@@ -1,6 +1,9 @@
 <?php
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
 session_start();
 require_once __DIR__ . '/../../config/db.php';
+require_once __DIR__ . '/../../config/smartlane.php';
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 require_once __DIR__ . '/../../vendor/autoload.php';
@@ -53,7 +56,8 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
 }
 
  $adminName = $_SESSION['name'] ?? 'Admin';
- $toast = '';
+ $toast = $_SESSION['toast'] ?? '';
+ unset($_SESSION['toast']);
 
 function getArtworkImageUrl($imagePath) {
     if (empty($imagePath)) return null;
@@ -271,9 +275,81 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
     }
 }
 
+// Send to Courier (Books a Smartlane consignment for a payment_confirmed artwork order)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_to_courier') {
+    $id = (int)($_POST['id'] ?? 0);
+    if ($id) {
+        $orderRow = $conn->query("
+            SELECT o.id, o.order_number, o.order_status, o.payment_method, o.total,
+                   o.shipping_address, o.shipping_city, o.shipping_phone,
+                   o.guest_name, o.guest_email, o.guest_phone,
+                   COALESCE(u.name, o.guest_name) AS buyer_name_resolved,
+                   COALESCE(u.email, o.guest_email) AS buyer_email_resolved,
+                   COALESCE(u.phone, o.guest_phone, o.shipping_phone) AS buyer_phone_resolved,
+                   a.title AS artwork_title,
+                   ap.smartlane_warehouse_code
+            FROM orders o
+            LEFT JOIN users u ON o.buyer_id = u.id
+            LEFT JOIN order_items oi ON oi.order_id = o.id AND oi.item_type = 'artwork'
+            LEFT JOIN artworks a ON a.id = oi.item_id
+            LEFT JOIN artist_profiles ap ON ap.user_id = a.artist_id
+            WHERE o.id = $id
+            LIMIT 1
+        ")->fetch_assoc();
+
+        if (!$orderRow) {
+            $toast = 'Order not found.';
+        } elseif ($orderRow['order_status'] !== 'payment_confirmed') {
+            $toast = 'This order must be in Payment Confirmed status before sending to courier.';
+        } elseif (empty($orderRow['smartlane_warehouse_code'])) {
+            $toast = 'This artist has no Smartlane warehouse code set. Add it on the Artists page first.';
+        } else {
+            error_log("[send_to_courier] order_id=$id warehouse_code={$orderRow['smartlane_warehouse_code']} test_mode=" . (smartlane_test_mode() ? '1' : '0'));
+            $result = smartlane_create_consignment([
+                'warehouse_code'    => $orderRow['smartlane_warehouse_code'],
+                'store_order_id'    => $orderRow['id'],
+                'consignee_name'    => $orderRow['buyer_name_resolved'] ?: 'Customer',
+                'consignee_email'   => $orderRow['buyer_email_resolved'] ?: '',
+                'consignee_phone'   => $orderRow['buyer_phone_resolved'] ?: '',
+                'consignee_address' => $orderRow['shipping_address'] ?: 'Address not provided',
+                'consignee_city'    => $orderRow['shipping_city'] ?: 'Unknown',
+                'description'       => $orderRow['artwork_title'] ?: 'Art Bazaar artwork order',
+                'payment_method'    => $orderRow['payment_method'] ?: 'bank_transfer',
+                'amount'            => $orderRow['total'] ?? 0,
+                'product_count'     => 1,
+                'weight'            => 0.5,
+                'products'          => [[
+                    'sku'  => 'order-' . $orderRow['id'],
+                    'name' => $orderRow['artwork_title'] ?: ('Order #' . $orderRow['order_number']),
+                    'qty'  => '1',
+                ]],
+            ]);
+
+            error_log("[send_to_courier] order_id=$id smartlane result: " . json_encode($result));
+
+            if ($result['ok']) {
+                $conn->query("UPDATE orders SET order_status = 'processing' WHERE id = $id");
+                $adminId = (int)$_SESSION['user_id'];
+                $note = smartlane_test_mode()
+                    ? 'Sent to courier (TEST MODE — no real booking made).'
+                    : 'Sent to Smartlane courier for booking.';
+                $stmtH = $conn->prepare("INSERT INTO order_status_history (order_id, status_from, status_to, changed_by_role, changed_by_id, notes) VALUES (?, 'payment_confirmed', 'processing', 'admin', ?, ?)");
+                $stmtH->bind_param('iis', $id, $adminId, $note);
+                $stmtH->execute();
+                $toast = smartlane_test_mode()
+                    ? 'Sent to courier (test mode — no real booking made yet).'
+                    : 'Sent to courier. Tracking number will appear once Smartlane confirms booking.';
+            } else {
+                $toast = 'Smartlane booking failed: ' . ($result['error'] ?? 'Unknown error');
+            }
+        }
+    }
+}
+
 // ── Fetch Data ──────────────────────────────────────
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $_SESSION['toast'] = $toast;
     header('Location: inquiries.php' . ($_SERVER['QUERY_STRING'] ? '?' . $_SERVER['QUERY_STRING'] : ''));
     exit;
 }
@@ -351,6 +427,9 @@ if ($params) $stmt->bind_param($types, ...$params);
             COALESCE(u.phone, o.guest_phone, o.shipping_phone) AS buyer_phone
           FROM orders o
           LEFT JOIN users u ON o.buyer_id = u.id
+          LEFT JOIN order_items oi2 ON oi2.order_id = o.id AND oi2.item_type = 'artwork'
+          LEFT JOIN artworks a2 ON a2.id = oi2.item_id
+          LEFT JOIN artist_profiles ap2 ON ap2.user_id = a2.artist_id
           WHERE $whereSQL
           ORDER BY $sortBy
           LIMIT $perPage OFFSET $offset";
@@ -369,20 +448,23 @@ while ($row = $res->fetch_assoc()) {
 foreach ($items as &$item) {
     $oid = (int)$item['id'];
     $artRes = $conn->query("
-        SELECT a.id, a.title, a.price, a.delivery_status,
+        SELECT a.id, a.title, a.price, a.delivery_status, a.artist_id,
                u.name AS artist_name,
+               ap.smartlane_warehouse_code,
                (SELECT image_path FROM artwork_images
                 WHERE artwork_id = a.id
                 ORDER BY is_cover DESC, sort_order ASC LIMIT 1) AS image_path
         FROM order_items oi
         JOIN artworks a ON oi.item_id = a.id
         JOIN users u ON a.artist_id = u.id
+        LEFT JOIN artist_profiles ap ON ap.user_id = a.artist_id
         WHERE oi.order_id = $oid AND oi.item_type = 'artwork'
     ");
     $item['artworks'] = $artRes ? $artRes->fetch_all(MYSQLI_ASSOC) : [];
     $item['artwork_title'] = !empty($item['artworks']) ? $item['artworks'][0]['title'] : 'Artwork Item(s)';
     $item['artwork_image'] = !empty($item['artworks']) ? $item['artworks'][0]['image_path'] : '';
     $item['artist_name']   = !empty($item['artworks']) ? $item['artworks'][0]['artist_name'] : '';
+    $item['smartlane_warehouse_code'] = !empty($item['artworks']) ? $item['artworks'][0]['smartlane_warehouse_code'] : null;
 }
 unset($item);
 
@@ -958,6 +1040,31 @@ if ($item['item_status'] === 'pending' && $item['payment_method'] === 'cod') {
                         </div>
                     </form>
                 `;
+
+                if (!item.smartlane_warehouse_code) {
+                    html += `
+                        <div class="screenshot-box" style="background:#FFF3E0;border:1px dashed #FFCC80;margin-top:12px;">
+                            <div class="screenshot-info">
+                                <strong>⚠ No Smartlane warehouse code</strong>
+                                <div>Add a warehouse code for this artist on the Artists page before sending to courier.</div>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    html += `
+                        <form method="POST" style="margin-top:12px;" onsubmit="return confirm('Send this order to Smartlane for courier booking?')">
+                            <input type="hidden" name="action" value="send_to_courier">
+                            <input type="hidden" name="id" value="${item.id}">
+                            <button type="submit" class="mark-paid-btn" style="background:#1565C0;">🚚 Send to Courier</button>
+                        </form>
+                    `;
+                }
+            }
+
+            if (item.item_status === 'processing') {
+                html += item.tracking_number
+                    ? `<div class="screenshot-box" style="background:#EEF2F8;border:1px solid #B3CDEF;margin-top:12px;"><div class="screenshot-info"><strong>📦 Tracking: ${esc(item.tracking_number)}</strong><div>${item.courier ? esc(item.courier) : ''}</div></div></div>`
+                    : `<div class="screenshot-box" style="margin-top:12px;"><div class="screenshot-info"><strong>Sent to courier</strong><div>Waiting for Smartlane to confirm booking and return a tracking number.</div></div></div>`;
             }
 
             // Status update dropdown

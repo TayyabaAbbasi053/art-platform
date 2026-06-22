@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once __DIR__ . '/../../config/db.php';
+require_once __DIR__ . '/../../config/smartlane.php';
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 require_once __DIR__ . '/../../vendor/autoload.php';
@@ -356,6 +357,75 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'appro
     }
 }
 
+// Send to Courier (Books a Smartlane consignment for a payment_confirmed commission)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_to_courier') {
+    $id = (int)($_POST['id'] ?? 0);
+    if ($id) {
+        $orderRow = $conn->query("
+            SELECT o.id, o.order_number, o.order_status, o.total,
+                   o.shipping_address, o.shipping_city, o.shipping_phone,
+                   o.guest_name, o.guest_email, o.guest_phone,
+                   o.commission_description,
+                   u.name AS buyer_name_real, u.email AS buyer_email_real, u.phone AS buyer_phone_real,
+                   ap.smartlane_warehouse_code
+            FROM orders o
+            LEFT JOIN users u ON o.buyer_id = u.id
+            LEFT JOIN commission_requests cr ON cr.order_id = o.id
+            LEFT JOIN artist_profiles ap ON ap.user_id = cr.artist_id
+            WHERE o.id = $id
+            LIMIT 1
+        ")->fetch_assoc();
+
+        if (!$orderRow) {
+            $toast = 'Order not found.';
+        } elseif ($orderRow['order_status'] !== 'payment_confirmed') {
+            $toast = 'This commission must be in Payment Confirmed status before sending to courier.';
+        } elseif (empty($orderRow['smartlane_warehouse_code'])) {
+            $toast = 'This artist has no Smartlane warehouse code set. Add it on the Artists page first.';
+        } else {
+            $buyerName  = $orderRow['buyer_name_real']  ?: $orderRow['guest_name'];
+            $buyerEmail = $orderRow['buyer_email_real'] ?: $orderRow['guest_email'];
+            $buyerPhone = $orderRow['buyer_phone_real'] ?: ($orderRow['guest_phone'] ?: $orderRow['shipping_phone']);
+
+            $result = smartlane_create_consignment([
+                'warehouse_code'    => $orderRow['smartlane_warehouse_code'],
+                'store_order_id'    => $orderRow['id'],
+                'consignee_name'    => $buyerName ?: 'Customer',
+                'consignee_email'   => $buyerEmail ?: '',
+                'consignee_phone'   => $buyerPhone ?: '',
+                'consignee_address' => $orderRow['shipping_address'] ?: 'Address not provided',
+                'consignee_city'    => $orderRow['shipping_city'] ?: 'Unknown',
+                'description'       => $orderRow['commission_description'] ? mb_substr($orderRow['commission_description'], 0, 150) : 'Custom artwork commission',
+                'payment_method'    => 'bank_transfer',
+                'amount'            => $orderRow['total'] ?? 0,
+                'product_count'     => 1,
+                'weight'            => 0.5,
+                'products'          => [[
+                    'sku'  => 'commission-' . $orderRow['id'],
+                    'name' => 'Commission #' . $orderRow['order_number'],
+                    'qty'  => '1',
+                ]],
+            ]);
+
+            if ($result['ok']) {
+                $conn->query("UPDATE orders SET order_status = 'processing' WHERE id = $id");
+                $adminId = (int)$_SESSION['user_id'];
+                $note = smartlane_test_mode()
+                    ? 'Sent to courier (TEST MODE — no real booking made).'
+                    : 'Sent to Smartlane courier for booking.';
+                $stmtH = $conn->prepare("INSERT INTO order_status_history (order_id, status_from, status_to, changed_by_role, changed_by_id, notes) VALUES (?, 'payment_confirmed', 'processing', 'admin', ?, ?)");
+                $stmtH->bind_param('iis', $id, $adminId, $note);
+                $stmtH->execute();
+                $toast = smartlane_test_mode()
+                    ? 'Sent to courier (test mode — no real booking made yet).'
+                    : 'Sent to courier. Tracking number will appear once Smartlane confirms booking.';
+            } else {
+                $toast = 'Smartlane booking failed: ' . ($result['error'] ?? 'Unknown error');
+            }
+        }
+    }
+}
+
 // Send chat message (Inserts into order_messages)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_message') {
     $orderId = (int)($_POST['commission_id'] ?? 0);
@@ -470,6 +540,7 @@ if ($params) {
         o.created_at,
         o.total AS agreed_price,
         o.tracking_number,
+        o.courier,
         o.shipping_address, o.shipping_city, o.shipping_phone,
         o.payment_method, o.payment_status,
         o.payment_screenshot,
@@ -478,11 +549,13 @@ if ($params) {
         u.phone AS buyer_phone_real,
         cr.artist_id,
         art.name AS artist_name,
+        ap.smartlane_warehouse_code,
         c.name AS category_name
     FROM orders o
     LEFT JOIN users u ON o.buyer_id = u.id
     LEFT JOIN commission_requests cr ON cr.order_id = o.id
     LEFT JOIN users art ON cr.artist_id = art.id
+    LEFT JOIN artist_profiles ap ON ap.user_id = cr.artist_id
     LEFT JOIN categories c ON o.commission_category_id = c.id
     WHERE $whereSQL
     ORDER BY $sortBy
@@ -1051,7 +1124,16 @@ function openDetail(id){
                      ${!cr.artist_id?`<button type="button" class="forward-btn" style="background:var(--amber);" onclick="openArtistSelector(${cr.id})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg> Browse &amp; Assign Artist</button>`:''}
                     ${cr.artist_id?`<button type="button" class="forward-btn" style="background:var(--terracotta);" onclick="unassignArtist(${cr.id})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> Unassign Artist</button>`:''}
 ${cr.status==='payment_review'?`<form method="POST" style="display:inline;" onsubmit="return confirm('Confirm payment and notify artist to begin work?')"><input type="hidden" name="action" value="approve_payment"><input type="hidden" name="id" value="${cr.id}"><button type="submit" class="forward-btn" style="background:var(--green);">✓ Confirm Payment & Notify Artist</button></form>`:''}
-${cr.status==='payment_confirmed'?`<div style="background:#E8F5EE;border:1px solid #A5D6A7;border-radius:8px;padding:8px 14px;font-size:12px;color:#2E7D32;font-weight:500;">✓ Payment confirmed — artist notified</div>`:''}
+${cr.status==='payment_confirmed'?`
+    <div style="background:#E8F5EE;border:1px solid #A5D6A7;border-radius:8px;padding:8px 14px;font-size:12px;color:#2E7D32;font-weight:500;">✓ Payment confirmed — artist notified</div>
+    ${!cr.smartlane_warehouse_code?`
+        <div style="background:#FFF3E0;border:1px solid #FFCC80;border-radius:8px;padding:8px 14px;font-size:12px;color:#E65100;font-weight:500;">⚠ No Smartlane warehouse code set for this artist. Add it on the Artists page first.</div>
+    `:`
+        <form method="POST" style="display:inline;" onsubmit="return confirm('Send this order to Smartlane for courier booking?')"><input type="hidden" name="action" value="send_to_courier"><input type="hidden" name="id" value="${cr.id}"><button type="submit" class="forward-btn" style="background:var(--blue);">🚚 Send to Courier</button></form>
+    `}
+`:''}
+${cr.status==='processing'&&cr.tracking_number?`<div style="background:#EEF2F8;border:1px solid #B3CDEF;border-radius:8px;padding:8px 14px;font-size:12px;color:#3B7DD8;font-weight:500;">📦 Tracking: ${esc(cr.tracking_number)}${cr.courier?' · '+esc(cr.courier):''}</div>`:''}
+${cr.status==='processing'&&!cr.tracking_number?`<div style="background:#F4F4F4;border:1px solid #DDD;border-radius:8px;padding:8px 14px;font-size:12px;color:#888;font-weight:500;">Sent to courier — waiting for Smartlane to confirm booking and return a tracking number.</div>`:''}
                 </div>
             </div>
         </div>

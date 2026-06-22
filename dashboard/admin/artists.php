@@ -28,6 +28,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'unblo
         $toast = 'Artist unblocked.';
     }
 }
+// Set Smartlane warehouse code
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'set_warehouse_code') {
+    $id = (int)($_POST['id'] ?? 0);
+    $code = trim($_POST['warehouse_code'] ?? '');
+    if ($id) {
+        $stmt = $conn->prepare("UPDATE artist_profiles SET smartlane_warehouse_code = ? WHERE user_id = ?");
+        $codeOrNull = $code === '' ? null : $code;
+        $stmt->bind_param('si', $codeOrNull, $id);
+        $stmt->execute();
+        $toast = $code === '' ? 'Warehouse code cleared.' : 'Warehouse code saved.';
+    }
+}
 
 // Toggle featured
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'feature') {
@@ -124,6 +136,7 @@ if ($params) {
  $dataSQL = "
     SELECT u.id, u.name, u.email, u.phone, u.status, u.profile_picture, u.created_at,
            ap.city, ap.art_style, ap.bio, ap.accepts_commissions, ap.is_featured, ap.profile_complete,
+           ap.smartlane_warehouse_code,
            (SELECT COUNT(*) FROM artworks WHERE artist_id = u.id) AS art_count,
            (SELECT COUNT(*) FROM artworks WHERE artist_id = u.id AND status = 'active') AS approved_count,
            (SELECT COUNT(*) FROM artworks WHERE artist_id = u.id AND status = 'sold') AS sold_count,
@@ -671,7 +684,15 @@ tr:hover td { background: var(--bg); box-shadow: 0 4px 12px rgba(12,63,48,.06); 
                         </div>
                         <div class="td-email"><?= htmlspecialchars($a['email']) ?></div>
                     </td>
-                    <td class="td-city hide-mobile" data-label="City"><?= htmlspecialchars($a['city'] ?? '—') ?></td>
+                    <td class="td-city hide-mobile" data-label="City">
+                        <?= htmlspecialchars($a['city'] ?? '—') ?>
+                        <form method="POST" class="warehouse-form" style="margin-top:6px;display:flex;gap:4px;align-items:center;">
+                            <input type="hidden" name="action" value="set_warehouse_code">
+                            <input type="hidden" name="id" value="<?= $a['id'] ?>">
+                            <input type="text" name="warehouse_code" value="<?= htmlspecialchars($a['smartlane_warehouse_code'] ?? '') ?>" placeholder="Warehouse code" style="width:110px;padding:4px 7px;font-size:10.5px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--ink);font-family:'DM Sans',sans-serif;">
+                            <button type="submit" class="act-btn" style="padding:4px 8px;font-size:10px;">Save</button>
+                        </form>
+                    </td>
                     <td data-label="Artworks">
                         <div class="td-stats">
                             <span><span class="num"><?= $a['approved_count'] ?></span> approved</span>
