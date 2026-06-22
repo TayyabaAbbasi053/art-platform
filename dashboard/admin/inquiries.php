@@ -538,20 +538,20 @@ function buildQS($overrides = []) {
         .toast-close { background: none; border: none; color: var(--ink); cursor: pointer; font-size: 16px; }
         
         /* ── Tabs ────────────────────────────────────────────── */
-        .tabs { display: flex; gap: 4px; margin-bottom: 20px; flex-wrap: wrap; }
-        .tab { display: flex; align-items: center; gap: 6px; padding: 8px 16px; font-size: 11.5px; color: var(--ink); text-decoration: none; border-radius: 10px; border: 1px solid transparent; transition: all .15s; font-weight: 400; background: none; cursor: pointer; font-family: 'DM Sans', sans-serif; }
-        .tab:hover { background: var(--sand); border-color: var(--border); color: var(--ink); }
-        .tab.active { background: var(--ink); color: var(--bg); font-weight: 500; }
-        .tab .count { font-size: 10px; font-weight: 600; background: var(--sand); padding: 1px 7px; border-radius: 20px; color: var(--ink); }
-        .tab.active .count { background: var(--bg); color: var(--ink); }
-        .tab .count.hot { background: var(--sand); color: var(--ink); font-weight: 700; }
+        .tabs { display: flex; gap: 6px; margin-bottom: 20px; flex-wrap: wrap; }
+.tab { display: flex; align-items: center; gap: 6px; padding: 9px 18px; font-size: 12px; color: var(--ink); text-decoration: none; border-radius: 999px; border: 2px solid var(--border); transition: all .15s; font-weight: 500; background: var(--bg); cursor: pointer; font-family: 'DM Sans', sans-serif; }
+.tab:hover { background: var(--sand); }
+.tab.active { background: var(--ink); color: var(--bg); border-color: var(--ink); font-weight: 600; }
+.tab .count { font-size: 10px; font-weight: 700; background: rgba(12,63,48,0.1); padding: 2px 8px; border-radius: 999px; color: var(--ink); }
+.tab.active .count { background: rgba(246,237,222,0.25); color: var(--bg); }
+.tab .count.hot { background: var(--sand); color: var(--ink); }
         
         /* ── Filters ─────────────────────────────────────────── */
         .filters { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
-        .filters input[type="text"], .filters select { padding: 8px 14px; border: 1.5px solid var(--sand); border-radius: 9px; font-size: 12px; font-family: 'DM Sans', sans-serif; color: var(--ink); background: var(--bg); outline: none; transition: border-color .15s; }
-        .filters input:focus, .filters select:focus { border-color: var(--ink); }
-        .filters input { width: 240px; }
-        .filters select { min-width: 160px; cursor: pointer; }
+.filters input[type="text"], .filters select { padding: 10px 20px; border: 2px solid var(--border); border-radius: 999px; font-size: 13px; font-family: 'DM Sans', sans-serif; color: var(--ink); background: var(--bg); outline: none; transition: border-color .15s, box-shadow .15s; font-weight: 500; }
+.filters input:focus, .filters select:focus { border-color: var(--ink); box-shadow: 0 0 0 3px rgba(12,63,48,0.12); }
+.filters input { width: 280px; }
+.filters select { min-width: 180px; cursor: pointer; }
         .clear-link { font-size: 11px; color: var(--ink); text-decoration: none; cursor: pointer; background: none; border: none; font-family: 'DM Sans', sans-serif; }
         .clear-link:hover { color: var(--ink); }
         .results-info { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; font-size: 11px; color: var(--muted); }
@@ -577,14 +577,15 @@ function buildQS($overrides = []) {
         .pill.pending { background: var(--sand); color: var(--ink); }
 .pill.cod-pending { background: #fff3cd; color: #856404; border: 1px solid #ffc107; font-weight: 700; }        
         /* ── Actions ─────────────────────────────────────────── */
-        .td-actions { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
-        .status-select { padding: 5px 8px; font-size: 10px; border: 1.5px solid var(--sand); border-radius: 7px; background: var(--bg); color: var(--ink); font-family: 'DM Sans', sans-serif; cursor: pointer; outline: none; }
-        .status-select:focus { border-color: var(--ink); }
-        .act-btn { padding: 5px 10px; font-size: 10.5px; font-weight: 500; border-radius: 7px; border: 1px solid var(--border); background: var(--sand); color: var(--ink); cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all .12s; white-space: nowrap; }
-        .act-btn:hover { border-color: var(--ink); color: var(--ink); background: #c4b69e; }
-        .act-btn.red:hover { border-color: var(--border); background: var(--sand); color: var(--ink); }
-        .act-btn.blue { background: var(--sand); color: var(--ink); border: 1px solid var(--border); }
-        .act-btn.blue:hover { background: #c4b69e; }
+        .td-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.status-select { padding: 8px 16px; font-size: 12px; font-weight: 500; border: 2px solid var(--border); border-radius: 999px; background: var(--bg); color: var(--ink); font-family: 'DM Sans', sans-serif; cursor: pointer; outline: none; transition: border-color .12s; }
+.status-select:focus { border-color: var(--ink); }
+.act-btn { padding: 8px 18px; font-size: 12px; font-weight: 600; border-radius: 999px; border: 2px solid var(--border); background: var(--sand); color: var(--ink); cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all .12s; white-space: nowrap; }
+.act-btn:hover { background: #c4b69e; }
+.act-btn.red { background: var(--bg); border-color: #8B2020; color: #8B2020; }
+.act-btn.red:hover { background: #8B2020; color: var(--bg); border-color: #8B2020; }
+.act-btn.blue { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.act-btn.blue:hover { background: #1a4d3e; border-color: #1a4d3e; }
         
         /* ── Modal & Pagination ─────────────────────────────── */
         .empty { text-align: center; padding: 48px 24px; color: var(--muted); font-size: 13px; }
@@ -668,7 +669,9 @@ function buildQS($overrides = []) {
             #nav-drawer a { display: block; padding: 15px 0; color: var(--bg); font-size: 16px; border-bottom: 1px solid rgba(255,255,255,0.1); }
 
             .filters input { width: 100%; }
-            .filters { flex-direction: column; align-items: stretch; }
+.filters { flex-direction: column; align-items: stretch; }
+.filters input[type="text"], .filters select { border-radius: 999px; width: 100%; }
+.tabs { overflow-x: auto; flex-wrap: nowrap; padding-bottom: 4px; }
             .tabs { overflow-x: auto; flex-wrap: nowrap; white-space: nowrap; }
             
             /* Table to Cards */
