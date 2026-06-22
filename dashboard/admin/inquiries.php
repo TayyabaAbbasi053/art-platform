@@ -577,7 +577,7 @@ function buildQS($overrides = []) {
         .pill.pending { background: var(--sand); color: var(--ink); }
 .pill.cod-pending { background: #fff3cd; color: #856404; border: 1px solid #ffc107; font-weight: 700; }        
         /* ── Actions ─────────────────────────────────────────── */
-        .td-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+        .td-actions { display: flex; flex-direction: row; gap: 6px; align-items: center; flex-wrap: nowrap; }
 .status-select { padding: 8px 16px; font-size: 12px; font-weight: 500; border: 2px solid var(--border); border-radius: 999px; background: var(--bg); color: var(--ink); font-family: 'DM Sans', sans-serif; cursor: pointer; outline: none; transition: border-color .12s; }
 .status-select:focus { border-color: var(--ink); }
 .act-btn { padding: 8px 18px; font-size: 12px; font-weight: 600; border-radius: 999px; border: 2px solid var(--border); background: var(--sand); color: var(--ink); cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all .12s; white-space: nowrap; }
@@ -681,7 +681,7 @@ function buildQS($overrides = []) {
             td { padding: 8px 0; border: none; display: flex; justify-content: space-between; align-items: center; }
             td:before { content: attr(data-label); font-weight: 600; font-size: 11px; text-transform: uppercase; color: var(--muted); flex: 1; }
             .hide-mobile { display: none !important; }
-            .td-actions { flex-direction: column; width: 100%; margin-top: 10px; gap: 8px; }
+            .td-actions { flex-direction: row; width: 100%; margin-top: 10px; gap: 8px; flex-wrap: wrap; }
             .td-actions button, .td-actions form { width: 100%; }
             .td-actions .act-btn { width: 100%; justify-content: center; }
             .td-actions .status-select { width: 100%; }
