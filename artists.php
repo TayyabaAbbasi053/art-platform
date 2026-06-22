@@ -266,6 +266,29 @@ img{max-width:100%;display:block;}
   .fb p{font-size:10px;}
   .fbot{flex-direction:column;gap:8px;text-align:center;font-size:10px;padding-top:14px;}
 }
+/* ─── MOBILE BACK BUTTON ─── */
+.mobile-back { display:none; }
+@media(max-width:768px){
+  .mobile-back {
+    display:flex;
+    align-items:center;
+    gap:6px;
+    padding:10px 16px;
+    background:var(--bg);
+    border-bottom:1px solid var(--sand);
+  }
+  .mobile-back a {
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    font-size:13px;
+    color:var(--ink);
+    font-family:'DM Sans',sans-serif;
+    font-weight:500;
+    text-decoration:none;
+  }
+  .mobile-back a svg { flex-shrink:0; }
+}
 </style>
 </head>
 <body>
@@ -304,6 +327,13 @@ img{max-width:100%;display:block;}
     </div>
   </div>
 </nav>
+<!-- MOBILE BACK BUTTON -->
+<div class="mobile-back">
+  <a href="javascript:history.back()">
+    <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+    Back to Blog
+  </a>
+</div>
 
 <!-- HERO -->
 <section class="hero" style="padding:0;position:relative;min-height:280px;display:flex;align-items:center;">

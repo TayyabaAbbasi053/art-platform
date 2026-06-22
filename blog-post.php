@@ -234,6 +234,29 @@ img{display:block;max-width:100%;}
   .drawer-btn-dark{font-size:13px;color:var(--ink);padding:9px 14px;border-radius:6px;background:var(--sand);text-align:center;font-weight:500;transition:background 0.12s;}
   .drawer-btn-dark:hover{background:#c4b69e;}
 }
+/* ─── MOBILE BACK BUTTON ─── */
+.mobile-back { display:none; }
+@media(max-width:768px){
+  .mobile-back {
+    display:flex;
+    align-items:center;
+    gap:6px;
+    padding:10px 16px;
+    background:var(--bg);
+    border-bottom:1px solid var(--sand);
+  }
+  .mobile-back a {
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    font-size:13px;
+    color:var(--ink);
+    font-family:'DM Sans',sans-serif;
+    font-weight:500;
+    text-decoration:none;
+  }
+  .mobile-back a svg { flex-shrink:0; }
+}
 </style>
 </head>
 <body>
@@ -268,7 +291,13 @@ img{display:block;max-width:100%;}
     </div>
   </div>
 </nav>
-
+<!-- MOBILE BACK BUTTON -->
+<div class="mobile-back">
+  <a href="javascript:history.back()">
+    <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+    Back to Blog
+  </a>
+</div>
 <!-- BREADCRUMB -->
 <div class="breadcrumb">
   <a href="index.php">Home</a>
