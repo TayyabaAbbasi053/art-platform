@@ -144,7 +144,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
 
             // If cancelled via dropdown, release artworks same as cancel button
             if ($newStatus === 'cancelled') {
-                $conn->query("UPDATE artworks SET status = 'approved', reserved_by = NULL WHERE id IN (SELECT item_id FROM order_items WHERE order_id = $id AND item_type = 'artwork')");
+                $conn->query("UPDATE artworks SET status = 'active', reserved_by = NULL WHERE id IN (SELECT item_id FROM order_items WHERE order_id = $id AND item_type = 'artwork')");
             }
 
             $itemRes = $conn->query("SELECT item_id FROM order_items WHERE order_id = $id AND item_type = 'artwork' LIMIT 1");
@@ -234,7 +234,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'cancel_order') {
     $id = (int)($_POST['id'] ?? 0);
     if ($id) {
-        $conn->query("UPDATE artworks SET status = 'approved', reserved_by = NULL WHERE id IN (SELECT item_id FROM order_items WHERE order_id = $id AND item_type = 'artwork')");
+        $conn->query("UPDATE artworks SET status = 'active', reserved_by = NULL WHERE id IN (SELECT item_id FROM order_items WHERE order_id = $id AND item_type = 'artwork')");
         $stmt = $conn->prepare("UPDATE orders SET order_status = 'cancelled' WHERE id = ?");
         $stmt->bind_param('i', $id);
         $stmt->execute();
@@ -299,8 +299,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_
 
         if (!$orderRow) {
             $toast = 'Order not found.';
-        } elseif ($orderRow['order_status'] !== 'payment_confirmed') {
-            $toast = 'This order must be in Payment Confirmed status before sending to courier.';
+        } elseif (!in_array($orderRow['order_status'], ['payment_confirmed', 'cod'], true)) {
+            $toast = 'This order must be in Payment Confirmed or COD status before sending to courier.';
         } elseif (empty($orderRow['smartlane_warehouse_code'])) {
             $toast = 'This artist has no Smartlane warehouse code set. Add it on the Artists page first.';
         } else {
@@ -333,8 +333,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_
                 $note = smartlane_test_mode()
                     ? 'Sent to courier (TEST MODE — no real booking made).'
                     : 'Sent to Smartlane courier for booking.';
-                $stmtH = $conn->prepare("INSERT INTO order_status_history (order_id, status_from, status_to, changed_by_role, changed_by_id, notes) VALUES (?, 'payment_confirmed', 'processing', 'admin', ?, ?)");
-                $stmtH->bind_param('iis', $id, $adminId, $note);
+                $stmtH = $conn->prepare("INSERT INTO order_status_history (order_id, status_from, status_to, changed_by_role, changed_by_id, notes) VALUES (?, ?, 'processing', 'admin', ?, ?)");
+                $stmtH->bind_param('isis', $id, $orderRow['order_status'], $adminId, $note);
                 $stmtH->execute();
                 $toast = smartlane_test_mode()
                     ? 'Sent to courier (test mode — no real booking made yet).'
@@ -577,10 +577,11 @@ function buildQS($overrides = []) {
         .pill.pending { background: var(--sand); color: var(--ink); }
 .pill.cod-pending { background: #fff3cd; color: #856404; border: 1px solid #ffc107; font-weight: 700; }        
         /* ── Actions ─────────────────────────────────────────── */
-        .td-actions { display: flex; flex-direction: row; gap: 6px; align-items: center; flex-wrap: nowrap; }
+        .td-actions { display: flex; flex-direction: row; gap: 6px; align-items: center; flex-wrap: nowrap; min-width: 160px; }
+.td-actions form { display: contents; }
 .status-select { padding: 8px 16px; font-size: 12px; font-weight: 500; border: 2px solid var(--border); border-radius: 999px; background: var(--bg); color: var(--ink); font-family: 'DM Sans', sans-serif; cursor: pointer; outline: none; transition: border-color .12s; }
 .status-select:focus { border-color: var(--ink); }
-.act-btn { padding: 8px 18px; font-size: 12px; font-weight: 600; border-radius: 999px; border: 2px solid var(--border); background: var(--sand); color: var(--ink); cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all .12s; white-space: nowrap; }
+.act-btn { padding: 7px 14px; font-size: 11px; font-weight: 600; border-radius: 999px; border: 2px solid var(--border); background: var(--sand); color: var(--ink); cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all .12s; white-space: nowrap; }
 .act-btn:hover { background: #c4b69e; }
 .act-btn.red { background: var(--bg); border-color: #8B2020; color: #8B2020; }
 .act-btn.red:hover { background: #8B2020; color: var(--bg); border-color: #8B2020; }
@@ -679,13 +680,16 @@ function buildQS($overrides = []) {
             thead { display: none; }
             tr { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
             td { padding: 8px 0; border: none; display: flex; justify-content: space-between; align-items: center; }
-            td:before { content: attr(data-label); font-weight: 600; font-size: 11px; text-transform: uppercase; color: var(--muted); flex: 1; }
-            .hide-mobile { display: none !important; }
-            .td-actions { flex-direction: row; width: 100%; margin-top: 10px; gap: 8px; flex-wrap: wrap; }
-            .td-actions button, .td-actions form { width: 100%; }
-            .td-actions .act-btn { width: 100%; justify-content: center; }
-            .td-actions .status-select { width: 100%; }
+td:before { content: attr(data-label); font-weight: 600; font-size: 11px; text-transform: uppercase; color: var(--muted); flex: 1; }
+td[data-label="Actions"] { display: block !important; padding: 10px 0; }
+td[data-label="Actions"]:before { display: none; }
+.hide-mobile { display: none !important; }
+.td-actions { display: flex !important; flex-direction: row !important; width: 100%; margin-top: 0; gap: 8px; flex-wrap: nowrap; }
+.td-actions button, .td-actions form { width: auto !important; flex: 1; }
+.td-actions .act-btn { width: 100% !important; display: flex; align-items: center; justify-content: center; }
+.td-actions .status-select { width: 100%; }
         }
+        @media(max-width:768px){ .td-actions { display: flex !important; flex-direction: row !important; } .td-actions button, .td-actions form { width: auto !important; flex: 1 !important; } td[data-label="Actions"] { display: block !important; } }
     </style>
 </head>
 <body>
@@ -756,7 +760,6 @@ foreach ($tabLabels as $s => $label): ?>
                 <?php else: ?>
                 <table>
                     <thead><tr>
-                        <th>Type</th>
                         <th>Buyer</th>
                         <th>Artwork / Order</th>
                         <th class="hide-mobile">Amount</th>
@@ -767,10 +770,7 @@ foreach ($tabLabels as $s => $label): ?>
                     <?php foreach ($items as $item): 
                         $imageUrl = getArtworkImageUrl($item['artwork_image'] ?? '');
                     ?>
-                    <tr>
-                        <td data-label="">
-                            <span class="source-pill order" style="font-size:9px;background:var(--sand);color:var(--ink);padding:2px 6px;border-radius:4px;">Order</span>
-                        </td>
+                    <tr> 
                         <td data-label="Buyer">
                             <div class="td-buyer"><?= htmlspecialchars($item['buyer_name']) ?></div>
                             <div class="td-buyer-sub">
@@ -816,15 +816,15 @@ if ($item['item_status'] === 'pending' && $item['payment_method'] === 'cod') {
     <span class="pill <?= $pillClass ?>"><?= $pillLabel ?></span>
 </td>
                         <td data-label="Actions">
-                            <div class="td-actions">
-                                <button type="button" class="act-btn blue" onclick="openDetail(<?= $item['id'] ?>)">View</button>
-                                <form method="POST" style="display:inline" onsubmit="return confirm('Delete this order?')">
-                                    <input type="hidden" name="action" value="delete">
-                                    <input type="hidden" name="id" value="<?= $item['id'] ?>">
-                                    <button type="submit" class="act-btn red">Delete</button>
-                                </form>
-                            </div>
-                        </td>
+    <div class="td-actions">
+        <button type="button" class="act-btn blue" onclick="openDetail(<?= $item['id'] ?>)">View</button>
+        <button type="button" class="act-btn red" onclick="if(confirm('Delete this order?')){document.getElementById('del-<?= $item['id'] ?>').submit();}">Delete</button>
+    </div>
+    <form id="del-<?= $item['id'] ?>" method="POST" style="display:none">
+        <input type="hidden" name="action" value="delete">
+        <input type="hidden" name="id" value="<?= $item['id'] ?>">
+    </form>
+</td>
                     </tr>
                     <?php endforeach; ?>
                     </tbody>
@@ -1021,7 +1021,7 @@ if ($item['item_status'] === 'pending' && $item['payment_method'] === 'cod') {
             }
 
             // Forward to Artist (Only if confirmed)
-            if (item.item_status === 'payment_confirmed') {
+            if (item.item_status === 'payment_confirmed' || item.item_status === 'cod') {
                 const currentDeliveryStatus = item.delivery_status || 'not_applicable';
                 html += `
                     <form method="POST" class="forward-form">
