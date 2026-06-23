@@ -101,7 +101,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $orderId = (int)($_POST['order_id'] ?? 0);
     $newStatus = $_POST['new_status'] ?? '';
     // Change 6: Remove 'confirmed' from allowed statuses (security)
-    $allowedStatuses = ['processing', 'shipped', 'delivered', 'cancelled', 'payment_confirmed'];
+    $allowedStatuses = ['processing', 'ready_to_ship', 'shipped', 'delivered', 'cancelled', 'payment_confirmed'];
     
     // Verify this commission belongs to the artist
     $check = $conn->prepare("
@@ -752,6 +752,16 @@ $isAwaitingPaymentReview = $viewRequest['status'] === 'payment_review';
         <input type="hidden" name="new_status" value="processing">
         <button type="submit" class="status-btn" style="background:#2E7D32;">▶ Start Working (Mark as Processing)</button>
     </form>
+<?php elseif ($viewRequest['status'] === 'processing'): ?>
+    <p style="font-size:12px;color:#1565C0;font-weight:500;">🎨 In progress. Mark it <strong>Ready to Ship</strong> once the artwork is finished and packed.</p>
+    <form method="POST" class="status-select-group" style="margin-top:10px;" onsubmit="return confirm('Mark this commission as ready to ship? Admin will be notified to book the courier.')">
+        <input type="hidden" name="action" value="update_status">
+        <input type="hidden" name="order_id" value="<?= $viewRequest['id'] ?>">
+        <input type="hidden" name="new_status" value="ready_to_ship">
+        <button type="submit" class="status-btn" style="background:#1565C0;">📦 Mark as Ready to Ship</button>
+    </form>
+<?php elseif ($viewRequest['status'] === 'ready_to_ship'): ?>
+    <p style="font-size:12px;color:#6A1B9A;font-weight:500;">✓ Marked ready. Waiting for admin to book the courier.</p>
 <?php else: ?>
                 <form method="POST" class="status-select-group">
                     <input type="hidden" name="action" value="update_status"><input type="hidden" name="order_id" value="<?= $viewRequest['id'] ?>">

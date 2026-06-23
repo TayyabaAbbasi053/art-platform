@@ -378,8 +378,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_
 
         if (!$orderRow) {
             $toast = 'Order not found.';
-        } elseif ($orderRow['order_status'] !== 'payment_confirmed') {
-            $toast = 'This commission must be in Payment Confirmed status before sending to courier.';
+        } elseif ($orderRow['order_status'] !== 'ready_to_ship') {
+            $toast = 'This commission must be marked Ready to Ship by the artist before sending to courier.';
         } elseif (empty($orderRow['smartlane_warehouse_code'])) {
             $toast = 'This artist has no Smartlane warehouse code set. Add it on the Artists page first.';
         } else {
@@ -413,7 +413,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_
                 $note = smartlane_test_mode()
                     ? 'Sent to courier (TEST MODE — no real booking made).'
                     : 'Sent to Smartlane courier for booking.';
-                $stmtH = $conn->prepare("INSERT INTO order_status_history (order_id, status_from, status_to, changed_by_role, changed_by_id, notes) VALUES (?, 'payment_confirmed', 'processing', 'admin', ?, ?)");
+                $stmtH = $conn->prepare("INSERT INTO order_status_history (order_id, status_from, status_to, changed_by_role, changed_by_id, notes) VALUES (?, 'ready_to_ship', 'processing', 'admin', ?, ?)");
                 $stmtH->bind_param('iis', $id, $adminId, $note);
                 $stmtH->execute();
                 $toast = smartlane_test_mode()
@@ -1125,7 +1125,13 @@ function openDetail(id){
                     ${cr.artist_id?`<button type="button" class="forward-btn" style="background:var(--terracotta);" onclick="unassignArtist(${cr.id})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> Unassign Artist</button>`:''}
 ${cr.status==='payment_review'?`<form method="POST" style="display:inline;" onsubmit="return confirm('Confirm payment and notify artist to begin work?')"><input type="hidden" name="action" value="approve_payment"><input type="hidden" name="id" value="${cr.id}"><button type="submit" class="forward-btn" style="background:var(--green);">✓ Confirm Payment & Notify Artist</button></form>`:''}
 ${cr.status==='payment_confirmed'?`
-    <div style="background:#E8F5EE;border:1px solid #A5D6A7;border-radius:8px;padding:8px 14px;font-size:12px;color:#2E7D32;font-weight:500;">✓ Payment confirmed — artist notified</div>
+    <div style="background:#E8F5EE;border:1px solid #A5D6A7;border-radius:8px;padding:8px 14px;font-size:12px;color:#2E7D32;font-weight:500;">✓ Payment confirmed — artist notified. Waiting for artist to start and finish work.</div>
+`:''}
+${cr.status==='processing'?`
+    <div style="background:#EEF2F8;border:1px solid #B3CDEF;border-radius:8px;padding:8px 14px;font-size:12px;color:#3B7DD8;font-weight:500;">🎨 Artist is working on this commission.</div>
+`:''}
+${cr.status==='ready_to_ship'?`
+    <div style="background:#F3E5F5;border:1px solid #CE93D8;border-radius:8px;padding:8px 14px;font-size:12px;color:#6A1B9A;font-weight:500;">📦 Artist marked this as ready to ship.</div>
     ${!cr.smartlane_warehouse_code?`
         <div style="background:#FFF3E0;border:1px solid #FFCC80;border-radius:8px;padding:8px 14px;font-size:12px;color:#E65100;font-weight:500;">⚠ No Smartlane warehouse code set for this artist. Add it on the Artists page first.</div>
     `:`
