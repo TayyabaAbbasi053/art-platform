@@ -80,25 +80,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'commi
     if (!$buyerName || !$buyerEmail || !$description) {
         $commissionError = "Name, email, and description are required.";
     } else {
-        // Map artwork_type to a category slug → commission_category_id
-        $commissionCategoryId = null;
-        if (!empty($artworkType)) {
-            $slugMap = [
-                'painting'     => 'painting',
-                'portrait'     => 'portrait',
-                'digital art' => 'digital-art',
-                'calligraphy' => 'calligraphy',
-                'abstract'     => 'custom-orders',
-                'landscape'    => 'custom-orders',
-                'other'        => 'custom-orders'
-            ];
-            $slug = $slugMap[$artworkType] ?? 'custom-orders';
-            $catSlug = $conn->real_escape_string($slug);
-            $catRes = $conn->query("SELECT id FROM categories WHERE slug = '$catSlug' LIMIT 1");
-            if ($catRow = $catRes->fetch_assoc()) {
-                $commissionCategoryId = (int)$catRow['id'];
-            }
-        }
+        // artwork_type now submits the category id directly
+        $commissionCategoryId = !empty($_POST['artwork_type']) ? (int)$_POST['artwork_type'] : null;
 
         // Determine buyer_id: logged-in user or NULL for guest
         $buyerId = (isset($_SESSION['user_id'])) ? (int)$_SESSION['user_id'] : null;
@@ -185,9 +168,19 @@ exit;
     }
 }
 
+function getProfileImageUrl($p) {
+    if (!$p) return null;
+    $p = ltrim($p, './');
+    if (strpos($p, 'uploads/') !== false) return $p;
+    return 'uploads/profiles/' . $p;
+}
+
+// Fetch all categories for the artwork type dropdown
+ $artCategories = $conn->query("SELECT id, name, slug FROM categories ORDER BY name ASC")->fetch_all(MYSQLI_ASSOC);
+
 // Fetch available artists for the dropdown
  $availableArtists = $conn->query("
-    SELECT u.id, u.name, ap.city, ap.art_style, ap.accepts_commissions 
+    SELECT u.id, u.name, u.profile_picture, ap.city, ap.art_style, ap.accepts_commissions 
     FROM users u 
     JOIN artist_profiles ap ON u.id = ap.user_id 
     WHERE u.role = 'artist' AND u.status = 'active' AND ap.accepts_commissions = 1 
@@ -279,6 +272,34 @@ img{max-width:100%;display:block;}
 .ft{min-height:100px;resize:vertical;line-height:1.55;}
 .frow{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
 .fr3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;}
+
+/* ARTIST PICKER */
+.artist-picker{position:relative;}
+.ap-trigger{width:100%;display:flex;align-items:center;gap:10px;padding:8px 14px;border:1.5px solid var(--border);border-radius:8px;background:var(--bg);cursor:pointer;font-family:'DM Sans',sans-serif;font-size:13px;color:var(--ink);text-align:left;}
+.ap-trigger:hover{border-color:var(--ink);}
+.ap-trigger-avatar{width:32px;height:32px;border-radius:50%;object-fit:cover;flex-shrink:0;background:var(--sand);}
+.ap-trigger-avatar-ph{width:32px;height:32px;border-radius:50%;background:var(--ink);color:var(--bg);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex-shrink:0;}
+.ap-trigger-text{flex:1;display:flex;flex-direction:column;gap:1px;}
+.ap-trigger-name{font-weight:500;color:var(--ink);}
+.ap-trigger-sub{font-size:11px;color:var(--muted);}
+.ap-trigger svg{flex-shrink:0;color:var(--muted);}
+.ap-list{display:none;position:absolute;top:calc(100% + 6px);left:0;right:0;background:var(--card);border:1.5px solid var(--border);border-radius:10px;max-height:320px;overflow:hidden;z-index:50;box-shadow:0 10px 28px rgba(12,63,48,.15);display:none;flex-direction:column;}
+.ap-list.open{display:flex;}
+.ap-search-wrap{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1.5px solid var(--border);flex-shrink:0;}
+.ap-search-wrap svg{color:var(--muted);flex-shrink:0;}
+.ap-search{flex:1;border:none;background:transparent;font-size:13px;font-family:'DM Sans',sans-serif;color:var(--ink);outline:none;}
+.ap-search::placeholder{color:var(--muted);}
+.ap-items{overflow-y:auto;max-height:260px;}
+.ap-no-results{padding:16px 14px;text-align:center;font-size:12.5px;color:var(--muted);}
+.ap-item{display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--sand);}
+.ap-item:last-child{border-bottom:none;}
+.ap-item:hover{background:var(--sand);}
+.ap-item-avatar{width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0;background:var(--sand);}
+.ap-item-avatar-ph{width:36px;height:36px;border-radius:50%;background:var(--ink);color:var(--bg);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;flex-shrink:0;}
+.ap-item-text{flex:1;display:flex;flex-direction:column;gap:1px;}
+.ap-item-name{font-size:13px;font-weight:500;color:var(--ink);}
+.ap-item-sub{font-size:11px;color:var(--muted);}
+.ap-item-style{font-size:9.5px;background:var(--sand);padding:2px 7px;border-radius:10px;color:var(--body);white-space:nowrap;}
 .msub{width:100%;background:var(--ink);color:#fff;border:none;padding:12px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;margin-top:8px;transition:background .15s;}
 .msub:hover{background:var(--body);}
 .mmsg{padding:12px 16px;border-radius:8px;font-size:12.5px;margin-bottom:16px;}
@@ -487,16 +508,67 @@ img{max-width:100%;display:block;}
         
         <div class="fg">
           <label>Preferred Artist <span>*</span></label>
-          <select name="requested_artist_id" class="fs" required>
-            <option value="">— Select an artist —</option>
-            <?php foreach ($availableArtists as $a): ?>
-              <option value="<?= $a['id'] ?>" <?= ($preSelectedArtistId == $a['id']) ? 'selected' : '' ?>>
-                <?= htmlspecialchars($a['name']) ?>
-                <?php if ($a['city']): ?> (<?= htmlspecialchars($a['city']) ?>)<?php endif; ?>
-                <?php if ($a['art_style']): ?> — <?= htmlspecialchars($a['art_style']) ?><?php endif; ?>
-              </option>
-            <?php endforeach; ?>
-          </select>
+          <div class="artist-picker" id="artistPicker">
+            <input type="hidden" name="requested_artist_id" id="ap-value" value="<?= htmlspecialchars($preSelectedArtistId ?? '') ?>" required>
+            <button type="button" class="ap-trigger" id="apTrigger">
+              <?php
+                $preSelectedArtist = null;
+                if ($preSelectedArtistId) {
+                    foreach ($availableArtists as $a) {
+                        if ($a['id'] == $preSelectedArtistId) { $preSelectedArtist = $a; break; }
+                    }
+                }
+              ?>
+              <?php if ($preSelectedArtist):
+                $pAvatar = getProfileImageUrl($preSelectedArtist['profile_picture']);
+              ?>
+                <?php if ($pAvatar): ?>
+                  <img class="ap-trigger-avatar" src="<?= htmlspecialchars($pAvatar) ?>" alt="">
+                <?php else: ?>
+                  <div class="ap-trigger-avatar-ph"><?= strtoupper(substr($preSelectedArtist['name'],0,1)) ?></div>
+                <?php endif; ?>
+                <span class="ap-trigger-text">
+                  <span class="ap-trigger-name"><?= htmlspecialchars($preSelectedArtist['name']) ?></span>
+                  <span class="ap-trigger-sub"><?= htmlspecialchars($preSelectedArtist['city'] ?? '') ?><?= ($preSelectedArtist['city'] && $preSelectedArtist['art_style']) ? ' — ' : '' ?><?= htmlspecialchars($preSelectedArtist['art_style'] ?? '') ?></span>
+                </span>
+              <?php else: ?>
+                <span class="ap-trigger-text">
+                  <span class="ap-trigger-name" style="color:var(--muted);font-weight:400;">— Select an artist —</span>
+                </span>
+              <?php endif; ?>
+              <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <div class="ap-list" id="apList">
+              <div class="ap-search-wrap">
+                <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+                <input type="text" id="apSearch" class="ap-search" placeholder="Search by name, city, or style..." autocomplete="off">
+              </div>
+              <div class="ap-items" id="apItems">
+              <?php foreach ($availableArtists as $a):
+                $avatar = getProfileImageUrl($a['profile_picture']);
+              ?>
+              <div class="ap-item"
+                   data-id="<?= $a['id'] ?>"
+                   data-name="<?= htmlspecialchars($a['name']) ?>"
+                   data-city="<?= htmlspecialchars($a['city'] ?? '') ?>"
+                   data-style="<?= htmlspecialchars($a['art_style'] ?? '') ?>"
+                   data-avatar="<?= htmlspecialchars($avatar ?? '') ?>">
+                <?php if ($avatar): ?>
+                  <img class="ap-item-avatar" src="<?= htmlspecialchars($avatar) ?>" alt="">
+                <?php else: ?>
+                  <div class="ap-item-avatar-ph"><?= strtoupper(substr($a['name'],0,1)) ?></div>
+                <?php endif; ?>
+                <span class="ap-item-text">
+                  <span class="ap-item-name"><?= htmlspecialchars($a['name']) ?></span>
+                  <?php if ($a['city']): ?><span class="ap-item-sub">📍 <?= htmlspecialchars($a['city']) ?></span><?php endif; ?>
+                </span>
+                <?php if ($a['art_style']): ?><span class="ap-item-style"><?= htmlspecialchars($a['art_style']) ?></span><?php endif; ?>
+              </div>
+              <?php endforeach; ?>
+              <div class="ap-no-results" id="apNoResults" style="display:none;">No artists match your search.</div>
+              </div>
+            </div>
+          </div>
         </div>
         
         <div class="fr3">
@@ -504,13 +576,9 @@ img{max-width:100%;display:block;}
             <label>Artwork Type</label>
             <select name="artwork_type" class="fs">
               <option value="">Select type...</option>
-              <option value="painting">Painting</option>
-              <option value="portrait">Portrait</option>
-              <option value="digital_art">Digital Art</option>
-              <option value="calligraphy">Calligraphy</option>
-              <option value="abstract">Abstract</option>
-              <option value="landscape">Landscape</option>
-              <option value="other">Other</option>
+              <?php foreach ($artCategories as $cat): ?>
+                <option value="<?= $cat['id'] ?>"><?= htmlspecialchars($cat['name']) ?></option>
+              <?php endforeach; ?>
             </select>
           </div>
           <div class="fg">
@@ -616,6 +684,76 @@ img{max-width:100%;display:block;}
 </div>
 
 <script>
+// Artist picker dropdown
+const apTrigger = document.getElementById('apTrigger');
+const apList = document.getElementById('apList');
+const apValue = document.getElementById('ap-value');
+
+if (apTrigger) {
+  const apSearch = document.getElementById('apSearch');
+  const apNoResults = document.getElementById('apNoResults');
+  const apItemEls = Array.from(apList.querySelectorAll('.ap-item'));
+
+  apTrigger.addEventListener('click', (e) => {
+    e.stopPropagation();
+    apList.classList.toggle('open');
+    if (apList.classList.contains('open')) {
+      apSearch.value = '';
+      apItemEls.forEach(el => el.style.display = 'flex');
+      apNoResults.style.display = 'none';
+      setTimeout(() => apSearch.focus(), 0);
+    }
+  });
+
+  apSearch.addEventListener('click', (e) => e.stopPropagation());
+  apSearch.addEventListener('input', () => {
+    const q = apSearch.value.trim().toLowerCase();
+    let anyVisible = false;
+    apItemEls.forEach(item => {
+      const haystack = (item.dataset.name + ' ' + item.dataset.city + ' ' + item.dataset.style).toLowerCase();
+      const match = haystack.includes(q);
+      item.style.display = match ? 'flex' : 'none';
+      if (match) anyVisible = true;
+    });
+    apNoResults.style.display = anyVisible ? 'none' : 'block';
+  });
+
+  apItemEls.forEach(item => {
+    item.addEventListener('click', () => {
+      const id = item.dataset.id;
+      const name = item.dataset.name;
+      const city = item.dataset.city;
+      const style = item.dataset.style;
+      const avatar = item.dataset.avatar;
+
+      apValue.value = id;
+
+      let avatarHtml = avatar
+        ? `<img class="ap-trigger-avatar" src="${avatar}" alt="">`
+        : `<div class="ap-trigger-avatar-ph">${name.charAt(0).toUpperCase()}</div>`;
+
+      let subText = [city, style].filter(Boolean).join(' — ');
+
+      apTrigger.innerHTML = `
+        ${avatarHtml}
+        <span class="ap-trigger-text">
+          <span class="ap-trigger-name">${name}</span>
+          <span class="ap-trigger-sub">${subText}</span>
+        </span>
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+      `;
+
+      apList.classList.remove('open');
+    });
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!document.getElementById('artistPicker').contains(e.target)) {
+      apList.classList.remove('open');
+    }
+  });
+}
+
 // Hamburger drawer
 const hamBtn = document.querySelector('.ham-btn');
 const navDrawer = document.getElementById('nav-drawer');

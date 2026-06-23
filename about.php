@@ -254,13 +254,17 @@ $artistCount = 0;
 $artworkCount = 0;
 $cityCount = 0;
 
-$r = $conn->query("SELECT COUNT(*) as cnt FROM users WHERE role='artist' AND status='active'");
+$r = $conn->query("SELECT COUNT(*) as cnt FROM users WHERE role='artist'");
 if ($r) $artistCount = (int)$r->fetch_assoc()['cnt'];
 
-$r = $conn->query("SELECT COUNT(*) as cnt FROM artworks WHERE status='approved'");
+$r = $conn->query("SELECT COUNT(*) as cnt FROM artworks");
 if ($r) $artworkCount = (int)$r->fetch_assoc()['cnt'];
 
-$r = $conn->query("SELECT COUNT(DISTINCT city) as cnt FROM artworks WHERE status='approved' AND city IS NOT NULL AND city != ''");
+$r = $conn->query("
+    SELECT COUNT(DISTINCT ap.city) as cnt 
+    FROM artist_profiles ap 
+    WHERE ap.city IS NOT NULL AND ap.city != ''
+");
 if ($r) $cityCount = (int)$r->fetch_assoc()['cnt'];
 ?>
 <!-- STATS -->

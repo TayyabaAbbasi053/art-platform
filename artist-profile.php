@@ -111,25 +111,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'commi
     if (!$buyerName || !$buyerEmail || !$description) { 
         $commissionError = "Name, email, and description are required."; 
     } else {
-        // Map artwork_type to a category slug → commission_category_id
-        $commissionCategoryId = null;
-        if (!empty($artworkType)) {
-            $slugMap = [
-                'painting'     => 'painting',
-                'portrait'     => 'portrait',
-                'digital_art'  => 'digital-art',
-                'calligraphy'  => 'calligraphy',
-                'abstract'     => 'custom-orders',
-                'landscape'    => 'custom-orders',
-                'other'        => 'custom-orders'
-            ];
-            $slug = $slugMap[strtolower($artworkType)] ?? 'custom-orders';
-            $catSlug = $conn->real_escape_string($slug);
-            $catRes = $conn->query("SELECT id FROM categories WHERE slug = '$catSlug' LIMIT 1");
-            if ($catRow = $catRes->fetch_assoc()) {
-                $commissionCategoryId = (int)$catRow['id'];
-            }
-        }
+        // artwork_type now submits the category id directly
+        $commissionCategoryId = !empty($_POST['artwork_type']) ? (int)$_POST['artwork_type'] : null;
 
         // Determine buyer_id: logged-in user or NULL for guest
         $buyerId = ($isLoggedIn) ? (int)$_SESSION['user_id'] : null;
@@ -222,6 +205,9 @@ function getArtworkImageUrl($p) {
  $profilePic = getProfileImageUrl($artist['profile_picture']);
  $joinDate = date('F Y', strtotime($artist['created_at']));
  $instagram = $artist['instagram_url'] ?: null;
+
+// Fetch all categories for the artwork type dropdown
+ $artCategories = $conn->query("SELECT id, name, slug FROM categories ORDER BY name ASC")->fetch_all(MYSQLI_ASSOC);
 
 // Fetch available artists for commission modal dropdown
  $availableArtists = $conn->query("SELECT u.id, u.name, ap.city, ap.art_style FROM users u JOIN artist_profiles ap ON u.id=ap.user_id WHERE u.role='artist' AND u.status='active' AND ap.accepts_commissions=1 ORDER BY u.name ASC")->fetch_all(MYSQLI_ASSOC);
@@ -615,13 +601,9 @@ img{max-width:100%;display:block;}
                 <label>Artwork Type</label>
                 <select name="artwork_type" class="fs">
                     <option value="">Select type...</option>
-                    <option value="painting">Painting</option>
-                    <option value="portrait">Portrait</option>
-                    <option value="digital_art">Digital Art</option>
-                    <option value="calligraphy">Calligraphy</option>
-                    <option value="abstract">Abstract</option>
-                    <option value="landscape">Landscape</option>
-                    <option value="other">Other</option>
+                    <?php foreach ($artCategories as $cat): ?>
+                        <option value="<?= $cat['id'] ?>"><?= htmlspecialchars($cat['name']) ?></option>
+                    <?php endforeach; ?>
                 </select>
             </div>
             <div class="fg">

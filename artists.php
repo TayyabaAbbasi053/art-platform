@@ -152,6 +152,10 @@ img{max-width:100%;display:block;}
 .filter-group label{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);}
 .filter-input{padding:8px 14px;border:1.5px solid var(--sand);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;background:var(--bg);min-width:160px;outline:none;transition:border-color .12s;color:var(--ink);}
 .filter-input:focus{border-color:var(--ink);}
+
+select.filter-input {
+  appearance: auto;
+}
 .filter-btn{background:var(--sand);color:var(--ink);border:none;padding:8px 20px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;transition:background .12s;}
 .filter-btn:hover{background:#c4b69e;}
 .filter-clear{background:transparent;border:1px solid var(--sand);padding:8px 16px;border-radius:8px;font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif;color:var(--ink);transition:all .12s;}
@@ -166,11 +170,49 @@ img{max-width:100%;display:block;}
 .artist-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:24px;margin-bottom:32px;}
 .artist-card{background:var(--card);border:1px solid var(--border);border-radius:16px;overflow:hidden;transition:transform .15s,box-shadow .15s;}
 .artist-card:hover{transform:translateY(-3px);box-shadow:0 10px 28px rgba(12,63,48,.09);}
-.artist-cover{position:relative;height:130px;background:var(--sand);display:flex;align-items:center;justify-content:center;}
-.artist-avatar{width:85px;height:85px;border-radius:50%;object-fit:cover;border:3px solid var(--card);position:absolute;bottom:-30px;left:20px;background:var(--sand);}
-.artist-avatar-placeholder{width:85px;height:85px;border-radius:50%;background:var(--ink);display:flex;align-items:center;justify-content:center;font-size:34px;color:var(--bg);font-weight:500;border:3px solid var(--card);position:absolute;bottom:-30px;left:20px;}
-.feat-badge{position:absolute;top:12px;right:12px;background:var(--sand);color:var(--ink);font-size:10px;font-weight:600;padding:3px 9px;border-radius:20px;}
-.artist-info{padding:38px 16px 16px;}
+/* Replace the existing .artist-cover styles */
+.artist-cover {
+  position: relative;
+  height: 200px;
+  background: var(--sand);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.artist-avatar {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.artist-avatar-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--ink);
+  font-size: 64px;
+  color: var(--bg);
+  font-weight: 500;
+}
+
+.feat-badge {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: var(--sand);
+  color: var(--ink);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 20px;
+  z-index: 2;
+}
+.artist-info{padding:16px 16px 16px;}
 .artist-name{font-family:'Playfair Display',serif;font-size:18px;font-weight:500;color:var(--ink);margin-bottom:4px;}
 .artist-meta{display:flex;gap:10px;margin-bottom:8px;flex-wrap:wrap;}
 .artist-city{font-size:11px;color:var(--muted);display:flex;align-items:center;gap:3px;}
@@ -252,8 +294,12 @@ img{max-width:100%;display:block;}
   /* Layout */
   .hero{padding:28px 16px;}
   .wrap{padding:16px;}
-  .filters{flex-direction:column;align-items:stretch;gap:10px;}
+  .filters{flex-direction:column;align-items:stretch;gap:10px;overflow:visible !important;}
   .filter-input{width:100%;}
+  
+  select.filter-input {
+    font-size: 16px; /* Prevents zoom on iOS */
+  }
   .artist-grid{grid-template-columns:1fr;}
   .results-info{flex-direction:column;gap:4px;}
   .artist-buttons{font-size:11px;}
@@ -397,16 +443,16 @@ img{max-width:100%;display:block;}
     $avatar = getProfileImageUrl($a['profile_picture']);
   ?>
   <div class="artist-card">
-    <div class="artist-cover">
-      <?php if ($a['is_featured']): ?><span class="feat-badge">★ Featured</span><?php endif; ?>
-      <?php if ($avatar): ?>
-        <img class="artist-avatar" src="<?= htmlspecialchars($avatar) ?>" alt="">
-      <?php else: ?>
-        <div class="artist-avatar-placeholder"><?= strtoupper(substr($a['name'],0,1)) ?></div>
-      <?php endif; ?>
-    </div>
-    <div class="artist-info">
-      <h3 class="artist-name"><?= htmlspecialchars($a['name']) ?></h3>
+  <div class="artist-cover">
+    <?php if ($a['is_featured']): ?><span class="feat-badge">★ Featured</span><?php endif; ?>
+    <?php if ($avatar): ?>
+      <img class="artist-avatar" src="<?= htmlspecialchars($avatar) ?>" alt="<?= htmlspecialchars($a['name']) ?>">
+    <?php else: ?>
+      <div class="artist-avatar-placeholder"><?= strtoupper(substr($a['name'],0,1)) ?></div>
+    <?php endif; ?>
+  </div>
+  <div class="artist-info">
+     <h3 class="artist-name"><?= htmlspecialchars($a['name']) ?></h3>
       <div class="artist-meta">
         <?php if ($a['city']): ?><span class="artist-city">📍 <?= htmlspecialchars($a['city']) ?></span><?php endif; ?>
         <?php if ($a['art_style']): ?><span class="artist-style"><?= htmlspecialchars($a['art_style']) ?></span><?php endif; ?>

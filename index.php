@@ -108,14 +108,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'commi
     if (!$buyerName || !$buyerEmail || !$description) {
         $commissionError = "Name, email, and description are required.";
     } else {
-        $commissionCategoryId = null;
-        if (!empty($artworkType)) {
-            $slugMap = ['painting'=>'painting','portrait'=>'portrait','digital_art'=>'digital-art','calligraphy'=>'calligraphy','abstract'=>'custom-orders','landscape'=>'custom-orders','other'=>'custom-orders'];
-            $slug = $slugMap[$artworkType] ?? 'custom-orders';
-            $catSlug = $conn->real_escape_string($slug);
-            $catRes = $conn->query("SELECT id FROM categories WHERE slug = '$catSlug' LIMIT 1");
-            if ($catRow = $catRes->fetch_assoc()) $commissionCategoryId = (int)$catRow['id'];
-        }
+        // artwork_type now submits the category id directly
+        $commissionCategoryId = !empty($_POST['artwork_type']) ? (int)$_POST['artwork_type'] : null;
 
         $buyerId = (isset($_SESSION['user_id'])) ? (int)$_SESSION['user_id'] : null;
         $orderNumber = 'COM-' . time() . '-' . rand(1000, 9999);
@@ -727,13 +721,9 @@ h1.htitle em{font-style:italic;color:var(--ink);}
             <label>Artwork Type</label>
             <select name="artwork_type" class="fs">
               <option value="">Select type...</option>
-              <option value="painting">Painting</option>
-              <option value="portrait">Portrait</option>
-              <option value="digital_art">Digital Art</option>
-              <option value="calligraphy">Calligraphy</option>
-              <option value="abstract">Abstract</option>
-              <option value="landscape">Landscape</option>
-              <option value="other">Other</option>
+              <?php foreach ($categories as $cat): ?>
+                <option value="<?= $cat['id'] ?>"><?= htmlspecialchars($cat['name']) ?></option>
+              <?php endforeach; ?>
             </select>
           </div>
           <div class="fg">

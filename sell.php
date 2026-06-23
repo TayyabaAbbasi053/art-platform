@@ -221,11 +221,6 @@ img{max-width:100%;display:block;}
       <p>Thousands of art lovers visit Art Bazaar every month looking for original Pakistani art. Your work gets seen.</p>
     </div>
     <div class="why-card">
-      <div class="why-icon"><svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div>
-      <h4>Keep your earnings</h4>
-      <p>We take a minimal commission — far less than traditional galleries. You keep what you earn.</p>
-    </div>
-    <div class="why-card">
       <div class="why-icon"><svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></div>
       <h4>Commission requests</h4>
       <p>Buyers can request custom work directly from you. Turn your skills into personalized creations.</p>
@@ -257,13 +252,6 @@ img{max-width:100%;display:block;}
     </div>
   </div>
 
-  <!-- TESTIMONIAL -->
-  <div class="testimonial">
-    <p>"I've sold 12 paintings through Art Bazaar in my first 6 months. The commission is fair and the buyers are genuinely interested in Pakistani art. It's been life-changing."</p>
-    <div class="testimonial-author">— Sarah Khan, Visual Artist</div>
-    <div class="testimonial-role">Lahore</div>
-  </div>
-
   <!-- FAQ -->
   <div class="faq-section">
     <h3 class="faq-title">Frequently asked questions</h3>
@@ -273,16 +261,12 @@ img{max-width:100%;display:block;}
         <p>Joining Art Bazaar is completely free. There are no upfront fees or subscription costs. We only take a small commission when you make a sale.</p>
       </div>
       <div class="faq-item">
-        <h4>What commission do you take?</h4>
-        <p>We take a 10% commission on each successful sale. This covers platform maintenance, payment processing, and customer support.</p>
-      </div>
-      <div class="faq-item">
         <h4>How do I get paid?</h4>
         <p>When a buyer purchases your artwork, our team coordinates the payment and shipping. You'll receive your payment via bank transfer after delivery confirmation.</p>
       </div>
       <div class="faq-item">
         <h4>What kind of art can I sell?</h4>
-        <p>Any original artwork — paintings, sketches, digital art, calligraphy, photography, mixed media. We don't accept prints or reproductions of other artists' work.</p>
+        <p>Not just paintings — all types of original artwork are welcome, including sketches, digital art, calligraphy, photography, and mixed media. We don't accept prints or reproductions of other artists' work.</p>
       </div>
       <div class="faq-item">
         <h4>How long does approval take?</h4>
