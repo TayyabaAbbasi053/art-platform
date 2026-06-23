@@ -28,6 +28,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'mark_
     exit;
 }
 
+// ── Handle Mark as Refunded (single cancelled order) ──────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'mark_refunded') {
+    $orderId     = (int)($_POST['order_id'] ?? 0);
+    $refundNotes = trim($_POST['refund_notes'] ?? '');
+    if ($orderId) {
+        $stmt = $conn->prepare("UPDATE orders SET payment_status = 'refunded', refunded_at = NOW(), refund_notes = ? WHERE id = ?");
+        $stmt->bind_param('si', $refundNotes, $orderId);
+        $stmt->execute();
+    }
+    $qs = http_build_query(array_filter([
+        'date_from'  => $_POST['date_from'] ?? '',
+        'date_to'    => $_POST['date_to']   ?? '',
+        'preset'     => $_POST['preset']    ?? '',
+        'refund_msg' => '1',
+    ]));
+    header("Location: reports.php?$qs");
+    exit;
+}
+
 // ── Date range ─────────────────────────────────────────────────
 $dateFrom = $_GET['date_from'] ?? '';
 $dateTo   = $_GET['date_to']   ?? '';
@@ -89,6 +108,7 @@ if ($dateFrom && $dateTo) {
         JOIN artworks aw ON oi.item_id=aw.id
         LEFT JOIN users u ON o.buyer_id=u.id
         WHERE o.order_type='artwork'
+          AND o.order_status != 'cancelled'
           AND o.created_at BETWEEN '{$dfSafe} 00:00:00' AND '{$dtSafe} 23:59:59'
         ORDER BY o.created_at DESC");
 
@@ -105,8 +125,38 @@ if ($dateFrom && $dateTo) {
         LEFT JOIN categories cat ON o.commission_category_id=cat.id
         LEFT JOIN users u ON o.buyer_id=u.id
         WHERE o.order_type='commission'
+          AND o.order_status != 'cancelled'
           AND o.created_at BETWEEN '{$dfSafe} 00:00:00' AND '{$dtSafe} 23:59:59'
         ORDER BY o.created_at DESC");
+
+    // Cancelled orders (separate section, excluded from artist tables/totals above)
+    $cancelledData = $conn->query("
+        SELECT o.id AS order_id, o.order_number, o.order_type, o.created_at,
+               o.total AS order_total, o.payment_status, o.payment_method,
+               o.refunded_at, o.refund_notes,
+               COALESCE(u.name, o.guest_name) AS buyer_name,
+               COALESCE(aw.title, cat.name, 'Custom Request') AS display_title,
+               COALESCE(aw.artist_id, cr.artist_id) AS artist_id,
+               art.name AS artist_name
+        FROM orders o
+        LEFT JOIN order_items oi ON oi.order_id = o.id AND oi.item_type='artwork'
+        LEFT JOIN artworks aw ON oi.item_id = aw.id
+        LEFT JOIN commission_requests cr ON cr.order_id = o.id
+        LEFT JOIN categories cat ON o.commission_category_id = cat.id
+        LEFT JOIN users art ON art.id = COALESCE(aw.artist_id, cr.artist_id)
+        LEFT JOIN users u ON o.buyer_id = u.id
+        WHERE o.order_status = 'cancelled'
+          AND o.created_at BETWEEN '{$dfSafe} 00:00:00' AND '{$dtSafe} 23:59:59'
+        ORDER BY o.created_at DESC");
+
+    $cancelledOrders = [];
+    $cancelledTotal = 0;
+    if ($cancelledData) {
+        while ($row = $cancelledData->fetch_assoc()) {
+            $cancelledOrders[] = $row;
+            $cancelledTotal += (float)$row['order_total'];
+        }
+    }
 
     // Structure data
     $structured = [];
@@ -159,6 +209,13 @@ function getStatusPill($status) {
 function paidBadge($paid, $paidAt) {
     if ($paid) { $d = $paidAt ? ' '.date('d M Y', strtotime($paidAt)) : ''; return "<span class='pill paid-pill'>&#10003; Paid$d</span>"; }
     return "<span class='pill unpaid-pill'>Unpaid</span>";
+}
+function refundBadge($paymentStatus, $refundedAt) {
+    if ($paymentStatus === 'refunded') {
+        $d = $refundedAt ? ' '.date('d M Y', strtotime($refundedAt)) : '';
+        return "<span class='pill refunded-pill'>&#10003; Refunded$d</span>";
+    }
+    return "<span class='pill unrefunded-pill'>Not Refunded</span>";
 }
 ?>
 <!DOCTYPE html>
@@ -273,6 +330,8 @@ tr.is-paid{opacity:.55;}
 .pill.blocked{background:var(--sand);color:var(--ink);}
 .paid-pill{background:var(--ink);color:var(--bg);}
 .unpaid-pill{background:var(--sand);color:var(--ink);}
+.refunded-pill{background:var(--ink);color:var(--bg);}
+.unrefunded-pill{background:var(--sand);color:var(--ink);}
 
 /* Modal */
 .mbg{display:none;position:fixed;inset:0;background:rgba(12,63,48,.55);backdrop-filter:blur(3px);z-index:500;align-items:center;justify-content:center;padding:16px;}
@@ -351,6 +410,10 @@ tr.is-paid{opacity:.55;}
 
 <?php if (isset($_GET['paid_msg']) && $_GET['paid_msg'] === '1'): ?>
 <div class="alert alert-success">&#10003; Order marked as paid to artist successfully.</div>
+<?php endif; ?>
+
+<?php if (isset($_GET['refund_msg']) && $_GET['refund_msg'] === '1'): ?>
+<div class="alert alert-success">&#10003; Order marked as refunded successfully.</div>
 <?php endif; ?>
 
 <!-- Filter Card -->
@@ -520,6 +583,71 @@ tr.is-paid{opacity:.55;}
     <div class="gf-big"><strong>PKR <?= number_format($summaryTotals['revenue']) ?></strong><span>Overall Grand Total Revenue</span></div>
 </div>
 
+<!-- Cancelled Orders -->
+<?php if (!empty($cancelledOrders)): ?>
+<div class="artist-section" style="margin-top:32px;">
+    <div class="artist-header" style="background:rgba(192,57,43,0.05);">
+        <div class="artist-info">
+            <h3>Cancelled Orders</h3>
+            <div class="artist-meta">
+                <span><?= count($cancelledOrders) ?> cancelled order<?= count($cancelledOrders)!==1?'s':'' ?></span>
+                <span>&bull;</span>
+                <span>PKR <?= number_format($cancelledTotal) ?> total value</span>
+            </div>
+        </div>
+    </div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Order #</th>
+                    <th>Type</th>
+                    <th>Item</th>
+                    <th>Buyer</th>
+                    <th>Artist</th>
+                    <th>Amount</th>
+                    <th>Payment</th>
+                    <th>Refund Status</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php foreach ($cancelledOrders as $co): ?>
+            <tr class="<?= $co['payment_status']==='refunded' ? 'is-paid' : '' ?>">
+                <td style="white-space:nowrap"><?= date('d M Y', strtotime($co['created_at'])) ?></td>
+                <td style="font-family:monospace;font-size:11px"><?= htmlspecialchars($co['order_number']) ?></td>
+                <td><?= ucfirst($co['order_type']) ?></td>
+                <td><div style="font-weight:500;max-width:130px"><?= htmlspecialchars($co['display_title']) ?></div></td>
+                <td><?= htmlspecialchars($co['buyer_name']) ?></td>
+                <td><?= htmlspecialchars($co['artist_name'] ?: '—') ?></td>
+                <td class="amount">PKR <?= number_format($co['order_total']) ?></td>
+                <td><?= getStatusPill($co['payment_status']) ?></td>
+                <td><?= refundBadge($co['payment_status'], $co['refunded_at']) ?></td>
+                <td>
+                    <?php if ($co['payment_status'] !== 'refunded'): ?>
+                    <button class="btn btn-sm btn-pay" onclick="openRefundModal(
+                        <?= $co['order_id'] ?>,
+                        '<?= addslashes(htmlspecialchars($co['order_number'])) ?>',
+                        '<?= addslashes(htmlspecialchars($co['display_title'])) ?>',
+                        '<?= addslashes(htmlspecialchars($co['buyer_name'])) ?>',
+                        <?= $co['order_total'] ?>
+                    )">Mark Refunded</button>
+                    <?php else: ?>
+                    <span style="font-size:11px;opacity:.45">Done<?= $co['refund_notes'] ? ' &bull; '.htmlspecialchars(substr($co['refund_notes'],0,30)) : '' ?></span>
+                    <?php endif; ?>
+                </td>
+            </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+    <div class="total-row">
+        <span>Total value of cancelled orders: PKR <?= number_format($cancelledTotal) ?></span>
+    </div>
+</div>
+<?php endif; ?>
+
 <?php endif; // empty reportData ?>
 <?php else: // !hasReport ?>
 <div class="prompt-state">
@@ -565,6 +693,39 @@ tr.is-paid{opacity:.55;}
     </div>
 </div>
 
+<!-- MARK REFUNDED MODAL -->
+<div class="mbg" id="refund-modal">
+    <div class="modal">
+        <div class="mhd">
+            <h3>Mark as Refunded</h3>
+            <button class="mcls" onclick="document.getElementById('refund-modal').classList.remove('open')">&#10005;</button>
+        </div>
+        <div class="mbd">
+            <p>Confirm you have refunded the buyer for this cancelled order. This cannot be undone.</p>
+
+            <div class="order-detail-grid">
+                <span class="od-label">Order #</span><span class="od-val" id="rd-order-num">—</span>
+                <span class="od-label">Buyer</span><span class="od-val" id="rd-buyer">—</span>
+                <span class="od-label">Item</span><span class="od-val" id="rd-item">—</span>
+                <span class="od-label">Amount</span><span class="od-val" id="rd-amount">—</span>
+            </div>
+
+            <form method="POST">
+                <input type="hidden" name="action" value="mark_refunded">
+                <input type="hidden" name="order_id" id="refund-order-id" value="">
+                <input type="hidden" name="date_from" value="<?= htmlspecialchars($dateFrom) ?>">
+                <input type="hidden" name="date_to"   value="<?= htmlspecialchars($dateTo) ?>">
+                <input type="hidden" name="preset"    value="<?= htmlspecialchars($_GET['preset'] ?? '') ?>">
+                <div class="fg">
+                    <label>Notes (optional)</label>
+                    <textarea name="refund_notes" class="ft" placeholder="e.g. Refunded via JazzCash, ref #12345 on 13 June 2026..."></textarea>
+                </div>
+                <button type="submit" class="msub">&#10003; Confirm Refund</button>
+            </form>
+        </div>
+    </div>
+</div>
+
 <script>
 function openPayModal(orderId, orderNum, itemTitle, artistName, artPrice, orderTotal) {
     document.getElementById('modal-order-id').value     = orderId;
@@ -576,6 +737,18 @@ function openPayModal(orderId, orderNum, itemTitle, artistName, artPrice, orderT
     document.getElementById('pay-modal').classList.add('open');
 }
 document.getElementById('pay-modal').addEventListener('click', function(e) {
+    if (e.target === this) this.classList.remove('open');
+});
+
+function openRefundModal(orderId, orderNum, itemTitle, buyerName, amount) {
+    document.getElementById('refund-order-id').value   = orderId;
+    document.getElementById('rd-order-num').textContent = orderNum;
+    document.getElementById('rd-buyer').textContent     = buyerName;
+    document.getElementById('rd-item').textContent      = itemTitle;
+    document.getElementById('rd-amount').textContent    = 'PKR ' + Number(amount).toLocaleString();
+    document.getElementById('refund-modal').classList.add('open');
+}
+document.getElementById('refund-modal').addEventListener('click', function(e) {
     if (e.target === this) this.classList.remove('open');
 });
 </script>

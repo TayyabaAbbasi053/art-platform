@@ -108,6 +108,40 @@ while ($row = $ro->fetch_assoc()) {
     $recentOrders[] = $row;
 }
 
+// ── Payout status: artwork orders + commission orders, combined ──
+$payoutOrders = [];
+
+$poArt = $conn->query("
+    SELECT DISTINCT o.id, o.order_number, o.order_status, o.artist_paid, o.artist_paid_at, o.created_at, 'artwork' AS order_type
+    FROM orders o
+    JOIN order_items oi ON o.id = oi.order_id
+    JOIN artworks a ON oi.item_id = a.id AND oi.item_type = 'artwork'
+    WHERE a.artist_id = $artistId AND o.order_type = 'artwork'
+    ORDER BY o.created_at DESC
+");
+while ($row = $poArt->fetch_assoc()) $payoutOrders[] = $row;
+
+$poComm = $conn->query("
+    SELECT o.id, o.order_number, o.order_status, o.artist_paid, o.artist_paid_at, o.created_at, 'commission' AS order_type
+    FROM orders o
+    JOIN commission_requests cr ON cr.order_id = o.id
+    WHERE cr.artist_id = $artistId AND o.order_type = 'commission'
+    ORDER BY o.created_at DESC
+");
+while ($row = $poComm->fetch_assoc()) $payoutOrders[] = $row;
+
+usort($payoutOrders, fn($a, $b) => strtotime($b['created_at']) <=> strtotime($a['created_at']));
+
+function payoutStatusLabel($order) {
+    if ($order['order_status'] === 'cancelled') {
+        return ['label' => 'Cancelled', 'class' => 'cancelled'];
+    }
+    if ($order['artist_paid']) {
+        return ['label' => 'Paid', 'class' => 'paid'];
+    }
+    return ['label' => 'Not paid yet', 'class' => 'unpaid'];
+}
+
  $today = date('l, d F Y');
 ?>
 <!DOCTYPE html>
@@ -360,6 +394,22 @@ tr:hover td { background: var(--sand); color: var(--ink); }
 .pill.shipped    { background: var(--sand); color: var(--ink); }
 .pill.delivered  { background: var(--ink); color: var(--bg); }
 .pill.confirmed  { background: var(--sand); color: var(--ink); }
+/* Payout status pills */
+.pill.paid       { background: var(--ink); color: var(--bg); }
+.pill.unpaid     { background: var(--sand); color: var(--ink); }
+.pill.payout-cancelled { background: #F4F4F4; color: #888; }
+
+/* Payout list section */
+.payout-list { margin-bottom: 28px; }
+.payout-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 13px 22px; border-bottom: 1px solid var(--border);
+    font-size: 12.5px;
+}
+.payout-row:last-child { border-bottom: none; }
+.payout-row:hover { background: var(--bg); }
+.payout-order-num { font-family: monospace; font-size: 11.5px; color: var(--ink); font-weight: 500; }
+.payout-type { font-size: 10px; color: var(--muted); margin-left: 8px; text-transform: uppercase; letter-spacing: .5px; }
 
 /* ── Empty state ─────────────────────────────────────── */
 .empty { text-align: center; padding: 32px; color: var(--muted); font-size: 12px; }
@@ -686,6 +736,28 @@ tr:hover td { background: var(--sand); color: var(--ink); }
         </div>
 
     </div><!-- /two-col -->
+
+    <!-- ── Payout Status ──────────────────────────── -->
+    <div class="section-header">
+        <span class="section-title">Payout Status</span>
+    </div>
+    <div class="card payout-list">
+        <?php if (empty($payoutOrders)): ?>
+            <div class="empty">No orders or commissions yet.</div>
+        <?php else: ?>
+            <?php foreach ($payoutOrders as $po):
+                $status = payoutStatusLabel($po);
+            ?>
+            <div class="payout-row">
+                <div>
+                    <span class="payout-order-num">#<?= htmlspecialchars($po['order_number']) ?></span>
+                    <span class="payout-type"><?= ucfirst($po['order_type']) ?></span>
+                </div>
+                <span class="pill <?= $status['class'] ?>"><?= htmlspecialchars($status['label']) ?></span>
+            </div>
+            <?php endforeach; ?>
+        <?php endif; ?>
+    </div>
 
 </div><!-- /content -->
 
