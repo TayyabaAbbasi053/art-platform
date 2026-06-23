@@ -17,7 +17,7 @@ if (!$artistId) {
            ap.bio, ap.city, ap.instagram_url, ap.art_style, ap.accepts_commissions, ap.is_featured
     FROM users u
     LEFT JOIN artist_profiles ap ON u.id = ap.user_id
-    WHERE u.id = ? AND u.role = 'artist' AND u.status = 'active'
+    WHERE u.id = ? AND u.role = 'artist' AND u.status = 'active' AND ap.profile_complete = 1
 ");
  $stmt->bind_param('i', $artistId);
  $stmt->execute();

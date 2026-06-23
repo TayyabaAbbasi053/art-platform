@@ -17,10 +17,7 @@ require_once __DIR__ . '/config/db.php';
  $where = [
     "u.role = 'artist'",
     "u.status = 'active'",
-    "ap.bio IS NOT NULL AND ap.bio != ''",
-    "ap.city IS NOT NULL AND ap.city != ''",
-    "ap.art_style IS NOT NULL AND ap.art_style != ''",
-    "u.profile_picture IS NOT NULL AND u.profile_picture != ''"
+    "ap.profile_complete = 1"
 ];
  $params = [];
  $types = '';

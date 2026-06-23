@@ -20,7 +20,7 @@ if (!$artworkId) {
     JOIN users u ON a.artist_id = u.id
     JOIN categories c ON a.category_id = c.id
     LEFT JOIN artist_profiles ap ON ap.user_id = u.id
-    WHERE a.id = ? AND a.status IN ('active', 'sold')
+    WHERE a.id = ? AND a.status IN ('active', 'sold') AND u.status = 'active' AND ap.profile_complete = 1
 ");
  $stmt->bind_param('i', $artworkId);
  $stmt->execute();
@@ -46,7 +46,8 @@ if (!$artwork) {
            (SELECT image_path FROM artwork_images WHERE artwork_id = a.id ORDER BY is_cover DESC LIMIT 1) AS cover_image
     FROM artworks a
     JOIN users u ON a.artist_id = u.id
-    WHERE a.category_id = ? AND a.id != ? AND a.status = 'active'
+    WHERE a.category_id = ? AND a.id != ? AND a.status = 'active' AND u.status = 'active'
+AND EXISTS (SELECT 1 FROM artist_profiles ap2 WHERE ap2.user_id = u.id AND ap2.profile_complete = 1)
     LIMIT 4
 ");
  $similar->bind_param('ii', $artwork['category_id'], $artworkId);

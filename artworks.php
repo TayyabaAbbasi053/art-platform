@@ -18,7 +18,11 @@ $isLoggedIn = isset($_SESSION['user_id']);
  $offset     = ($page - 1) * $perPage;
 
 // ── Build query ──────────────────────────────────────────
- $where = ["a.status IN ('active', 'sold')"];
+ $where = [
+    "a.status IN ('active', 'sold')",
+    "u.status = 'active'",
+    "ap.profile_complete = 1"
+];
  $params = [];
  $types = '';
 
@@ -78,7 +82,7 @@ if ($featured) {
  $whereSQL = implode(' AND ', $where);
 
 // Count total
- $countSQL = "SELECT COUNT(*) FROM artworks a JOIN users u ON a.artist_id = u.id JOIN categories c ON a.category_id = c.id WHERE $whereSQL";
+ $countSQL = "SELECT COUNT(*) FROM artworks a JOIN users u ON a.artist_id = u.id JOIN categories c ON a.category_id = c.id LEFT JOIN artist_profiles ap ON ap.user_id = u.id WHERE $whereSQL";
 if ($params) {
     $cs = $conn->prepare($countSQL);
     $cs->bind_param($types, ...$params);
@@ -98,6 +102,7 @@ if ($params) {
         FROM artworks a
         JOIN users u ON a.artist_id = u.id
         JOIN categories c ON a.category_id = c.id
+        LEFT JOIN artist_profiles ap ON ap.user_id = u.id
         WHERE $whereSQL
         ORDER BY $orderBy
         LIMIT ? OFFSET ?";
