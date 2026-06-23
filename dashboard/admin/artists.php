@@ -108,6 +108,55 @@ if ($search) {
 
  $whereSQL = implode(' AND ', $where);
 
+// ── CSV Export (uses same filters as the page, ignores pagination) ──
+if (isset($_GET['export'])) {
+    $exportLimitRaw = $_GET['export_limit'] ?? 'all';
+    $exportSortRaw  = $_GET['export_sort']  ?? 'newest';
+
+    $exportOrderBy = $exportSortRaw === 'oldest' ? 'u.created_at ASC' : 'u.created_at DESC';
+
+    $exportSQL = "
+        SELECT u.id, u.name, u.email, u.phone, u.status,
+               ap.city, ap.address
+        FROM users u
+        LEFT JOIN artist_profiles ap ON ap.user_id = u.id
+        WHERE $whereSQL
+        ORDER BY $exportOrderBy
+    ";
+    if (is_numeric($exportLimitRaw)) {
+        $exportSQL .= " LIMIT " . (int)$exportLimitRaw;
+    }
+
+    if ($params) {
+        $stmt = $conn->prepare($exportSQL);
+        $stmt->bind_param($types, ...$params);
+        $stmt->execute();
+        $exportResult = $stmt->get_result();
+    } else {
+        $exportResult = $conn->query($exportSQL);
+    }
+
+    $filename = 'artists_export_' . date('Y-m-d_His') . '.csv';
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+
+    $out = fopen('php://output', 'w');
+    fputcsv($out, ['ID','Name','Email','Phone','Status','City','Address']);
+    while ($row = $exportResult->fetch_assoc()) {
+        fputcsv($out, [
+            $row['id'],
+            $row['name'],
+            $row['email'],
+            $row['phone'],
+            $row['status'],
+            $row['city'],
+            $row['address'],
+        ]);
+    }
+    fclose($out);
+    exit;
+}
+
  $sortMap = [
     'newest'  => 'u.created_at DESC',
     'oldest'  => 'u.created_at ASC',
@@ -642,6 +691,19 @@ tr:hover td { background: var(--bg); box-shadow: 0 4px 12px rgba(12,63,48,.06); 
         <?php if ($statusFilter || $search || isset($_GET['featured'])): ?>
             <button class="clear-link" onclick="window.location.href='artists.php'">Clear all</button>
         <?php endif; ?>
+        <span style="width:1px;height:24px;background:var(--border);margin:0 4px;"></span>
+        <select id="exportSelect">
+            <option value="all|newest">Export: All artists</option>
+            <option value="10|newest">Export: Newest 10</option>
+            <option value="25|newest">Export: Newest 25</option>
+            <option value="50|newest">Export: Newest 50</option>
+            <option value="100|newest">Export: Newest 100</option>
+            <option value="10|oldest">Export: Oldest 10</option>
+            <option value="25|oldest">Export: Oldest 25</option>
+            <option value="50|oldest">Export: Oldest 50</option>
+            <option value="100|oldest">Export: Oldest 100</option>
+        </select>
+        <button type="button" class="act-btn approve" onclick="exportCSV()">⬇ Export CSV</button>
     </div>
 
     <!-- Results info -->
@@ -827,6 +889,18 @@ function applyFilters() {
     if (q) params.set('q', q); else params.delete('q');
     if (sort) params.set('sort', sort); else params.delete('sort');
     params.delete('page');
+    window.location.href = 'artists.php?' + params.toString();
+}
+
+function exportCSV() {
+    let params = new URLSearchParams(window.location.search);
+    params.delete('page');
+    params.set('export', '1');
+
+    const [limit, exportSort] = document.getElementById('exportSelect').value.split('|');
+    params.set('export_limit', limit);
+    params.set('export_sort', exportSort);
+
     window.location.href = 'artists.php?' + params.toString();
 }
 
