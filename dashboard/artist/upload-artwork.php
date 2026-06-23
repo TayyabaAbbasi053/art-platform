@@ -23,7 +23,31 @@ if ($__userStatus['status'] === 'pending') {
     exit;
 }
 
-$artistId = (int) $_SESSION['user_id'];  // ← whatever comes next in the file
+$artistId = (int) $_SESSION['user_id'];
+
+// ── Profile completeness check ───────────────────────
+$__profile = $conn->query("
+    SELECT ap.bio, ap.city, ap.address, ap.art_style,
+           u.profile_picture,
+           (ap.has_bank_account OR ap.has_easypaisa OR ap.has_jazzcash OR ap.has_nayapay OR ap.has_sadapay) AS has_payment
+    FROM artist_profiles ap
+    JOIN users u ON u.id = ap.user_id
+    WHERE ap.user_id = $artistId
+")->fetch_assoc();
+
+$__missingFields = [];
+if (empty($__profile['bio']))             $__missingFields[] = 'Bio';
+if (empty($__profile['city']))            $__missingFields[] = 'City';
+if (empty($__profile['address']))         $__missingFields[] = 'Address';
+if (empty($__profile['art_style']))       $__missingFields[] = 'Art Style';
+if (empty($__profile['profile_picture'])) $__missingFields[] = 'Profile Picture';
+if (!$__profile['has_payment'])           $__missingFields[] = 'Payment Method';
+
+if (!empty($__missingFields)) {
+    $_SESSION['profile_incomplete_msg'] = 'Please complete your profile before uploading artwork. Missing: ' . implode(', ', $__missingFields) . '.';
+    header('Location: profile.php');
+    exit;
+}
 
  $artistId   = (int) $_SESSION['user_id'];
  $artistName = $_SESSION['name'] ?? 'Artist';

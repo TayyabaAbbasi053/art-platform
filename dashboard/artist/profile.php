@@ -24,6 +24,11 @@ $artistName = $_SESSION['name'] ?? 'Artist';
 $successMsg = '';
 $errorMsg   = '';
 
+if (isset($_SESSION['profile_incomplete_msg'])) {
+    $errorMsg = $_SESSION['profile_incomplete_msg'];
+    unset($_SESSION['profile_incomplete_msg']);
+}
+
 // ── Fetch current data ──────────────────────────────────
 $user = $conn->query("SELECT name, email, phone, profile_picture FROM users WHERE id = $artistId")->fetch_assoc();
 
@@ -524,14 +529,15 @@ textarea.field-input { resize: vertical; min-height: 110px; line-height: 1.6; }
 <div class="content">
 
     <?php if (!($profile['profile_complete'] ?? 1)): ?>
-    <div style="background:#fef3cd;border:1px solid #e6c200;border-radius:12px;padding:14px 20px;margin-bottom:24px;display:flex;align-items:center;gap:12px;">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#856404" stroke-width="2"><path d="M12 9v4m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+    <div style="background:#fef3cd;border:1px solid #e6c200;border-radius:12px;padding:14px 20px;margin-bottom:24px;display:flex;align-items:flex-start;gap:12px;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#856404" stroke-width="2" style="flex-shrink:0;margin-top:2px;"><path d="M12 9v4m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
         <div>
             <strong style="font-size:12px;color:#856404;">Complete your profile</strong>
             <p style="font-size:11px;color:#856404;margin-top:2px;">Please add your address and at least one payment method below so you can receive payouts.</p>
+            <p style="font-size:11px;color:#856404;margin-top:6px;font-weight:600;">⚠ You will not be able to upload artworks until your profile is 100% complete — including your bio, city, address, art style, profile picture, and at least one payment method.</p>
         </div>
     </div>
-    <?php endif; ?>
+<?php endif; ?>
     
     <div class="section-title">Edit Your Profile</div>
 
@@ -543,11 +549,14 @@ textarea.field-input { resize: vertical; min-height: 110px; line-height: 1.6; }
     <?php endif; ?>
 
     <?php if ($errorMsg): ?>
-        <div class="msg error">
+    <div class="msg error" style="flex-direction:column;align-items:flex-start;gap:6px;">
+        <div style="display:flex;align-items:center;gap:8px;">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
             <?= htmlspecialchars($errorMsg) ?>
         </div>
-    <?php endif; ?>
+        <div style="font-size:12px;font-weight:600;padding-left:24px;">⚠ To upload artworks on Art Bazaar, your profile must be 100% complete. Please fill in all the missing fields below.</div>
+    </div>
+<?php endif; ?>
 
     <form method="POST" enctype="multipart/form-data" id="profileForm">
 
