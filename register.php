@@ -107,21 +107,37 @@ $hasJazzcash    = isset($_POST['has_jazzcash'])      ? 1 : 0;
 $hasNayapay     = isset($_POST['has_nayapay'])       ? 1 : 0;
 $hasSadapay     = isset($_POST['has_sadapay'])       ? 1 : 0;
 
-    if (!$name || !$email || !$password || !$confirm || !$role) {
-        $error = 'All fields are required.';
-    } elseif ($role === 'artist' && (!$city || !$address)) {
-        $error = 'City and address are required for artists.';
-    } elseif ($role === 'artist' && !$hasBankAccount && !$hasEasypaisa && !$hasJazzcash && !$hasNayapay && !$hasSadapay) {
-        $error = 'Please add at least one payment method (bank account or mobile wallet).';
-    } elseif (!in_array($role, ['artist', 'buyer'])) {
-        $error = 'Please select a valid account type.';
-    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        $error = 'Please enter a valid email address.';
-    } elseif (strlen($password) < 8) {
-        $error = 'Password must be at least 8 characters.';
-    } elseif ($password !== $confirm) {
-        $error = 'Passwords do not match.';
-    } else {
+    if (!$role || !in_array($role, ['artist', 'buyer'])) {
+    $error = 'Please select an account type (Artist or Buyer).';
+} elseif (!$name) {
+    $error = 'Full name is required.';
+} elseif (!$email || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+    $error = 'Please enter a valid email address.';
+} elseif (!$phone) {
+    $error = 'Phone / WhatsApp number is required.';
+} elseif (strlen($password) < 8) {
+    $error = 'Password must be at least 8 characters.';
+} elseif ($password !== $confirm) {
+    $error = 'Passwords do not match.';
+} elseif ($role === 'artist' && !$city) {
+    $error = 'City is required.';
+} elseif ($role === 'artist' && !$address) {
+    $error = 'Address is required.';
+} elseif ($role === 'artist' && !$hasBankAccount && !$hasEasypaisa && !$hasJazzcash && !$hasNayapay && !$hasSadapay) {
+    $error = 'Please add at least one payment method.';
+} elseif ($role === 'artist' && $hasBankAccount && (!trim($_POST['bank_name'] ?? '') || !trim($_POST['bank_account_title'] ?? '') || !trim($_POST['bank_account_number'] ?? ''))) {
+    $error = 'Please fill in all bank account details (bank name, account title, and account number).';
+} elseif ($role === 'artist' && $hasEasypaisa && (!trim($_POST['easypaisa_name'] ?? '') || !trim($_POST['easypaisa_number'] ?? ''))) {
+    $error = 'Please fill in your Easypaisa account name and number.';
+} elseif ($role === 'artist' && $hasJazzcash && (!trim($_POST['jazzcash_name'] ?? '') || !trim($_POST['jazzcash_number'] ?? ''))) {
+    $error = 'Please fill in your JazzCash account name and number.';
+} elseif ($role === 'artist' && $hasNayapay && (!trim($_POST['nayapay_name'] ?? '') || !trim($_POST['nayapay_number'] ?? ''))) {
+    $error = 'Please fill in your NayaPay account name and number.';
+} elseif ($role === 'artist' && $hasSadapay && (!trim($_POST['sadapay_name'] ?? '') || !trim($_POST['sadapay_number'] ?? ''))) {
+    $error = 'Please fill in your SadaPay account name and number.';
+} elseif (!isset($_POST['terms'])) {
+    $error = 'You must agree to the Terms & Conditions and Privacy Policy.';
+} else {
         $check = $conn->prepare("SELECT id FROM users WHERE email = ? LIMIT 1");
         $check->bind_param('s', $email);
         $check->execute();
@@ -233,7 +249,7 @@ $stmt   = $conn->prepare("INSERT INTO users (name, email, phone, password_hash, 
                 <input type="email" name="email" placeholder="you@example.com" value="<?= htmlspecialchars($formData['email'] ?? '') ?>" required>
             </div>
             <div class="field">
-                <label>Phone / WhatsApp <span style="color:#ccc;font-size:9px;letter-spacing:0">(optional)</span></label>
+                <label>Phone / WhatsApp</label>
                 <input type="tel" name="phone" placeholder="+92 300 0000000" value="<?= htmlspecialchars($formData['phone'] ?? '') ?>">
             </div>
             <div class="field">
