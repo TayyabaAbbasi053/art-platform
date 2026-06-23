@@ -62,6 +62,9 @@ $redirect = $_GET['redirect'] ?? $_POST['redirect'] ?? '';
 
  $step  = 'login';
  $error = '';
+if (isset($_GET['pending'])) {
+    $error = 'Your artist account is pending admin approval. You will be notified once it is reviewed.';
+}
  $info  = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'login') {
@@ -79,9 +82,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'login
         } elseif (!password_verify($password, $user['password_hash'])) {
             $error = 'Wrong password. Try again.';
         } elseif ($user['status'] === 'blocked') {
-            $error = 'Your account has been suspended.' . (!empty($user['status_reason']) ? ' Reason: ' . $user['status_reason'] : ' Please contact support.');
-        } 
-        else {
+    $error = 'Your account has been suspended.' . (!empty($user['status_reason']) ? ' Reason: ' . $user['status_reason'] : ' Please contact support.');
+} elseif ($user['status'] === 'pending' && $user['role'] === 'artist') {
+    $error = 'Your artist account is pending admin approval. You will be notified once it is reviewed.';
+} else {
             $_SESSION['user_id'] = $user['id'];
             $_SESSION['name']    = $user['name'];
             $_SESSION['role']    = $user['role'];

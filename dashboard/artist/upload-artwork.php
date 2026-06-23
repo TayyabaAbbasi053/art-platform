@@ -17,6 +17,11 @@ if ($__userStatus['status'] === 'blocked') {
     header('Location: ../../login.php?blocked=1&reason=' . urlencode($__userStatus['status_reason'] ?? ''));
     exit;
 }
+if ($__userStatus['status'] === 'pending') {
+    session_destroy();
+    header('Location: ../../login.php?pending=1');
+    exit;
+}
 
 $artistId = (int) $_SESSION['user_id'];  // ← whatever comes next in the file
 

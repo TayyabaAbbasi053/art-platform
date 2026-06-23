@@ -802,9 +802,9 @@ img{max-width:100%;display:block;}
               Account Number: 03304780888
             </div>
 
-            <?php if (!$isCommissionCheckout && !$isDigitalItem): ?>
+            <?php if (!$isCommissionCheckout && !$isDigitalItem && $subtotal <= 10000): ?>
 <!-- COD -->
-<div class="payment-option<?= $total > 10000 ? '' : '' ?>" onclick="selectPayment('cod')" id="cod-option">
+<div class="payment-option" onclick="selectPayment('cod')" id="cod-option">
   <input type="radio" name="payment_method" value="cod">
   <span>💵 Cash on Delivery</span>
 </div>
@@ -827,7 +827,7 @@ img{max-width:100%;display:block;}
               </div>
             </div>
 
-            <?php if (!$isCommissionCheckout && !$isDigitalItem): ?>
+            <?php if (!$isCommissionCheckout && !$isDigitalItem && $subtotal <= 10000): ?>
 <p id="cod-warning" style="display:none;font-size:11px;color:#7D2A14;margin-top:8px;">Cash on Delivery is only available for orders under PKR 10,000 (including shipping). Please choose another payment method.</p>
 <?php endif; ?>
           </div>

@@ -86,7 +86,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
  $types   = '';
 
  $statusFilter = $_GET['status'] ?? '';
-if (in_array($statusFilter, ['active','blocked'])) {
+if (in_array($statusFilter, ['active','blocked','pending'])) {
     $where[] = "u.status = ?";
     $params[] = $statusFilter;
     $types .= 's';
@@ -209,11 +209,11 @@ while ($row = $res->fetch_assoc()) $artists[] = $row;
 
 // Status counts
  $statusCounts = [];
-foreach (['active','blocked'] as $s) {
+foreach (['active','blocked','pending'] as $s) {
     $r = $conn->query("SELECT COUNT(*) FROM users WHERE role='artist' AND status='$s'");
     $statusCounts[$s] = (int)$r->fetch_row()[0];
 }
- $statusCounts['all'] = array_sum($statusCounts);
+$statusCounts['all'] = array_sum($statusCounts);
 
 function buildQS($overrides = []) {
     $q = $_GET;
@@ -673,8 +673,8 @@ tr:hover td { background: var(--bg); box-shadow: 0 4px 12px rgba(12,63,48,.06); 
     <!-- Tabs -->
     <div class="tabs">
         <a href="?<?= buildQS(['status' => null, 'featured' => null]) ?>" class="tab <?= !$statusFilter && !isset($_GET['featured']) ? 'active' : '' ?>">All <span class="count"><?= $statusCounts['all'] ?></span></a>
-        <?php foreach (['active','blocked'] as $s): ?>
-        <a href="?<?= buildQS(['status' => $s, 'featured' => null]) ?>" class="tab <?= $statusFilter === $s ? 'active' : '' ?>"><?= ucfirst($s) ?> <span class="count"><?= $statusCounts[$s] ?></span></a>
+        <?php foreach (['active','blocked','pending'] as $s): ?>
+        <a href="?<?= buildQS(['status' => $s, 'featured' => null]) ?>" class="tab <?= $statusFilter === $s ? 'active' : '' ?>"><?= ucfirst($s) ?> <span class="count <?= $s === 'pending' && $statusCounts['pending'] > 0 ? 'hot' : '' ?>"><?= $statusCounts[$s] ?></span></a>
         <?php endforeach; ?>
         <a href="?<?= buildQS(['featured' => '1', 'status' => null]) ?>" class="tab <?= (isset($_GET['featured']) && $_GET['featured'] === '1' && !$statusFilter) ? 'active' : '' ?>">★ Featured</a>
     </div>
@@ -781,6 +781,8 @@ tr:hover td { background: var(--bg); box-shadow: 0 4px 12px rgba(12,63,48,.06); 
                                 <button type="button" class="act-btn red" onclick="openBlock(<?= $a['id'] ?>, '<?= htmlspecialchars(addslashes($a['name'])) ?>')">Block</button>
                             <?php elseif ($a['status'] === 'blocked'): ?>
                                 <form method="POST" style="display:inline"><input type="hidden" name="action" value="unblock"><input type="hidden" name="id" value="<?= $a['id'] ?>"><button type="submit" class="act-btn approve">Unblock</button></form>
+                            <?php elseif ($a['status'] === 'pending'): ?>
+                                <form method="POST" style="display:inline"><input type="hidden" name="action" value="unblock"><input type="hidden" name="id" value="<?= $a['id'] ?>"><button type="submit" class="act-btn approve">Approve</button></form>
                             <?php endif; ?>
                             <button type="button" class="act-btn red" onclick="openDelete(<?= $a['id'] ?>, '<?= htmlspecialchars(addslashes($a['name'])) ?>', <?= $a['art_count'] ?>)">Delete</button>
                         </div>

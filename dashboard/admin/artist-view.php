@@ -508,13 +508,12 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
                         <div style="width:100%;aspect-ratio:1;background:var(--sand);display:flex;align-items:center;justify-content:center;color:var(--ink);font-size:10px;opacity:0.5;">No image</div>
                     <?php endif; ?>
                     <div class="aw-card-info">
-                        <div class="aw-title" title="<?= htmlspecialchars($aw['title']) ?>"><?= htmlspecialchars($aw['title']) ?></div>
-                        <div class="aw-bottom">
-                            <span class="aw-price">PKR <?= number_format($aw['price']) ?></span>
-                            <span class="pill <?= $aw['status'] ?>" style="font-size:8px;padding:2px 6px;"><?= ucfirst($aw['status']) ?></span>
-                        </div>
-                        <a href="artwork-edit.php?id=<?= $aw['id'] ?>" class="aw-link" style="display:block;margin-top:4px;">Edit →</a>
-                    </div>
+    <div class="aw-title" title="<?= htmlspecialchars($aw['title']) ?>"><?= htmlspecialchars($aw['title']) ?></div>
+    <div class="aw-bottom">
+        <span class="aw-price">PKR <?= number_format($aw['price']) ?></span>
+        <span class="pill <?= $aw['status'] ?>" style="font-size:8px;padding:2px 6px;"><?= ucfirst($aw['status']) ?></span>
+    </div>
+</div>
                 </div>
                 <?php endforeach; ?>
             </div>

@@ -131,8 +131,8 @@ $hasSadapay     = isset($_POST['has_sadapay'])       ? 1 : 0;
             $error = 'An account with this email already exists.';
         } else {
             $hash   = password_hash($password, PASSWORD_BCRYPT);
-            $status = 'active';
-            $stmt   = $conn->prepare("INSERT INTO users (name, email, phone, password_hash, role, status) VALUES (?, ?, ?, ?, ?, ?)");
+$status = ($role === 'artist') ? 'pending' : 'active';
+$stmt   = $conn->prepare("INSERT INTO users (name, email, phone, password_hash, role, status) VALUES (?, ?, ?, ?, ?, ?)");
             $stmt->bind_param('ssssss', $name, $email, $phone, $hash, $role, $status);
 
             if ($stmt->execute()) {
@@ -171,7 +171,7 @@ $hasSadapay     = isset($_POST['has_sadapay'])       ? 1 : 0;
                         $hasSadapay,   $spName, $spNum
                     );
                     $profile->execute();
-                    $success = 'Artist account created! You can log in right away.';
+                    $success = 'Artist account created! Your account is pending admin approval. You will be able to log in once approved.';
                 } else {
                     $success = 'Account created successfully! You can now log in.';
                 }
