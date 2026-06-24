@@ -171,7 +171,7 @@ img{max-width:100%;display:block;}
       <a href="artworks.php">Explore Art</a>
       <a href="artists.php">Artists</a>
       <a href="blog.php">Blog</a>
-      <a href="commission.php">Commission Art</a>
+      <a href="commission.php">Custom Artwork</a>
       <a href="sell.php" class="active">Sell Your Art</a>
       <a href="about.php">About Us</a>
       <a href="contact.php">Contact</a>
@@ -205,7 +205,7 @@ img{max-width:100%;display:block;}
     <div class="hero-inner" style="padding:0 28px;">
       <div class="hero-tag">FOR ARTISTS</div>
       <h1>Share your art with the world.<br><em>Start selling</em> on Art Bazaar.</h1>
-      <p class="hero-desc">Join a growing community of Pakistani artists who are reaching collectors across the country — with zero upfront cost and fair commission rates.</p>
+      <p class="hero-desc">Join a growing community of Pakistani artists who are reaching collectors across the country.</p>
     </div>
   </div>
 </section>
@@ -222,7 +222,7 @@ img{max-width:100%;display:block;}
     </div>
     <div class="why-card">
       <div class="why-icon"><svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></div>
-      <h4>Commission requests</h4>
+      <h4>Custom Artwork Requests</h4>
       <p>Buyers can request custom work directly from you. Turn your skills into personalized creations.</p>
     </div>
     <div class="why-card">
@@ -258,7 +258,7 @@ img{max-width:100%;display:block;}
     <div class="faq-grid">
       <div class="faq-item">
         <h4>How much does it cost to join?</h4>
-        <p>Joining Art Bazaar is completely free. There are no upfront fees or subscription costs. We only take a small commission when you make a sale.</p>
+        <p>Joining Art Bazaar is completely free. There are no upfront fees or subscription costs.</p>
       </div>
       <div class="faq-item">
         <h4>How do I get paid?</h4>
@@ -273,7 +273,7 @@ img{max-width:100%;display:block;}
         <p>Artwork submissions are reviewed within 2-3 business days. Once approved, your artwork appears immediately in the marketplace.</p>
       </div>
       <div class="faq-item">
-        <h4>Can I accept custom commissions?</h4>
+        <h4>Can I accept custom artwork?</h4>
         <p>Yes! Enable commissions in your profile settings. Buyers can request custom work, and you'll be notified when a request comes in.</p>
       </div>
     </div>
@@ -298,7 +298,7 @@ img{max-width:100%;display:block;}
       <div class="fb"><b>Art Bazaar</b><p>Pakistan's premier marketplace for original art. Connecting talented Pakistani artists with art lovers across the country.</p></div>
       <div class="fc"><h4>Explore</h4><a href="artworks.php">All Artworks</a><a href="artists.php">All Artists</a><a href="artworks.php?featured=1">Featured</a></div>
       <div class="fc"><h4>For Artists</h4><a href="sell.php">How to Sell</a><a href="register.php">Join as Artist</a><a href="login.php">Artist Login</a></div>
-      <div class="fc"><h4>Company</h4><a href="about.php">About Us</a><a href="contact.php">Contact</a><a href="commission.php">Commissions</a><a href="terms.php">Terms & Conditions</a><a href="privacy-policy.php">Privacy & Policies</a></div>
+      <div class="fc"><h4>Company</h4><a href="about.php">About Us</a><a href="contact.php">Contact</a><a href="commission.php">Custom Artwork</a><a href="terms.php">Terms & Conditions</a><a href="privacy-policy.php">Privacy & Policies</a></div>
     </div>
     <div class="fbot"><span>© <?= date('Y') ?> Art Bazaar. Supporting Pakistani artists.</span><span>Made with care in Pakistan 🇵🇰</span></div>
   </div>
@@ -315,7 +315,7 @@ img{max-width:100%;display:block;}
     <a href="artworks.php">Explore Art</a>
     <a href="artists.php">Artists</a>
     <a href="blog.php">Blog</a>
-    <a href="commission.php">Commission Art</a>
+    <a href="commission.php">Custom Artwork</a>
     <a href="sell.php">Sell Your Art</a>
     <a href="about.php">About Us</a>
     <a href="contact.php">Contact</a>

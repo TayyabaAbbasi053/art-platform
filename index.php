@@ -67,7 +67,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'conta
 }
 
 // ============================================================
-// HANDLE COMMISSION FORM SUBMISSION (UNIFIED WITH COMMISSION.PHP)
+// HANDLE COMMISSION FORM SUBMISSION  
 // ============================================================
  $commissionError = false;
 
@@ -457,7 +457,7 @@ h1.htitle em{font-style:italic;color:var(--ink);}
       <a href="artworks.php" class="dd">Explore Art</a>
       <a href="artists.php">Artists</a>
       <a href="blog.php">Blog</a> 
-      <a href="commission.php">Commission Art</a>
+      <a href="commission.php">Custom Artwork</a>
       <a href="sell.php">Sell Your Art</a>
       <a href="about.php">About Us</a>
       <a href="contact.php">Contact</a>
@@ -492,7 +492,6 @@ h1.htitle em{font-style:italic;color:var(--ink);}
     <p class="hdesc">A platform dedicated to supporting Pakistani talent. Explore paintings, sketches, calligraphy, digital art and request custom commissions.</p>
     <div class="hbtns">
       <a href="artworks.php" class="btn-fill">Explore Artworks <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg></a>
-      <button class="btn-line" onclick="document.getElementById('cm').classList.add('open')">Commission Art <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></button>
       <a href="sell.php" class="btn-line">Sell Your Art <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg></a>
     </div>
     <div class="htrust">
@@ -572,7 +571,7 @@ h1.htitle em{font-style:italic;color:var(--ink);}
         <div class="ar-city"><?= htmlspecialchars($a['city'] ?? '') ?></div>
         <div class="ar-btns">
           <a href="artist-profile.php?id=<?= $a['id'] ?>" class="ar-btn">View Profile</a>
-          <?php if ($a['accepts_commissions']): ?><button class="ar-btn p" onclick="openCM(<?= $a['id'] ?>,'<?= addslashes($a['name']) ?>')">Commission</button><?php endif; ?>
+          <?php if ($a['accepts_commissions']): ?><button class="ar-btn p" onclick="openCM(<?= $a['id'] ?>,'<?= addslashes($a['name']) ?>')">Request Custom Art</button><?php endif; ?>
         </div>
       </div>
       <?php endforeach; ?>
@@ -661,7 +660,7 @@ h1.htitle em{font-style:italic;color:var(--ink);}
       <div class="fb"><b>Art Bazaar</b><p>Pakistan's premier marketplace for original art. Connecting talented Pakistani artists with art lovers across the country.</p></div>
       <div class="fc"><h4>Explore</h4><a href="artworks.php">All Artworks</a><a href="artists.php">All Artists</a><a href="artworks.php?featured=1">Featured</a></div>
       <div class="fc"><h4>For Artists</h4><a href="sell.php">How to Sell</a><a href="register.php">Join as Artist</a><a href="login.php">Artist Login</a></div>
-      <div class="fc"><h4>Company</h4><a href="about.php">About Us</a><a href="contact.php">Contact</a><a href="commission.php">Commissions</a><a href="terms.php">Terms & Conditions</a><a href="privacy-policy.php">Privacy & Policies</a></div>
+      <div class="fc"><h4>Company</h4><a href="about.php">About Us</a><a href="contact.php">Contact</a><a href="commission.php">Custom Artwork</a><a href="terms.php">Terms & Conditions</a><a href="privacy-policy.php">Privacy & Policies</a></div>
     </div>
     <div class="fbot"><span>© <?= date('Y') ?> Art Bazaar. Supporting Pakistani artists.</span><span>Made with care in Pakistan 🇵🇰</span></div>
   </div>
@@ -797,7 +796,7 @@ h1.htitle em{font-style:italic;color:var(--ink);}
     <a href="artworks.php">Explore Art</a>
     <a href="artists.php">Artists</a>
     <a href="blog.php">Blog</a>
-    <a href="commission.php" class="active">Commission Art</a>
+    <a href="commission.php" class="active">Custom Artwork</a>
     <a href="sell.php">Sell Your Art</a>
     <a href="about.php">About Us</a>
     <a href="contact.php">Contact</a>

@@ -127,7 +127,7 @@ img{display:block;max-width:100%;}
       <a href="artworks.php">Explore Art</a>
       <a href="artists.php">Artists</a>
       <a href="blog.php">Blog</a> 
-      <a href="commission.php">Commission Art</a>
+      <a href="commission.php">Custom Artwork</a>
       <a href="sell.php">Sell Your Art</a>
       <a href="about.php">About Us</a>
       <a href="contact.php">Contact</a>
@@ -161,7 +161,7 @@ img{display:block;max-width:100%;}
     <a href="artworks.php">Explore Art</a>
     <a href="artists.php">Artists</a>
     <a href="blog.php">Blog</a>
-    <a href="commission.php">Commission Art</a>
+    <a href="commission.php">Custom Artwork</a>
     <a href="sell.php">Sell Your Art</a>
     <a href="about.php">About Us</a>
     <a href="contact.php">Contact</a>
@@ -204,6 +204,9 @@ img{display:block;max-width:100%;}
       <li>Platform-managed payment and delivery guidance</li>
     </ul>
     <p class="terms-text">Art Bazaar Pakistan acts as a platform between buyers and artists. We help manage requests, communication, payment instructions, and order updates to make the process safer and clearer.</p>
+    <div class="terms-highlight-box">
+      <p>We are a marketplace. Artists are independent sellers and are responsible for their own artwork, originality, descriptions, pricing, packaging, and fulfillment. Art Bazaar Pakistan does not own or automatically endorse every artwork, but we can review, hide, reject, suspend, or remove content/accounts if needed.</p>
+    </div>
   </div>
 
   <!-- 2 -->
@@ -257,7 +260,6 @@ img{display:block;max-width:100%;}
       <li>Stolen artwork</li>
       <li>Copied artwork</li>
       <li>AI/generated or edited work falsely presented as handmade/original</li>
-      <li>Copyrighted characters or designs unless they have permission</li>
       <li>Artwork copied from another artist, website, Pinterest, Instagram, or Google</li>
       <li>Offensive, misleading, or illegal content</li>
     </ul>
@@ -512,7 +514,7 @@ img{display:block;max-width:100%;}
       </div>
       <div class="fc"><h4>Explore</h4><a href="artworks.php">All Artworks</a><a href="artists.php">All Artists</a><a href="artworks.php?featured=1">Featured</a></div>
       <div class="fc"><h4>For Artists</h4><a href="sell.php">How to Sell</a><a href="register.php">Join as Artist</a><a href="login.php">Artist Login</a></div>
-      <div class="fc"><h4>Company</h4><a href="about.php">About Us</a><a href="contact.php">Contact</a><a href="commission.php">Commissions</a><a href="terms.php">Terms & Conditions</a><a href="privacy-policy.php">Privacy & Policies</a></div>
+      <div class="fc"><h4>Company</h4><a href="about.php">About Us</a><a href="contact.php">Contact</a><a href="commission.php">Custom Artwork</a><a href="terms.php">Terms & Conditions</a><a href="privacy-policy.php">Privacy & Policies</a></div>
     </div>
     <div class="fbot">
       <span>© <?= date('Y') ?> Art Bazaar. Supporting Pakistani artists.</span>

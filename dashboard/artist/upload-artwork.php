@@ -671,7 +671,6 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
         <li style="font-size:11px;color:var(--ink);">✓ Clear, well-lit photo of the actual artwork</li>
         <li style="font-size:11px;color:var(--ink);">✗ No watermarks covering the artwork</li>
         <li style="font-size:11px;color:var(--ink);">✗ Do not upload stolen or unoriginal work</li>
-        <li style="font-size:11px;color:var(--ink);">✗ No copyrighted characters (Disney, Marvel, etc.) unless you hold the rights</li>
         <li style="font-size:11px;color:var(--ink);">✗ No AI-generated artwork</li>
     </ul>
     <div style="font-size:10px;color:var(--ink);opacity:0.6;margin-top:8px;border-top:1px solid var(--border);padding-top:8px;">Violations may result in artwork rejection or account suspension.</div>

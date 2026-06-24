@@ -285,7 +285,7 @@ h1{font-family:'Playfair Display',serif;font-size:clamp(24px,2.5vw,32px);font-we
       <a href="artworks.php">Explore Art</a>
       <a href="artists.php">Artists</a>
       <a href="blog.php">Blog</a>
-      <a href="commission.php">Commission Art</a>
+      <a href="commission.php">Custom Artwork</a>
       <a href="sell.php">Sell Your Art</a>
       <a href="about.php">About Us</a>
       <a href="contact.php">Contact</a>
@@ -459,7 +459,7 @@ h1{font-family:'Playfair Display',serif;font-size:clamp(24px,2.5vw,32px);font-we
     <a href="artworks.php">Explore Art</a>
     <a href="artists.php">Artists</a>
     <a href="blog.php">Blog</a>
-    <a href="commission.php">Commission Art</a>
+    <a href="commission.php">Custom Artwork</a>
     <a href="sell.php">Sell Your Art</a>
     <a href="about.php">About Us</a>
     <a href="contact.php">Contact</a>
@@ -482,7 +482,7 @@ h1{font-family:'Playfair Display',serif;font-size:clamp(24px,2.5vw,32px);font-we
       <div class="fb"><b>Art Bazaar</b><p>Pakistan's premier marketplace for original art. Connecting talented Pakistani artists with art lovers across the country.</p></div>
       <div class="fc"><h4>Explore</h4><a href="artworks.php">All Artworks</a><a href="artists.php">All Artists</a><a href="artworks.php?featured=1">Featured</a></div>
       <div class="fc"><h4>For Artists</h4><a href="sell.php">How to Sell</a><a href="register.php">Join as Artist</a><a href="login.php">Artist Login</a></div>
-      <div class="fc"><h4>Company</h4><a href="about.php">About Us</a><a href="contact.php">Contact</a><a href="commission.php">Commissions</a><a href="terms.php">Terms & Conditions</a><a href="privacy-policy.php">Privacy & Policies</a></div>
+      <div class="fc"><h4>Company</h4><a href="about.php">About Us</a><a href="contact.php">Contact</a><a href="commission.php">Custom Artwork</a><a href="terms.php">Terms & Conditions</a><a href="privacy-policy.php">Privacy & Policies</a></div>
     </div>
     <div class="fbot"><span>© <?= date('Y') ?> Art Bazaar. Supporting Pakistani artists.</span><span>Made with care in Pakistan 🇵🇰</span></div>
   </div>

@@ -373,7 +373,7 @@ img{max-width:100%;display:block;}
       <a href="artworks.php">Explore Art</a>
       <a href="artists.php">Artists</a>
       <a href="blog.php">Blog</a>
-      <a href="commission.php" class="active">Commission Art</a>
+      <a href="commission.php" class="active">Custom Artwork</a>
       <a href="sell.php">Sell Your Art</a>
       <a href="about.php">About Us</a>
       <a href="contact.php">Contact</a>
@@ -416,7 +416,7 @@ img{max-width:100%;display:block;}
   <!-- LEFT: HOW IT WORKS -->
   <div>
     <div class="process-section">
-      <h3 class="process-title">How commissions work</h3>
+      <h3 class="process-title">How it works?</h3>
       
       <div class="process-step">
         <div class="step-num">1</div>
@@ -449,22 +449,6 @@ img{max-width:100%;display:block;}
           <p>The artist creates your custom piece, shares progress updates, and delivers the final artwork to your doorstep.</p>
         </div>
       </div>
-    </div>
-    
-    <div class="info-box">
-      <h4>
-        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        What can I commission?
-      </h4>
-      <p>Pakistani artists specialize in a wide range of styles:</p>
-      <ul>
-        <li>🎨 Oil & acrylic paintings</li>
-        <li>✍️ Calligraphy & Islamic art</li>
-        <li>👤 Portraits (family, pet, personal)</li>
-        <li>🏞️ Landscapes & cityscapes</li>
-        <li>🖌️ Digital art & illustrations</li>
-        <li>🎭 Abstract & contemporary art</li>
-      </ul>
     </div>
   </div>
   
@@ -650,7 +634,7 @@ img{max-width:100%;display:block;}
       <div class="fb"><b>Art Bazaar</b><p>Pakistan's premier marketplace for original art. Connecting talented Pakistani artists with art lovers across the country.</p></div>
       <div class="fc"><h4>Explore</h4><a href="artworks.php">All Artworks</a><a href="artists.php">All Artists</a><a href="artworks.php?featured=1">Featured</a></div>
       <div class="fc"><h4>For Artists</h4><a href="sell.php">How to Sell</a><a href="register.php">Join as Artist</a><a href="login.php">Artist Login</a></div>
-      <div class="fc"><h4>Company</h4><a href="about.php">About Us</a><a href="contact.php">Contact</a><a href="commission.php">Commissions</a><a href="terms.php">Terms & Conditions</a><a href="privacy-policy.php">Privacy & Policies</a></div>
+      <div class="fc"><h4>Company</h4><a href="about.php">About Us</a><a href="contact.php">Contact</a><a href="commission.php">Custom Artwork</a><a href="terms.php">Terms & Conditions</a><a href="privacy-policy.php">Privacy & Policies</a></div>
     </div>
     <div class="fbot"><span>© <?= date('Y') ?> Art Bazaar. Supporting Pakistani artists.</span><span>Made with care in Pakistan 🇵🇰</span></div>
   </div>
@@ -667,7 +651,7 @@ img{max-width:100%;display:block;}
     <a href="artworks.php">Explore Art</a>
     <a href="artists.php">Artists</a>
     <a href="blog.php">Blog</a>
-    <a href="commission.php" class="active">Commission Art</a>
+    <a href="commission.php" class="active">Custom Artwork</a>
     <a href="sell.php">Sell Your Art</a>
     <a href="about.php">About Us</a>
     <a href="contact.php">Contact</a>
