@@ -510,7 +510,7 @@ img{max-width:100%;display:block;}
       <?php if ($artist['accepts_commissions']): ?>
         <button class="comm-btn" onclick="openCM(<?= $artist['id'] ?>, '<?= addslashes($artist['name']) ?>')">
           <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
-          Request Commission
+          Request Custom Artwork
         </button>
       <?php else: ?>
         <button class="comm-btn disabled" disabled>Commissions Currently Closed</button>

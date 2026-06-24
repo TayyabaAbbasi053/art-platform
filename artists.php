@@ -464,7 +464,7 @@ select.filter-input {
       <div class="artist-buttons">
         <a href="artist-profile.php?id=<?= $a['id'] ?>" class="art-btn outline">View Profile</a>
         <?php if ($a['accepts_commissions']): ?>
-          <button class="art-btn solid" onclick="openCommissionModal(<?= $a['id'] ?>, '<?= addslashes($a['name']) ?>')">Commission</button>
+          <button class="art-btn solid" onclick="openCommissionModal(<?= $a['id'] ?>, '<?= addslashes($a['name']) ?>')">Request Custom Art</button>
         <?php else: ?>
           <button class="art-btn solid disabled" disabled>Commissions Off</button>
         <?php endif; ?>
