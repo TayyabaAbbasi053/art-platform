@@ -362,7 +362,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_
     $id = (int)($_POST['id'] ?? 0);
     if ($id) {
         $orderRow = $conn->query("
-            SELECT o.id, o.order_number, o.order_status, o.total,
+            SELECT o.id, o.order_number, o.order_status, o.total, o.proposed_weight_kg,
                    o.shipping_address, o.shipping_city, o.shipping_phone,
                    o.guest_name, o.guest_email, o.guest_phone,
                    o.commission_description,
@@ -399,7 +399,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_
                 'payment_method'    => 'bank_transfer',
                 'amount'            => $orderRow['total'] ?? 0,
                 'product_count'     => 1,
-                'weight'            => 0.5,
+                'weight'            => (float)($orderRow['proposed_weight_kg'] ?? 0.5),
                 'products'          => [[
                     'sku'  => 'commission-' . $orderRow['id'],
                     'name' => 'Commission #' . $orderRow['order_number'],

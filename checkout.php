@@ -11,6 +11,24 @@ if (!isset($_SESSION['user_id'])) {
  $buyerId = (int)$_SESSION['user_id'];
  $buyerEmail = $_SESSION['email'] ?? '';
  $buyerName = $_SESSION['name'] ?? '';
+ $pakistaniCities = [
+    'Abbottabad','Ahmedpur East','Arif Wala','Attock','Badin','Bahawalnagar','Bahawalpur',
+    'Barikot','Bhakkar','Bhalwal','Bholari','Burewala','Chaman','Charsadda','Chichawatni',
+    'Chiniot','Chishtian','Dadu','Daska','Dera Ghazi Khan','Dera Ismail Khan','Dera Murad Jamali',
+    'Dipalpur','Faisalabad','Farooqabad','Ferozwala','Ghotki','Gojra','Gujar Khan','Gujranwala',
+    'Gujranwala Cantonment','Gujrat','Hafizabad','Haroonabad','Hasilpur','Haveli Lakha','Hub',
+    'Hyderabad','Islamabad','Jacobabad','Jalalpur Jattan','Jampur','Jaranwala','Jatoi','Jauharabad',
+    'Jhang','Jhelum','Kabal','Kamalia','Kamber Ali Khan','Kamoke','Karachi','Kasur','Khairpur',
+    'Khanewal','Khanpur','Kharian','Khushab','Khuzdar','Kohat','Kot Abdul Malik','Kot Addu',
+    'Kot Radha Kishan','Kotri','Lahore','Lala Musa','Larkana','Layyah','Lodhran','Ludhewala Waraich',
+    'Mailsi','Mandi Bahauddin','Mansehra','Mardan','Mian Channu','Mianwali','Mingora','Mirpur',
+    'Mirpur Khas','Moro','Multan','Muridke','Muzaffarabad','Muzaffargarh','Narowal','Nawabshah',
+    'Nowshera','Okara','Pakpattan','Panjgur','Pasrur','Pattoki','Phool Nagar','Pishin','Quetta',
+    'Rahim Yar Khan','Rajanpur','Rawalpindi','Renala Khurd','Sadiqabad','Sahiwal','Sambrial',
+    'Samundri','Sangla Hill','Sargodha','Shabqadar','Shahdadkot','Shahdadpur','Shakargarh',
+    'Shikarpur','Shujabad','Sialkot','Sukkur','Swabi','Taxila','Tando Adam','Tando Allahyar',
+    'Tando Muhammad Khan','Taunsa','Turbat','Umerkot','Vehari','Wah Cantonment','Wazirabad'
+];
 
 // ── Determine checkout flow ──────────────────────────────
  $commissionOrderId = isset($_GET['order_id']) && ($_GET['type'] ?? '') === 'commission' ? (int)$_GET['order_id'] : 0;
@@ -80,14 +98,19 @@ if ($ajaxArtworkId > 0) {
     // Check if this is a commission checkout
 $commissionOrderIdAjax = isset($_POST['commission_order_id']) ? (int)$_POST['commission_order_id'] : 0;
 if ($commissionOrderIdAjax > 0) {
-    $crRes = $conn->query("SELECT cr.artist_id FROM commission_requests cr WHERE cr.order_id = $commissionOrderIdAjax LIMIT 1");
-    $artistIdAjax = $crRes ? ($crRes->fetch_assoc()['artist_id'] ?? null) : null;
+    $crRes = $conn->query("SELECT cr.artist_id, o.proposed_weight_kg FROM commission_requests cr JOIN orders o ON o.id = cr.order_id WHERE cr.order_id = $commissionOrderIdAjax LIMIT 1");
+    $crRowAjax = $crRes ? $crRes->fetch_assoc() : null;
+    $artistIdAjax = $crRowAjax['artist_id'] ?? null;
+    $weightKgAjax = (float)(($crRowAjax['proposed_weight_kg'] ?? null) ?: 1.00);
     $artistCityAjax = '';
     if ($artistIdAjax) {
         $apRes = $conn->query("SELECT city FROM artist_profiles WHERE user_id = $artistIdAjax LIMIT 1");
         if ($apRes) $artistCityAjax = $apRes->fetch_assoc()['city'] ?? '';
     }
-    $fee = (!empty($artistCityAjax) && strcasecmp(trim($buyerCity), trim($artistCityAjax)) === 0) ? 300 : 500;
+    $baseAjax = (!empty($artistCityAjax) && strcasecmp(trim($buyerCity), trim($artistCityAjax)) === 0) ? 300 : 500;
+    $surchargeAjax = (int)(max(0, ceil($weightKgAjax - 1)) * 100);
+    $fee = $baseAjax + $surchargeAjax;
+    $breakdown[] = 'PKR ' . $baseAjax . ($surchargeAjax > 0 ? ' + PKR ' . $surchargeAjax . ' (weight)' : '') . ' = PKR ' . $fee;
 } else {
     $fee = calculateShippingServerSide($conn, $buyerCity, $items);
 }
@@ -300,7 +323,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
         $res = $conn->query("SELECT city FROM artist_profiles WHERE user_id = $artistId LIMIT 1");
         if ($res) $artistCity = $res->fetch_assoc()['city'] ?? '';
     }
-    $finalShippingFee = (!empty($artistCity) && strcasecmp(trim($city), trim($artistCity)) === 0) ? 300 : 500;
+    $finalWeightKg = (float)(($existingOrder['proposed_weight_kg'] ?? null) ?: 1.00);
+    $finalBase = (!empty($artistCity) && strcasecmp(trim($city), trim($artistCity)) === 0) ? 300 : 500;
+    $finalSurcharge = (int)(max(0, ceil($finalWeightKg - 1)) * 100);
+    $finalShippingFee = $finalBase + $finalSurcharge;
 } else {
     $finalShippingFee = calculateShippingServerSide($conn, $city, $cartItems);
 }
@@ -470,6 +496,14 @@ img{max-width:100%;display:block;}
 .form-group input,.form-group select,.form-group textarea{width:100%;padding:10px 14px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;background:var(--bg);outline:none;transition:border-color .12s;}
 .form-group input:focus,.form-group select:focus,.form-group textarea:focus{border-color:var(--ink);}
 .form-group textarea{min-height:80px;resize:vertical;}
+.city-search-wrap{position:relative;}
+.city-search-input{width:100%;padding:10px 14px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;background:var(--bg);outline:none;color:var(--ink);}
+.city-search-input:focus{border-color:var(--ink);}
+.city-dropdown{display:none;position:absolute;top:100%;left:0;right:0;background:var(--bg);border:1.5px solid var(--border);border-radius:8px;max-height:180px;overflow-y:auto;z-index:50;box-shadow:0 8px 20px rgba(0,0,0,0.1);margin-top:4px;}
+.city-dropdown.open{display:block;}
+.city-option{padding:8px 14px;font-size:13px;color:var(--ink);cursor:pointer;}
+.city-option:hover,.city-option.active{background:var(--sand);}
+.city-no-results{padding:8px 14px;font-size:11.5px;color:var(--muted);font-style:italic;}
 .checkbox-group{display:flex;align-items:center;gap:8px;margin-top:8px;}
 .checkbox-group input{width:16px;height:16px;margin:0;}
 .checkbox-group label{text-transform:none;letter-spacing:0;font-size:12px;margin:0;color:var(--body);}
@@ -701,7 +735,11 @@ img{max-width:100%;display:block;}
           <div class="form-row">
             <div class="form-group">
               <label>City <span>*</span></label>
-              <input type="text" name="city" id="city" placeholder="Enter city to calculate shipping" required>
+              <div class="city-search-wrap">
+                <input type="text" class="city-search-input" id="citySearchInput" placeholder="Search or type your city..." autocomplete="off">
+                <input type="hidden" name="city" id="city" required>
+                <div class="city-dropdown" id="cityDropdown"></div>
+              </div>
             </div>
             <div class="form-group">
               <label>Postal Code (Optional)</label>
@@ -880,6 +918,78 @@ img{max-width:100%;display:block;}
 </div>
 
 <script>
+  const PK_CITIES = <?= json_encode($pakistaniCities) ?>;
+
+function initCitySearch(searchId, hiddenId, dropdownId) {
+    const searchInput = document.getElementById(searchId);
+    const hiddenInput = document.getElementById(hiddenId);
+    const dropdown = document.getElementById(dropdownId);
+    if (!searchInput || !hiddenInput || !dropdown) return;
+    let activeIndex = -1;
+
+    function renderOptions(filter) {
+        const f = filter.trim().toLowerCase();
+        const matches = f ? PK_CITIES.filter(c => c.toLowerCase().includes(f)) : PK_CITIES;
+        dropdown.innerHTML = '';
+        if (matches.length === 0) {
+            dropdown.innerHTML = '<div class="city-no-results">No match — your typed city will be used as entered</div>';
+        } else {
+            matches.slice(0, 50).forEach((city) => {
+                const opt = document.createElement('div');
+                opt.className = 'city-option';
+                opt.textContent = city;
+                opt.addEventListener('mousedown', (e) => {
+                    e.preventDefault();
+                    selectCity(city);
+                });
+                dropdown.appendChild(opt);
+            });
+        }
+        activeIndex = -1;
+    }
+
+    function selectCity(city) {
+        searchInput.value = city;
+        hiddenInput.value = city;
+        hiddenInput.dispatchEvent(new Event('input', { bubbles: true }));
+        dropdown.classList.remove('open');
+    }
+
+    searchInput.addEventListener('input', () => {
+        hiddenInput.value = searchInput.value;
+        hiddenInput.dispatchEvent(new Event('input', { bubbles: true }));
+        renderOptions(searchInput.value);
+        dropdown.classList.add('open');
+    });
+    searchInput.addEventListener('focus', () => {
+        renderOptions(searchInput.value);
+        dropdown.classList.add('open');
+    });
+    searchInput.addEventListener('blur', () => {
+        setTimeout(() => dropdown.classList.remove('open'), 100);
+    });
+    searchInput.addEventListener('keydown', (e) => {
+        const options = dropdown.querySelectorAll('.city-option');
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            activeIndex = Math.min(activeIndex + 1, options.length - 1);
+            options.forEach((o, i) => o.classList.toggle('active', i === activeIndex));
+            if (options[activeIndex]) options[activeIndex].scrollIntoView({ block: 'nearest' });
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            activeIndex = Math.max(activeIndex - 1, 0);
+            options.forEach((o, i) => o.classList.toggle('active', i === activeIndex));
+            if (options[activeIndex]) options[activeIndex].scrollIntoView({ block: 'nearest' });
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if (options[activeIndex]) selectCity(options[activeIndex].textContent);
+        } else if (e.key === 'Escape') {
+            dropdown.classList.remove('open');
+        }
+    });
+}
+
+initCitySearch('citySearchInput', 'city', 'cityDropdown');
 // Hamburger drawer
 const hamBtn = document.querySelector('.ham-btn');
 const navDrawer = document.getElementById('nav-drawer');
@@ -1070,6 +1180,7 @@ function selectAddress(element, address, city, phone) {
   element.classList.add('selected');
   
   document.getElementById('address').value = address;
+  document.getElementById('citySearchInput').value = city;
   document.getElementById('city').value = city;
   document.getElementById('phone').value = phone;
   

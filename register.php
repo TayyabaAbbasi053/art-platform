@@ -60,6 +60,15 @@ button[type=submit]:hover{background:#0a5240;}
 .two-col{display:flex;gap:12px;}
 .two-col .field{flex:1;}
 
+.city-search-wrap{position:relative;}
+.city-dropdown{display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #e0e0e0;border-radius:8px;max-height:180px;overflow-y:auto;z-index:50;box-shadow:0 8px 20px rgba(0,0,0,0.08);margin-top:4px;}
+.city-dropdown.open{display:block;}
+.city-option{padding:8px 12px;font-size:12.5px;color:#0a0a0a;cursor:pointer;}
+.city-option:hover,.city-option.active{background:#f0f8f5;}
+.city-no-results{padding:8px 12px;font-size:11.5px;color:#999;font-style:italic;}
+.city-search-input{width:100%;border:none;border-bottom:1.5px solid #e0e0e0;padding:6px 0;font-size:13px;font-family:'DM Sans',sans-serif;color:#0a0a0a;outline:none;background:transparent;}
+.city-search-input:focus{border-bottom-color:#0a0a0a;}
+
 .logo-text{font-family:'Playfair Display',serif;font-size:20px;color:#fff;text-decoration:none;font-weight:500;letter-spacing:2px;display:inline-block;}
 .logo-text span{color:#8fbc8f;}
 
@@ -89,6 +98,25 @@ require_once __DIR__ . '/config/db.php';
  $error = '';
  $success = '';
  $formData = $_POST;
+
+ $pakistaniCities = [
+    'Abbottabad','Ahmedpur East','Arif Wala','Attock','Badin','Bahawalnagar','Bahawalpur',
+    'Barikot','Bhakkar','Bhalwal','Bholari','Burewala','Chaman','Charsadda','Chichawatni',
+    'Chiniot','Chishtian','Dadu','Daska','Dera Ghazi Khan','Dera Ismail Khan','Dera Murad Jamali',
+    'Dipalpur','Faisalabad','Farooqabad','Ferozwala','Ghotki','Gojra','Gujar Khan','Gujranwala',
+    'Gujranwala Cantonment','Gujrat','Hafizabad','Haroonabad','Hasilpur','Haveli Lakha','Hub',
+    'Hyderabad','Islamabad','Jacobabad','Jalalpur Jattan','Jampur','Jaranwala','Jatoi','Jauharabad',
+    'Jhang','Jhelum','Kabal','Kamalia','Kamber Ali Khan','Kamoke','Karachi','Kasur','Khairpur',
+    'Khanewal','Khanpur','Kharian','Khushab','Khuzdar','Kohat','Kot Abdul Malik','Kot Addu',
+    'Kot Radha Kishan','Kotri','Lahore','Lala Musa','Larkana','Layyah','Lodhran','Ludhewala Waraich',
+    'Mailsi','Mandi Bahauddin','Mansehra','Mardan','Mian Channu','Mianwali','Mingora','Mirpur',
+    'Mirpur Khas','Moro','Multan','Muridke','Muzaffarabad','Muzaffargarh','Narowal','Nawabshah',
+    'Nowshera','Okara','Pakpattan','Panjgur','Pasrur','Pattoki','Phool Nagar','Pishin','Quetta',
+    'Rahim Yar Khan','Rajanpur','Rawalpindi','Renala Khurd','Sadiqabad','Sahiwal','Sambrial',
+    'Samundri','Sangla Hill','Sargodha','Shabqadar','Shahdadkot','Shahdadpur','Shakargarh',
+    'Shikarpur','Shujabad','Sialkot','Sukkur','Swabi','Taxila','Tando Adam','Tando Allahyar',
+    'Tando Muhammad Khan','Taunsa','Turbat','Umerkot','Vehari','Wah Cantonment','Wazirabad'
+];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $name     = trim($_POST['name'] ?? '');
@@ -266,7 +294,11 @@ $stmt   = $conn->prepare("INSERT INTO users (name, email, phone, password_hash, 
                 <div class="two-col">
                     <div class="field">
                         <label>City</label>
-                        <input type="text" name="city" placeholder="e.g. Lahore" value="<?= htmlspecialchars($formData['city'] ?? '') ?>">
+                        <div class="city-search-wrap">
+                            <input type="text" class="city-search-input" id="citySearchInput" placeholder="Search or type your city..." autocomplete="off" value="<?= htmlspecialchars($formData['city'] ?? '') ?>">
+                            <input type="hidden" name="city" id="cityHidden" value="<?= htmlspecialchars($formData['city'] ?? '') ?>">
+                            <div class="city-dropdown" id="cityDropdown"></div>
+                        </div>
                     </div>
                     <div class="field">
                         <label>Address</label>
@@ -360,6 +392,79 @@ function togglePay(key, el) {
     cb.checked = !cb.checked;
     document.getElementById('pay-' + key).classList.toggle('show', cb.checked);
 }
+
+const PK_CITIES = <?= json_encode($pakistaniCities) ?>;
+
+function initCitySearch(searchId, hiddenId, dropdownId) {
+    const searchInput = document.getElementById(searchId);
+    const hiddenInput = document.getElementById(hiddenId);
+    const dropdown = document.getElementById(dropdownId);
+    if (!searchInput || !hiddenInput || !dropdown) return;
+    let activeIndex = -1;
+
+    function renderOptions(filter) {
+        const f = filter.trim().toLowerCase();
+        const matches = f ? PK_CITIES.filter(c => c.toLowerCase().includes(f)) : PK_CITIES;
+        dropdown.innerHTML = '';
+        if (matches.length === 0) {
+            dropdown.innerHTML = '<div class="city-no-results">No match — your typed city will be used as entered</div>';
+        } else {
+            matches.slice(0, 50).forEach((city) => {
+                const opt = document.createElement('div');
+                opt.className = 'city-option';
+                opt.textContent = city;
+                opt.addEventListener('mousedown', (e) => {
+                    e.preventDefault();
+                    selectCity(city);
+                });
+                dropdown.appendChild(opt);
+            });
+        }
+        activeIndex = -1;
+    }
+
+    function selectCity(city) {
+        searchInput.value = city;
+        hiddenInput.value = city;
+        hiddenInput.dispatchEvent(new Event('input', { bubbles: true }));
+        dropdown.classList.remove('open');
+    }
+
+    searchInput.addEventListener('input', () => {
+        hiddenInput.value = searchInput.value;
+        hiddenInput.dispatchEvent(new Event('input', { bubbles: true }));
+        renderOptions(searchInput.value);
+        dropdown.classList.add('open');
+    });
+    searchInput.addEventListener('focus', () => {
+        renderOptions(searchInput.value);
+        dropdown.classList.add('open');
+    });
+    searchInput.addEventListener('blur', () => {
+        setTimeout(() => dropdown.classList.remove('open'), 100);
+    });
+    searchInput.addEventListener('keydown', (e) => {
+        const options = dropdown.querySelectorAll('.city-option');
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            activeIndex = Math.min(activeIndex + 1, options.length - 1);
+            options.forEach((o, i) => o.classList.toggle('active', i === activeIndex));
+            if (options[activeIndex]) options[activeIndex].scrollIntoView({ block: 'nearest' });
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            activeIndex = Math.max(activeIndex - 1, 0);
+            options.forEach((o, i) => o.classList.toggle('active', i === activeIndex));
+            if (options[activeIndex]) options[activeIndex].scrollIntoView({ block: 'nearest' });
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if (options[activeIndex]) selectCity(options[activeIndex].textContent);
+        } else if (e.key === 'Escape') {
+            dropdown.classList.remove('open');
+        }
+    });
+}
+
+initCitySearch('citySearchInput', 'cityHidden', 'cityDropdown');
 
 // Restore artist section on page reload with errors
 (function(){

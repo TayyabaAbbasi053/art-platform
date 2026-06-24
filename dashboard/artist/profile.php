@@ -21,6 +21,24 @@ if ($__userStatus['status'] === 'pending') {
 
 $artistId = (int) $_SESSION['user_id'];
 $artistName = $_SESSION['name'] ?? 'Artist';
+$pakistaniCities = [
+    'Abbottabad','Ahmedpur East','Arif Wala','Attock','Badin','Bahawalnagar','Bahawalpur',
+    'Barikot','Bhakkar','Bhalwal','Bholari','Burewala','Chaman','Charsadda','Chichawatni',
+    'Chiniot','Chishtian','Dadu','Daska','Dera Ghazi Khan','Dera Ismail Khan','Dera Murad Jamali',
+    'Dipalpur','Faisalabad','Farooqabad','Ferozwala','Ghotki','Gojra','Gujar Khan','Gujranwala',
+    'Gujranwala Cantonment','Gujrat','Hafizabad','Haroonabad','Hasilpur','Haveli Lakha','Hub',
+    'Hyderabad','Islamabad','Jacobabad','Jalalpur Jattan','Jampur','Jaranwala','Jatoi','Jauharabad',
+    'Jhang','Jhelum','Kabal','Kamalia','Kamber Ali Khan','Kamoke','Karachi','Kasur','Khairpur',
+    'Khanewal','Khanpur','Kharian','Khushab','Khuzdar','Kohat','Kot Abdul Malik','Kot Addu',
+    'Kot Radha Kishan','Kotri','Lahore','Lala Musa','Larkana','Layyah','Lodhran','Ludhewala Waraich',
+    'Mailsi','Mandi Bahauddin','Mansehra','Mardan','Mian Channu','Mianwali','Mingora','Mirpur',
+    'Mirpur Khas','Moro','Multan','Muridke','Muzaffarabad','Muzaffargarh','Narowal','Nawabshah',
+    'Nowshera','Okara','Pakpattan','Panjgur','Pasrur','Pattoki','Phool Nagar','Pishin','Quetta',
+    'Rahim Yar Khan','Rajanpur','Rawalpindi','Renala Khurd','Sadiqabad','Sahiwal','Sambrial',
+    'Samundri','Sangla Hill','Sargodha','Shabqadar','Shahdadkot','Shahdadpur','Shakargarh',
+    'Shikarpur','Shujabad','Sialkot','Sukkur','Swabi','Taxila','Tando Adam','Tando Allahyar',
+    'Tando Muhammad Khan','Taunsa','Turbat','Umerkot','Vehari','Wah Cantonment','Wazirabad'
+];
 $successMsg = '';
 $errorMsg   = '';
 
@@ -312,7 +330,7 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
 .msg.error { background: var(--sand); color: var(--ink); border: 1px solid var(--border); }
 
 /* ── Profile Card ────────────────────────────────────── */
-.profile-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--r); overflow: hidden; margin-bottom: 24px; }
+.profile-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--r); overflow: visible; margin-bottom: 24px; }
 .profile-card-header {
     padding: 24px 28px 20px; border-bottom: 1px solid var(--border);
     display: flex; align-items: center; justify-content: space-between;
@@ -369,6 +387,12 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
 }
 .field-input:focus { border-color: var(--ink); }
 .field-input::placeholder { color: var(--muted); }
+.city-search-wrap{position:relative;}
+.city-dropdown{display:none;position:absolute;top:100%;left:0;right:0;background:var(--bg);border:1.5px solid var(--border);border-radius:8px;max-height:180px;overflow-y:auto;z-index:50;box-shadow:0 8px 20px rgba(0,0,0,0.1);margin-top:4px;}
+.city-dropdown.open{display:block;}
+.city-option{padding:8px 14px;font-size:13px;color:var(--ink);cursor:pointer;}
+.city-option:hover,.city-option.active{background:var(--sand);}
+.city-no-results{padding:8px 14px;font-size:11.5px;color:var(--muted);font-style:italic;}
 textarea.field-input { resize: vertical; min-height: 110px; line-height: 1.6; }
 
 /* ── BIO RESTRICTION NOTE STYLE ────────────────────── */
@@ -615,7 +639,11 @@ textarea.field-input { resize: vertical; min-height: 110px; line-height: 1.6; }
                 <div class="field-row">
                     <div class="field-group">
                         <label class="field-label">City *</label>
-                        <input type="text" name="city" class="field-input" value="<?= htmlspecialchars($profile['city'] ?? '') ?>" placeholder="e.g. Lahore, Karachi, Islamabad">
+                        <div class="city-search-wrap">
+                            <input type="text" class="field-input city-search-input" id="citySearchInput" placeholder="Search or type your city..." autocomplete="off" value="<?= htmlspecialchars($profile['city'] ?? '') ?>">
+                            <input type="hidden" name="city" id="cityHidden" value="<?= htmlspecialchars($profile['city'] ?? '') ?>">
+                            <div class="city-dropdown" id="cityDropdown"></div>
+                        </div>
                     </div>
                     <div class="field-group">
                         <label class="field-label">Address *</label>
@@ -780,6 +808,78 @@ textarea.field-input { resize: vertical; min-height: 110px; line-height: 1.6; }
 <div id="nav-overlay"></div>
 
 <script>
+    const PK_CITIES = <?= json_encode($pakistaniCities) ?>;
+
+function initCitySearch(searchId, hiddenId, dropdownId) {
+    const searchInput = document.getElementById(searchId);
+    const hiddenInput = document.getElementById(hiddenId);
+    const dropdown = document.getElementById(dropdownId);
+    if (!searchInput || !hiddenInput || !dropdown) return;
+    let activeIndex = -1;
+
+    function renderOptions(filter) {
+        const f = filter.trim().toLowerCase();
+        const matches = f ? PK_CITIES.filter(c => c.toLowerCase().includes(f)) : PK_CITIES;
+        dropdown.innerHTML = '';
+        if (matches.length === 0) {
+            dropdown.innerHTML = '<div class="city-no-results">No match — your typed city will be used as entered</div>';
+        } else {
+            matches.slice(0, 50).forEach((city) => {
+                const opt = document.createElement('div');
+                opt.className = 'city-option';
+                opt.textContent = city;
+                opt.addEventListener('mousedown', (e) => {
+                    e.preventDefault();
+                    selectCity(city);
+                });
+                dropdown.appendChild(opt);
+            });
+        }
+        activeIndex = -1;
+    }
+
+    function selectCity(city) {
+        searchInput.value = city;
+        hiddenInput.value = city;
+        hiddenInput.dispatchEvent(new Event('input', { bubbles: true }));
+        dropdown.classList.remove('open');
+    }
+
+    searchInput.addEventListener('input', () => {
+        hiddenInput.value = searchInput.value;
+        hiddenInput.dispatchEvent(new Event('input', { bubbles: true }));
+        renderOptions(searchInput.value);
+        dropdown.classList.add('open');
+    });
+    searchInput.addEventListener('focus', () => {
+        renderOptions(searchInput.value);
+        dropdown.classList.add('open');
+    });
+    searchInput.addEventListener('blur', () => {
+        setTimeout(() => dropdown.classList.remove('open'), 100);
+    });
+    searchInput.addEventListener('keydown', (e) => {
+        const options = dropdown.querySelectorAll('.city-option');
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            activeIndex = Math.min(activeIndex + 1, options.length - 1);
+            options.forEach((o, i) => o.classList.toggle('active', i === activeIndex));
+            if (options[activeIndex]) options[activeIndex].scrollIntoView({ block: 'nearest' });
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            activeIndex = Math.max(activeIndex - 1, 0);
+            options.forEach((o, i) => o.classList.toggle('active', i === activeIndex));
+            if (options[activeIndex]) options[activeIndex].scrollIntoView({ block: 'nearest' });
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if (options[activeIndex]) selectCity(options[activeIndex].textContent);
+        } else if (e.key === 'Escape') {
+            dropdown.classList.remove('open');
+        }
+    });
+}
+
+initCitySearch('citySearchInput', 'cityHidden', 'cityDropdown');
 // ── Live image preview ─────────────────────────────────
 document.getElementById('fileInput').addEventListener('change', function(e) {
     const file = e.target.files[0];

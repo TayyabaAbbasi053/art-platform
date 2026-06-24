@@ -50,6 +50,7 @@ function containsContactInfo(string $text): bool {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'suggest_price') {
     $orderId = (int)($_POST['order_id'] ?? 0);
     $proposedPrice = $_POST['proposed_price'] ?? '';
+    $proposedWeight = $_POST['proposed_weight_kg'] ?? '';
 
     // Verify this commission belongs to the artist
     $check = $conn->prepare("
@@ -65,12 +66,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         $errorMsg = 'Invalid commission request.';
     } elseif ($proposedPrice === '' || $proposedPrice === null || !is_numeric($proposedPrice) || floatval($proposedPrice) <= 0) {
         $errorMsg = 'Please enter a valid price greater than 0.';
+    } elseif ($proposedWeight === '' || $proposedWeight === null || !is_numeric($proposedWeight) || floatval($proposedWeight) <= 0) {
+        $errorMsg = 'Please enter a valid expected weight greater than 0.';
     } elseif (!in_array($orderRow['order_status'], ['assigned', 'price_proposed'])) {
     $errorMsg = 'Price can only be suggested while the commission is assigned or awaiting buyer response.';
     } elseif (($orderRow['price_status'] ?? 'none') === 'accepted') {
         $errorMsg = 'Price has already been accepted by the buyer. No further changes allowed.';
     } else {
         $priceVal = floatval($proposedPrice);
+        $weightVal = floatval($proposedWeight);
         $newOrderStatus = 'price_proposed';
         $newPriceStatus = 'proposed';
 
@@ -81,15 +85,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 order_status = ?,
                 subtotal = ?,
                 total = ?,
+                proposed_weight_kg = ?,
                 updated_at = NOW() 
             WHERE id = ?
         ");
-        $stmt->bind_param('dssddi', $priceVal, $newPriceStatus, $newOrderStatus, $priceVal, $priceVal, $orderId);
+        $stmt->bind_param('dssdddi', $priceVal, $newPriceStatus, $newOrderStatus, $priceVal, $priceVal, $weightVal, $orderId);
         $stmt->execute();
 
         // Log status change in history
         $adminId = $artistId; // artist is making the change
-        $note = "Artist proposed price: PKR " . number_format($priceVal);
+        $note = "Artist proposed price: PKR " . number_format($priceVal) . " (Est. weight: " . $weightVal . "kg)";
         $stmtH = $conn->prepare("
             INSERT INTO order_status_history (order_id, status_from, status_to, changed_by_role, changed_by_id, notes) 
             VALUES (?, ?, 'price_proposed', 'artist', ?, ?)
@@ -97,7 +102,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         $stmtH->bind_param('isis', $orderId, $orderRow['order_status'], $adminId, $note);
         $stmtH->execute();
 
-        $successMsg = 'Price of PKR ' . number_format($priceVal) . ' proposed to buyer. Waiting for their response.';
+        $successMsg = 'Price of PKR ' . number_format($priceVal) . ' (Est. weight: ' . $weightVal . 'kg) proposed to buyer. Waiting for their response.';
     }
 }
 
@@ -270,7 +275,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
            o.commission_delivery_city,
            o.commission_final_approved, o.commission_digital_file_path,
            o.admin_notes, o.total AS agreed_price,
-           o.proposed_price, o.price_status,
+           o.proposed_price, o.price_status, o.proposed_weight_kg,
            o.shipping_address, o.shipping_city, o.shipping_phone, 
            o.tracking_number, o.payment_method, o.payment_status,
            u.name AS buyer_name_real, u.email AS buyer_email_real, u.phone AS buyer_phone_real,
@@ -703,14 +708,16 @@ $isAwaitingPaymentReview = $viewRequest['status'] === 'payment_review';
                 </div>
 
                 <?php if ($canSuggestPrice): ?>
-                <form method="POST" class="suggest-price-row" onsubmit="return confirm('Submit this price to the buyer?')">
+                <form method="POST" class="suggest-price-row" onsubmit="return confirm('Submit this price and weight to the buyer?')">
                     <input type="hidden" name="action" value="suggest_price">
                     <input type="hidden" name="order_id" value="<?= $viewRequest['id'] ?>">
                     <span class="currency-label">PKR</span>
                     <input type="number" name="proposed_price" value="<?= !empty($viewRequest['proposed_price']) ? $viewRequest['proposed_price'] : '' ?>" placeholder="e.g. 12000" min="1" step="0.01" required>
+                    <input type="number" name="proposed_weight_kg" value="<?= !empty($viewRequest['proposed_weight_kg']) ? $viewRequest['proposed_weight_kg'] : '' ?>" placeholder="Weight (kg)" min="0.01" step="0.01" required style="width:140px;">
+                    <span class="currency-label">kg</span>
                     <button type="submit" class="suggest-price-btn">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-                        <?= !empty($viewRequest['proposed_price']) ? 'Update Price' : 'Propose Price' ?>
+                        <?= !empty($viewRequest['proposed_price']) ? 'Update Price & Weight' : 'Propose Price & Weight' ?>
                     </button>
                 </form>
                 <?php else: ?>
@@ -723,6 +730,10 @@ $isAwaitingPaymentReview = $viewRequest['status'] === 'payment_review';
                 <div class="suggest-price-current">
                     <span class="label">Your Proposed Price:</span>
                     <span class="amount">PKR <?= number_format((float)$viewRequest['proposed_price']) ?></span>
+                    <?php if (!empty($viewRequest['proposed_weight_kg'])): ?>
+                    <span class="label" style="margin-left:8px;">Est. Weight:</span>
+                    <span class="amount" style="font-size:16px;"><?= rtrim(rtrim(number_format((float)$viewRequest['proposed_weight_kg'], 2), '0'), '.') ?> kg</span>
+                    <?php endif; ?>
                     <span class="price-status-badge <?= $currentPriceStatus ?>"><?= ucfirst($currentPriceStatus) ?></span>
                 </div>
                 <?php endif; ?>
