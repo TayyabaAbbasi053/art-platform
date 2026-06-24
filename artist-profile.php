@@ -271,7 +271,10 @@ img{max-width:100%;display:block;}
 .profile-avatar img{width:140px;height:140px;border-radius:50%;object-fit:cover;border:3px solid var(--card);box-shadow:0 4px 12px rgba(0,0,0,.08);}
 .avatar-placeholder{width:140px;height:140px;border-radius:50%;background:var(--ink);display:flex;align-items:center;justify-content:center;font-size:56px;color:var(--bg);font-weight:500;}
 .profile-info{flex:1;}
-.profile-name{font-family:'Playfair Display',serif;font-size:clamp(28px,3vw,38px);font-weight:500;color:var(--ink);margin-bottom:8px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+.copy-link-btn{display:inline-flex;align-items:center;gap:6px;background:var(--sand);color:var(--ink);border:1px solid var(--border);padding:6px 12px;border-radius:20px;font-size:11.5px;font-weight:500;font-family:'DM Sans',sans-serif;cursor:pointer;transition:background .12s;margin-left:auto;}
+.copy-link-btn:hover{background:#c4b69e;}
+.copy-link-btn.copied{background:var(--ink);color:var(--bg);border-color:var(--ink);}
+.copy-link-btn svg{flex-shrink:0;}
 .feat-star{background:var(--sand);color:var(--ink);font-size:11px;font-weight:600;padding:4px 10px;border-radius:20px;}
 .profile-meta{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px;}
 .meta-item{display:flex;align-items:center;gap:5px;font-size:13px;color:var(--muted);}
@@ -482,6 +485,10 @@ img{max-width:100%;display:block;}
     <div class="profile-name">
       <?= htmlspecialchars($artist['name']) ?>
       <?php if ($artist['is_featured']): ?><span class="feat-star">★ Featured Artist</span><?php endif; ?>
+      <button type="button" class="copy-link-btn" id="copyLinkBtn" onclick="copyProfileLink()">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M10 13a5 5 0 007.07 0l1.93-1.93a5 5 0 00-7.07-7.07L10.5 5.5"/><path d="M14 11a5 5 0 00-7.07 0L4.99 12.93a5 5 0 007.07 7.07L13.5 18.5"/></svg>
+        <span id="copyLinkText">Copy Profile Link</span>
+      </button>
     </div>
     <div class="profile-meta">
       <?php if ($artist['city']): ?>
@@ -714,6 +721,34 @@ function closeDrawer(){ navDrawer.classList.remove('open'); navOverlay.classList
 if(hamBtn) hamBtn.addEventListener('click', openDrawer);
 if(navOverlay) navOverlay.addEventListener('click', closeDrawer);
 document.querySelector('.drawer-close')?.addEventListener('click', closeDrawer);
+
+function copyProfileLink() {
+  const url = window.location.href;
+  const btn = document.getElementById('copyLinkBtn');
+  const text = document.getElementById('copyLinkText');
+  navigator.clipboard.writeText(url).then(() => {
+    text.textContent = 'Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => {
+      text.textContent = 'Copy Profile Link';
+      btn.classList.remove('copied');
+    }, 2000);
+  }).catch(() => {
+    // Fallback for older browsers / non-HTTPS contexts
+    const temp = document.createElement('textarea');
+    temp.value = url;
+    document.body.appendChild(temp);
+    temp.select();
+    document.execCommand('copy');
+    document.body.removeChild(temp);
+    text.textContent = 'Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => {
+      text.textContent = 'Copy Profile Link';
+      btn.classList.remove('copied');
+    }, 2000);
+  });
+}
 
 function openCM(id, name) {
   const s = document.getElementById('cm-artist');
