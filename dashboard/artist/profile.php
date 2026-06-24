@@ -15,7 +15,8 @@ if ($__userStatus['status'] === 'blocked') {
 }
 if ($__userStatus['status'] === 'pending') {
     session_destroy();
-    header('Location: ../../login.php?pending=1');
+    $__pendingEmail = $conn->query("SELECT email FROM users WHERE id={$_SESSION['user_id']}")->fetch_assoc()['email'] ?? '';
+header('Location: ../../login.php?pending=1&email=' . urlencode($__pendingEmail));
     exit;
 }
 
@@ -697,7 +698,7 @@ textarea.field-input { resize: vertical; min-height: 110px; line-height: 1.6; }
                 <h2>Payment Methods</h2>
                 <span class="hint">For receiving payouts — never shown publicly</span>
             </div>
-            <<div class="profile-card-body">
+            <div class="profile-card-body">
     <p style="font-size:11px;color:var(--muted);margin-bottom:12px;line-height:1.5;">
         Tap a method below to add its details. Click <strong>Remove this payment method</strong> inside an open method to delete it. Don't forget to hit <strong>Save Changes</strong> at the bottom to confirm any changes.
     </p>

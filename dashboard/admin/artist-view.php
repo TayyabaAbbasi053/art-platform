@@ -435,8 +435,8 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
                 <div class="info-row"><span class="label">Email</span><span class="value"><?= htmlspecialchars($artist['email']) ?></span></div>
                 <div class="info-row"><span class="label">Address</span><span class="value <?= !$artist['address'] ? 'muted' : '' ?>"><?= $artist['address'] ? htmlspecialchars($artist['address']) : 'Not set' ?></span></div>
                 <div class="info-row"><span class="label">Phone</span><span class="value <?= !$artist['phone'] ? 'muted' : '' ?>"><?= $artist['phone'] ? htmlspecialchars($artist['phone']) : 'Not set' ?></span></div>
-                <div class="info-row"><span class="label">Contact Email</span><span class="value <?= !$artist['contact_email'] ? 'muted' : '' ?>"><?= $artist['contact_email'] ? htmlspecialchars($artist['contact_email']) : 'Not set' ?></span></div>
-                <div class="info-row"><span class="label">Contact Phone</span><span class="value <?= !$artist['contact_phone'] ? 'muted' : '' ?>"><?= $artist['contact_phone'] ? htmlspecialchars($artist['contact_phone']) : 'Not set' ?></span></div>
+                <div class="info-row"><span class="label">Contact Email</span><span class="value <?= !$artist['contact_email'] ? 'muted' : '' ?>"><?= $artist['contact_email'] ? htmlspecialchars($artist['contact_email']) : ($artist['email'] ? htmlspecialchars($artist['email']) : 'Not set') ?></span></div>
+<div class="info-row"><span class="label">Contact Phone</span><span class="value <?= !$artist['contact_phone'] ? 'muted' : '' ?>"><?= $artist['contact_phone'] ? htmlspecialchars($artist['contact_phone']) : ($artist['phone'] ? htmlspecialchars($artist['phone']) : 'Not set') ?></span></div>
             </div>
         </div>
         <div class="card">

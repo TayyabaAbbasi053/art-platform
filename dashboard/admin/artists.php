@@ -10,6 +10,14 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
  $adminName = $_SESSION['name'] ?? 'Admin';
  $toast = '';
 
+ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'unapprove') {
+    $uid = (int)$_POST['user_id'];
+    $reason = trim($_POST['reason'] ?? '');
+    $stmt = $conn->prepare("UPDATE users SET status='pending', status_reason=? WHERE id=?");
+    $stmt->bind_param('si', $reason, $uid);
+    $stmt->execute();
+}
+
 // Block artist
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'block') {
     $id = (int)($_POST['id'] ?? 0);
@@ -782,7 +790,19 @@ tr:hover td { background: var(--bg); box-shadow: 0 4px 12px rgba(12,63,48,.06); 
                             <?php elseif ($a['status'] === 'blocked'): ?>
                                 <form method="POST" style="display:inline"><input type="hidden" name="action" value="unblock"><input type="hidden" name="id" value="<?= $a['id'] ?>"><button type="submit" class="act-btn approve">Unblock</button></form>
                             <?php elseif ($a['status'] === 'pending'): ?>
-                                <form method="POST" style="display:inline"><input type="hidden" name="action" value="unblock"><input type="hidden" name="id" value="<?= $a['id'] ?>"><button type="submit" class="act-btn approve">Approve</button></form>
+    <form method="POST" style="display:inline">
+        <input type="hidden" name="action" value="unblock">
+        <input type="hidden" name="id" value="<?= $a['id'] ?>">
+        <button type="submit" class="act-btn approve">Approve</button>
+    </form>
+    <?php if (!empty($a['status_reason'])): ?>
+        <span style="font-size:11px;color:var(--muted);margin-left:6px;display:inline-flex;align-items:center;gap:4px;">
+            <span style="font-size:13px;">⚠</span>
+            <?= htmlspecialchars($a['status_reason']) ?>
+        </span>
+    <?php else: ?>
+        <button type="button" class="act-btn red" onclick="openUnapprove(<?= $a['id'] ?>, '<?= htmlspecialchars(addslashes($a['name'])) ?>')">Unapprove</button>
+    <?php endif; ?>
                             <?php endif; ?>
                             <button type="button" class="act-btn red" onclick="openDelete(<?= $a['id'] ?>, '<?= htmlspecialchars(addslashes($a['name'])) ?>', <?= $a['art_count'] ?>)">Delete</button>
                         </div>
@@ -857,7 +877,30 @@ tr:hover td { background: var(--bg); box-shadow: 0 4px 12px rgba(12,63,48,.06); 
         </form>
     </div>
 </div>
-
+<!-- ══════════════ UNAPPROVE MODAL ══════════════ -->
+<div class="modal-overlay" id="unapproveModal">
+    <div class="modal">
+        <div class="modal-head"><h3>Unapprove Artist</h3></div>
+        <div class="modal-body">
+            <p class="confirm-text" style="margin-bottom:14px;">
+                Provide a reason for unapproving <strong id="unapproveName"></strong>. 
+                This will be shown to the artist on their dashboard.
+            </p>
+            <textarea id="unapproveReason" placeholder="e.g. Please complete your bio and add a profile picture before reapplying." 
+                style="width:100%;padding:10px 14px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--ink);resize:vertical;min-height:90px;outline:none;"></textarea>
+            <p id="unapproveError" style="color:#c0392b;font-size:11px;margin-top:6px;display:none;">Please provide a reason before submitting.</p>
+        </div>
+        <form method="POST" id="unapproveForm">
+            <input type="hidden" name="action" value="unapprove">
+            <input type="hidden" name="user_id" id="unapproveId">
+            <input type="hidden" name="reason" id="unapproveReasonHidden">
+            <div class="modal-foot">
+                <button type="button" class="btn btn-ghost" onclick="closeUnapprove()">Cancel</button>
+                <button type="button" class="btn btn-danger" onclick="submitUnapprove()">Unapprove Artist</button>
+            </div>
+        </form>
+    </div>
+</div>
 <!-- MOBILE DRAWER & OVERLAY -->
 <div id="nav-drawer">
     <div style="margin-bottom: 30px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 20px;">
@@ -915,7 +958,33 @@ function openDelete(id, name, count) {
 }
 function closeDelete() { document.getElementById('deleteModal').classList.remove('open'); }
 document.getElementById('deleteModal').addEventListener('click', function(e) { if (e.target === this) closeDelete(); });
-document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeDelete(); });
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') { closeDelete(); closeBlock(); closeUnapprove(); }
+});
+
+// Unapprove Modal Logic
+function openUnapprove(id, name) {
+    document.getElementById('unapproveId').value = id;
+    document.getElementById('unapproveName').textContent = name;
+    document.getElementById('unapproveReason').value = '';
+    document.getElementById('unapproveError').style.display = 'none';
+    document.getElementById('unapproveModal').classList.add('open');
+}
+function closeUnapprove() {
+    document.getElementById('unapproveModal').classList.remove('open');
+}
+function submitUnapprove() {
+    const reason = document.getElementById('unapproveReason').value.trim();
+    if (!reason) {
+        document.getElementById('unapproveError').style.display = 'block';
+        return;
+    }
+    document.getElementById('unapproveReasonHidden').value = reason;
+    document.getElementById('unapproveForm').submit();
+}
+document.getElementById('unapproveModal').addEventListener('click', function(e) {
+    if (e.target === this) closeUnapprove();
+});
 
 // Block Modal Logic
 function openBlock(id, name) {

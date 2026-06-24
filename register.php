@@ -98,6 +98,56 @@ require_once __DIR__ . '/config/db.php';
  $error = '';
  $success = '';
  $formData = $_POST;
+ $editMode = false;
+ $lockedEmail = '';
+
+ // Pull existing pending artist data for editing
+ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['edit'], $_GET['email'])) {
+     $editEmailParam = trim($_GET['email']);
+     $eStmt = $conn->prepare("SELECT u.id, u.name, u.email, u.phone,
+         p.bio, p.art_style, p.instagram_url, p.city, p.address,
+         p.has_bank_account, p.bank_name, p.bank_account_title, p.bank_account_number,
+         p.has_easypaisa, p.easypaisa_name, p.easypaisa_number,
+         p.has_jazzcash, p.jazzcash_name, p.jazzcash_number,
+         p.has_nayapay, p.nayapay_name, p.nayapay_number,
+         p.has_sadapay, p.sadapay_name, p.sadapay_number
+         FROM users u LEFT JOIN artist_profiles p ON p.user_id = u.id
+         WHERE u.email = ? AND u.role = 'artist' AND u.status = 'pending' LIMIT 1");
+     $eStmt->bind_param('s', $editEmailParam);
+     $eStmt->execute();
+     $existingRow = $eStmt->get_result()->fetch_assoc();
+     if ($existingRow) {
+         $editMode = true;
+         $lockedEmail = $existingRow['email'];
+         $formData = [
+             'role' => 'artist',
+             'name' => $existingRow['name'],
+             'email' => $existingRow['email'],
+             'phone' => $existingRow['phone'],
+             'bio' => $existingRow['bio'],
+             'art_style' => $existingRow['art_style'],
+             'instagram_url' => $existingRow['instagram_url'],
+             'city' => $existingRow['city'],
+             'address' => $existingRow['address'],
+             'has_bank_account' => $existingRow['has_bank_account'] ? '1' : null,
+             'bank_name' => $existingRow['bank_name'],
+             'bank_account_title' => $existingRow['bank_account_title'],
+             'bank_account_number' => $existingRow['bank_account_number'],
+             'has_easypaisa' => $existingRow['has_easypaisa'] ? '1' : null,
+             'easypaisa_name' => $existingRow['easypaisa_name'],
+             'easypaisa_number' => $existingRow['easypaisa_number'],
+             'has_jazzcash' => $existingRow['has_jazzcash'] ? '1' : null,
+             'jazzcash_name' => $existingRow['jazzcash_name'],
+             'jazzcash_number' => $existingRow['jazzcash_number'],
+             'has_nayapay' => $existingRow['has_nayapay'] ? '1' : null,
+             'nayapay_name' => $existingRow['nayapay_name'],
+             'nayapay_number' => $existingRow['nayapay_number'],
+             'has_sadapay' => $existingRow['has_sadapay'] ? '1' : null,
+             'sadapay_name' => $existingRow['sadapay_name'],
+             'sadapay_number' => $existingRow['sadapay_number'],
+         ];
+     }
+ }
 
  $pakistaniCities = [
     'Abbottabad','Ahmedpur East','Arif Wala','Attock','Badin','Bahawalnagar','Bahawalpur',
@@ -119,8 +169,16 @@ require_once __DIR__ . '/config/db.php';
 ];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // If editing a pending application, the email is locked server-side —
+    // we ignore whatever was posted in the email field and use the original.
+    $postedEditEmail = trim($_POST['edit_email'] ?? '');
+    if ($postedEditEmail !== '') {
+        $editMode = true;
+        $lockedEmail = $postedEditEmail;
+    }
+
     $name     = trim($_POST['name'] ?? '');
-    $email    = trim($_POST['email'] ?? '');
+    $email    = $editMode ? $lockedEmail : trim($_POST['email'] ?? '');
     $phone    = trim($_POST['phone'] ?? '');
     $password = $_POST['password'] ?? '';
     $confirm  = $_POST['confirm'] ?? '';
@@ -166,13 +224,24 @@ $hasSadapay     = isset($_POST['has_sadapay'])       ? 1 : 0;
 } elseif (!isset($_POST['terms'])) {
     $error = 'You must agree to the Terms & Conditions and Privacy Policy.';
 } else {
-        $check = $conn->prepare("SELECT id FROM users WHERE email = ? LIMIT 1");
+        $check = $conn->prepare("SELECT id, status, role FROM users WHERE email = ? LIMIT 1");
         $check->bind_param('s', $email);
         $check->execute();
         $check->store_result();
+        $check->bind_result($existingId, $existingStatus, $existingRole);
+        $check->fetch();
 
-        if ($check->num_rows > 0) {
+        if ($check->num_rows > 0 && !($existingRole === 'artist' && $existingStatus === 'pending')) {
             $error = 'An account with this email already exists.';
+        } elseif ($check->num_rows > 0 && $existingRole === 'artist' && $existingStatus === 'pending') {
+            // Allow pending artist to resubmit — update their record
+            $hash = password_hash($password, PASSWORD_BCRYPT);
+            $stmtUp = $conn->prepare("UPDATE users SET name=?, phone=?, password_hash=? WHERE id=?");
+            $stmtUp->bind_param('sssi', $name, $phone, $hash, $existingId);
+            $stmtUp->execute();
+            $userId = $existingId;
+            // profile INSERT/UPDATE handled below with ON DUPLICATE KEY UPDATE
+            goto do_profile_insert;
         } else {
             $hash   = password_hash($password, PASSWORD_BCRYPT);
 $status = ($role === 'artist') ? 'pending' : 'active';
@@ -182,6 +251,7 @@ $stmt   = $conn->prepare("INSERT INTO users (name, email, phone, password_hash, 
             if ($stmt->execute()) {
                 if ($role === 'artist') {
                     $userId = $conn->insert_id;
+                    do_profile_insert:
 
                     $bankName    = $hasBankAccount ? trim($_POST['bank_name'] ?? '')           : null;
                     $bankTitle   = $hasBankAccount ? trim($_POST['bank_account_title'] ?? '')  : null;
@@ -197,17 +267,30 @@ $stmt   = $conn->prepare("INSERT INTO users (name, email, phone, password_hash, 
                     $spNum    = $hasSadapay   ? trim($_POST['sadapay_number'] ?? '')    : null;
 
                     // FIX 3: Corrected bind_param types and variables count (19 total)
+                    $bio_reg        = trim($_POST['bio'] ?? '');
+                    $art_style_reg  = trim($_POST['art_style'] ?? '');
+                    $instagram_reg  = trim($_POST['instagram_url'] ?? '');
+
                     $profile = $conn->prepare("INSERT INTO artist_profiles 
-                        (user_id, city, address,
+                        (user_id, bio, art_style, instagram_url, city, address,
                          has_bank_account, bank_name, bank_account_title, bank_account_number,
                          has_easypaisa, easypaisa_name, easypaisa_number,
                          has_jazzcash, jazzcash_name, jazzcash_number,
                          has_nayapay, nayapay_name, nayapay_number,
                          has_sadapay, sadapay_name, sadapay_number)
-                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                        ON DUPLICATE KEY UPDATE
+                         bio=VALUES(bio), art_style=VALUES(art_style), instagram_url=VALUES(instagram_url),
+                         city=VALUES(city), address=VALUES(address),
+                         has_bank_account=VALUES(has_bank_account), bank_name=VALUES(bank_name),
+                         bank_account_title=VALUES(bank_account_title), bank_account_number=VALUES(bank_account_number),
+                         has_easypaisa=VALUES(has_easypaisa), easypaisa_name=VALUES(easypaisa_name), easypaisa_number=VALUES(easypaisa_number),
+                         has_jazzcash=VALUES(has_jazzcash), jazzcash_name=VALUES(jazzcash_name), jazzcash_number=VALUES(jazzcash_number),
+                         has_nayapay=VALUES(has_nayapay), nayapay_name=VALUES(nayapay_name), nayapay_number=VALUES(nayapay_number),
+                         has_sadapay=VALUES(has_sadapay), sadapay_name=VALUES(sadapay_name), sadapay_number=VALUES(sadapay_number)");
                     
-                    $profile->bind_param('issississississssss',
-                        $userId, $city, $address,
+                    $profile->bind_param('isssssississississssss',
+                        $userId, $bio_reg, $art_style_reg, $instagram_reg, $city, $address,
                         $hasBankAccount, $bankName, $bankTitle, $bankNumber,
                         $hasEasypaisa, $epName, $epNum,
                         $hasJazzcash,  $jcName, $jcNum,
@@ -273,8 +356,14 @@ $stmt   = $conn->prepare("INSERT INTO users (name, email, phone, password_hash, 
                 <input type="text" name="name" placeholder="Your full name" value="<?= htmlspecialchars($formData['name'] ?? '') ?>" required>
             </div>
             <div class="field">
-                <label>Email Address</label>
-                <input type="email" name="email" placeholder="you@example.com" value="<?= htmlspecialchars($formData['email'] ?? '') ?>" required>
+                <label>Email Address<?= $editMode ? ' (locked — cannot be changed)' : '' ?></label>
+                <input type="email" name="email" placeholder="you@example.com"
+                       value="<?= htmlspecialchars($formData['email'] ?? '') ?>"
+                       <?= $editMode ? 'readonly style="background:#f0f0f0;color:#888;cursor:not-allowed;"' : '' ?>
+                       required>
+                <?php if ($editMode): ?>
+                    <input type="hidden" name="edit_email" value="<?= htmlspecialchars($lockedEmail) ?>">
+                <?php endif; ?>
             </div>
             <div class="field">
                 <label>Phone / WhatsApp</label>
@@ -290,6 +379,21 @@ $stmt   = $conn->prepare("INSERT INTO users (name, email, phone, password_hash, 
             </div>
 
             <div id="artist-extra" class="artist-extra">
+                <div class="section-label">🎨 About You</div>
+                <div class="field">
+                    <label>Bio</label>
+                    <textarea name="bio" placeholder="Tell buyers about your art, style, and inspiration..." style="width:100%;border:none;border-bottom:1.5px solid #e0e0e0;padding:6px 0;font-size:13px;font-family:'DM Sans',sans-serif;color:#0a0a0a;outline:none;background:transparent;resize:vertical;min-height:70px;"><?= htmlspecialchars($formData['bio'] ?? '') ?></textarea>
+                </div>
+                <div class="two-col">
+                    <div class="field">
+                        <label>Art Style</label>
+                        <input type="text" name="art_style" placeholder="e.g. Abstract, Realism" value="<?= htmlspecialchars($formData['art_style'] ?? '') ?>">
+                    </div>
+                    <div class="field">
+                        <label>Instagram URL <span style="font-size:9px;color:#999;text-transform:none;letter-spacing:0">(optional)</span></label>
+                        <input type="url" name="instagram_url" placeholder="https://instagram.com/yourhandle" value="<?= htmlspecialchars($formData['instagram_url'] ?? '') ?>">
+                    </div>
+                </div>
                 <div class="section-label">📍 Location</div>
                 <div class="two-col">
                     <div class="field">
@@ -302,7 +406,7 @@ $stmt   = $conn->prepare("INSERT INTO users (name, email, phone, password_hash, 
                     </div>
                     <div class="field">
                         <label>Address</label>
-                        <input type="text" name="address" placeholder="Street / Area" value="<?= htmlspecialchars($formData['address'] ?? '') ?>">
+                        <input type="text" name="address" placeholder="Address" value="<?= htmlspecialchars($formData['address'] ?? '') ?>">
                     </div>
                 </div>
 

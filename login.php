@@ -63,9 +63,24 @@ $redirect = $_GET['redirect'] ?? $_POST['redirect'] ?? '';
  $step  = 'login';
  $error = '';
 if (isset($_GET['pending'])) {
-    $error = 'Your artist account is pending admin approval. You will be notified once it is reviewed.';
+    $pendingReason = '';
+    if (isset($_GET['email'])) {
+        $pendingEmail = trim($_GET['email']);
+        $pr = $conn->prepare("SELECT status_reason FROM users WHERE email = ? AND role = 'artist'");
+        $pr->bind_param('s', $pendingEmail);
+        $pr->execute();
+        $pr->bind_result($pendingReason);
+        $pr->fetch();
+        $pr->close();
+    }
+    $error = 'Your artist account is pending admin approval. You will be notified once it is reviewed.'
+           . ($pendingReason ? ' Reason: ' . $pendingReason : '');
+    $showEditLink = true;
+    $editEmail = $pendingEmail ?? '';
 }
  $info  = '';
+ $showEditLink = $showEditLink ?? false;
+ $editEmail = $editEmail ?? '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'login') {
     $email    = trim($_POST['email'] ?? '');
@@ -84,7 +99,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'login
         } elseif ($user['status'] === 'blocked') {
     $error = 'Your account has been suspended.' . (!empty($user['status_reason']) ? ' Reason: ' . $user['status_reason'] : ' Please contact support.');
 } elseif ($user['status'] === 'pending' && $user['role'] === 'artist') {
-    $error = 'Your artist account is pending admin approval. You will be notified once it is reviewed.';
+    header('Location: login.php?pending=1&email=' . urlencode($email));
+    exit;
 } else {
             $_SESSION['user_id'] = $user['id'];
             $_SESSION['name']    = $user['name'];
@@ -286,6 +302,11 @@ button[type=submit]:hover{background:#0a5240;}
 
     <?php if ($error): ?>
       <div class="msg error"><?= htmlspecialchars($error) ?></div>
+      <?php if (!empty($showEditLink)): ?>
+        <p class="bottom-link" style="margin-top:8px">
+          <a href="register.php?edit=1&email=<?= urlencode($editEmail) ?>">Edit my information →</a>
+        </p>
+      <?php endif; ?>
     <?php endif; ?>
     <?php if ($info): ?>
       <div class="msg info"><?= htmlspecialchars($info) ?></div>

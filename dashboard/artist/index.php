@@ -15,7 +15,8 @@ if ($__userStatus['status'] === 'blocked') {
 }
 if ($__userStatus['status'] === 'pending') {
     session_destroy();
-    header('Location: ../../login.php?pending=1');
+    $__pendingEmail = $conn->query("SELECT email FROM users WHERE id={$_SESSION['user_id']}")->fetch_assoc()['email'] ?? '';
+header('Location: ../../login.php?pending=1&email=' . urlencode($__pendingEmail));
     exit;
 }
 
