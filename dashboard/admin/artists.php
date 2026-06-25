@@ -1,4 +1,5 @@
 <?php
+error_log('ARTISTS.PHP LOADED AT ' . microtime(true));
 session_start();
 require_once __DIR__ . '/../../config/db.php';
 
@@ -7,15 +8,81 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
     exit;
 }
 
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\Exception;
+require_once __DIR__ . '/../../vendor/autoload.php';
+
+function sendArtistStatusEmail(string $toEmail, string $toName, string $type, string $reason = ''): bool {
+    $mail = new PHPMailer(true);
+    try {
+        $mail->isSMTP();
+        $mail->Host       = 'smtp-relay.brevo.com';
+        $mail->SMTPAuth   = true;
+$mail->Username   = $_ENV['BREVO_SMTP_USERNAME'];
+$mail->Password   = $_ENV['BREVO_SMTP_PASSWORD'];
+        $mail->SMTPSecure = 'tls';
+        $mail->Port       = 587;
+        $mail->setFrom('teamartbazaar.pk@gmail.com', 'Art Bazaar');
+        $mail->addReplyTo('teamartbazaar.pk@gmail.com', 'Art Bazaar');
+        $mail->addAddress($toEmail, $toName);
+        $mail->isHTML(true);
+        $mail->CharSet = 'UTF-8';
+
+        if ($type === 'approved') {
+            $mail->Subject = 'Your Art Bazaar Artist Account Has Been Approved';
+            $mail->AltBody = "Hi $toName, your Art Bazaar artist account has been approved. You can now log in and start listing your artwork.";
+            $mail->Body    = "
+                <p>Hello {$toName},</p>
+                <p>Good news — your Art Bazaar artist account has been <strong>approved</strong>. You can now log in and start listing your artwork.</p>
+                <p>— Art Bazaar Team</p>";
+        } else { // unapproved / rejected
+            $mail->Subject = 'Update on Your Art Bazaar Artist Application';
+            $reasonText = $reason !== '' ? $reason : 'No specific reason was provided.';
+            $mail->AltBody = "Hi $toName, your Art Bazaar artist account requires changes before it can be approved. Reason: $reasonText";
+            $mail->Body    = "
+                <p>Hello {$toName},</p>
+                <p>Your Art Bazaar artist account could not be approved at this time.</p>
+                <p><strong>Reason:</strong> " . htmlspecialchars($reasonText) . "</p>
+                <p>Please update your profile accordingly and you will be reviewed again.</p>
+                <p>— Art Bazaar Team</p>";
+        }
+
+        $mail->SMTPDebug = 2;
+        $mail->Debugoutput = function($str, $level) {
+            error_log("PHPMailer debug: $str");
+        };
+        $mail->send();
+        return true;
+    } catch (Exception $e) {
+        error_log('Art Bazaar status email failed: ' . $e->getMessage() . ' | ErrorInfo: ' . $mail->ErrorInfo);
+        return false;
+    }
+}
+
  $adminName = $_SESSION['name'] ?? 'Admin';
  $toast = '';
 
  if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'unapprove') {
     $uid = (int)$_POST['user_id'];
     $reason = trim($_POST['reason'] ?? '');
+
+    $u = $conn->prepare("SELECT email, name FROM users WHERE id = ? AND role = 'artist'");
+    $u->bind_param('i', $uid);
+    $u->execute();
+    $artistRow = $u->get_result()->fetch_assoc();
+
     $stmt = $conn->prepare("UPDATE users SET status='pending', status_reason=? WHERE id=?");
     $stmt->bind_param('si', $reason, $uid);
     $stmt->execute();
+
+    if ($artistRow) {
+        $mailSent = sendArtistStatusEmail($artistRow['email'], $artistRow['name'], 'unapproved', $reason);
+        if (!$mailSent) {
+            error_log('Unapprove email NOT sent for user_id=' . $uid . ', email=' . $artistRow['email']);
+        }
+    } else {
+        error_log('Unapprove: no artist row found for user_id=' . $uid);
+    }
 }
 
 // Block artist
@@ -28,12 +95,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'block
     }
 }
 
-// Unblock artist
+// Unblock / Approve artist
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'unblock') {
     $id = (int)($_POST['id'] ?? 0);
     if ($id) {
-        $conn->query("UPDATE users SET status = 'active' WHERE id = $id AND role = 'artist'");
-        $toast = 'Artist unblocked.';
+        $prevRow = $conn->query("SELECT status, email, name FROM users WHERE id = $id AND role = 'artist'")->fetch_assoc();
+        $wasPending = $prevRow && $prevRow['status'] === 'pending';
+
+        $conn->query("UPDATE users SET status = 'active', status_reason = NULL WHERE id = $id AND role = 'artist'");
+
+        if ($prevRow && $wasPending) {
+            sendArtistStatusEmail($prevRow['email'], $prevRow['name'], 'approved');
+            $toast = 'Artist approved.';
+        } else {
+            $toast = 'Artist unblocked.';
+        }
     }
 }
 // Set Smartlane warehouse code
@@ -116,7 +192,7 @@ if ($search) {
 
  $whereSQL = implode(' AND ', $where);
 
-// ── CSV Export (uses same filters as the page, ignores pagination) ──
+// ── CSV Export (always active artists only, ignores page filters & pagination) ──
 if (isset($_GET['export'])) {
     $exportLimitRaw = $_GET['export_limit'] ?? 'all';
     $exportSortRaw  = $_GET['export_sort']  ?? 'newest';
@@ -128,21 +204,14 @@ if (isset($_GET['export'])) {
                ap.city, ap.address
         FROM users u
         LEFT JOIN artist_profiles ap ON ap.user_id = u.id
-        WHERE $whereSQL
+        WHERE u.role = 'artist' AND u.status = 'active'
         ORDER BY $exportOrderBy
     ";
     if (is_numeric($exportLimitRaw)) {
         $exportSQL .= " LIMIT " . (int)$exportLimitRaw;
     }
 
-    if ($params) {
-        $stmt = $conn->prepare($exportSQL);
-        $stmt->bind_param($types, ...$params);
-        $stmt->execute();
-        $exportResult = $stmt->get_result();
-    } else {
-        $exportResult = $conn->query($exportSQL);
-    }
+    $exportResult = $conn->query($exportSQL);
 
     $filename = 'artists_export_' . date('Y-m-d_His') . '.csv';
     header('Content-Type: text/csv; charset=utf-8');
@@ -191,7 +260,7 @@ if ($params) {
 
 // Fetch
  $dataSQL = "
-    SELECT u.id, u.name, u.email, u.phone, u.status, u.profile_picture, u.created_at,
+    SELECT u.id, u.name, u.email, u.phone, u.status, u.status_reason, u.profile_picture, u.created_at,
            ap.city, ap.art_style, ap.bio, ap.accepts_commissions, ap.is_featured, ap.profile_complete,
            ap.smartlane_warehouse_code,
            (SELECT COUNT(*) FROM artworks WHERE artist_id = u.id) AS art_count,

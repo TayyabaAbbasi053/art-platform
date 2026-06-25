@@ -27,12 +27,8 @@ function sendOtpEmail(string $toEmail, string $toName, string $otp): bool {
         $mail->isSMTP();
         $mail->Host       = 'smtp-relay.brevo.com';
         $mail->SMTPAuth   = true;
-        $mail->Username   = 'af785b001@smtp-brevo.com';
-        // ╔═══════════════════════════════════════════════╗
-        // ║  Brevo SMTP key — rotate in Brevo dashboard   ║
-        // ║  if this value is ever exposed                ║
-        // ╚═══════════════════════════════════════════════╝
-        $mail->Password   = 'REMOVED';
+        $mail->Username   = $_ENV['BREVO_SMTP_USERNAME'];
+$mail->Password   = $_ENV['BREVO_SMTP_PASSWORD'];
         $mail->SMTPSecure = 'tls';
         $mail->Port       = 587;
         $mail->setFrom('teamartbazaar.pk@gmail.com', 'Art Bazaar');
