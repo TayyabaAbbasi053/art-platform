@@ -1,12 +1,17 @@
 <?php
+file_put_contents(__DIR__ . '/debug_test.txt', 'HIT at ' . date('Y-m-d H:i:s') . ' action=' . ($_POST['action'] ?? 'NONE') . "\n", FILE_APPEND);
 error_reporting(E_ALL);
-ini_set('display_errors', 1);
+error_reporting(E_ALL);
+ini_set('display_errors', 0);
+ini_set('log_errors', 1);
 session_start();
 require_once __DIR__ . '/../../config/db.php';
+require_once __DIR__ . '/../../vendor/autoload.php';
 require_once __DIR__ . '/../../config/smartlane.php';
+error_log('BREVO_USER: ' . ($_ENV['BREVO_SMTP_USERNAME'] ?? 'NOT SET'));
+error_log('BREVO_PASS: ' . ($_ENV['BREVO_SMTP_PASSWORD'] ?? 'NOT SET'));
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
-require_once __DIR__ . '/../../vendor/autoload.php';
 function sendArtistOrderEmail(mysqli $conn, int $orderId, string $orderType): string {
     $stmt = $conn->prepare("
         SELECT u.email AS artist_email, u.name AS artist_name,
@@ -28,10 +33,10 @@ function sendArtistOrderEmail(mysqli $conn, int $orderId, string $orderType): st
     $mail = new PHPMailer(true);
     try {
         $mail->isSMTP();
-        $mail->Host       = 'smtp.gmail.com';
+        $mail->Host       = 'smtp-relay.brevo.com';
         $mail->SMTPAuth   = true;
-        $mail->Username   = 'teamartbazaar.pk@gmail.com';
-        $mail->Password   = 'REMOVED';
+        $mail->Username   = $_ENV['BREVO_SMTP_USERNAME'];
+        $mail->Password   = $_ENV['BREVO_SMTP_PASSWORD'];
         $mail->SMTPSecure = 'tls';
         $mail->Port       = 587;
         $mail->setFrom('teamartbazaar.pk@gmail.com', 'Art Bazaar');
@@ -39,6 +44,10 @@ function sendArtistOrderEmail(mysqli $conn, int $orderId, string $orderType): st
         $mail->addAddress($row['artist_email'], $row['artist_name']);
         $mail->isHTML(true);
         $mail->CharSet = 'UTF-8';
+        $mail->SMTPDebug = 2;
+        $mail->Debugoutput = function($str, $level) {
+            error_log("PHPMailer [artist] debug: $str");
+        };
 
         $label = $orderType === 'cod' ? 'New COD Order' : 'Payment Confirmed';
         $mail->Subject = "Art Bazaar — {$label}: Order #{$row['order_number']}";
@@ -47,9 +56,74 @@ function sendArtistOrderEmail(mysqli $conn, int $orderId, string $orderType): st
         $mail->send();
         return 'OK: sent to ' . $row['artist_email'];
     } catch (Exception $e) {
+        error_log('Art Bazaar artist order email failed: ' . $e->getMessage() . ' | ErrorInfo: ' . $mail->ErrorInfo);
         return 'DEBUG: PHPMailer error — ' . $mail->ErrorInfo;
     }
 }
+
+function sendBuyerOrderEmail(mysqli $conn, int $orderId, string $type): string {
+    $stmt = $conn->prepare("
+        SELECT o.order_number, o.buyer_id, o.guest_name, o.guest_email,
+               COALESCE(u.name, o.guest_name)  AS buyer_name,
+               COALESCE(u.email, o.guest_email) AS buyer_email,
+               a.title AS artwork_title
+        FROM orders o
+        LEFT JOIN users u ON o.buyer_id = u.id
+        LEFT JOIN order_items oi ON o.id = oi.order_id AND oi.item_type = 'artwork'
+        LEFT JOIN artworks a ON oi.item_id = a.id
+        WHERE o.id = ?
+        LIMIT 1
+    ");
+    $stmt->bind_param('i', $orderId);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+
+    if (!$row) return 'DEBUG: no matching order row for order_id ' . $orderId;
+    if (empty($row['buyer_email'])) return 'DEBUG: row found but buyer_email is empty';
+
+    $mail = new PHPMailer(true);
+    try {
+        $mail->isSMTP();
+        $mail->Host       = 'smtp-relay.brevo.com';
+        $mail->SMTPAuth   = true;
+        $mail->Username   = $_ENV['BREVO_SMTP_USERNAME'];
+        $mail->Password   = $_ENV['BREVO_SMTP_PASSWORD'];
+        $mail->SMTPSecure = 'tls';
+        $mail->Port       = 587;
+        $mail->setFrom('teamartbazaar.pk@gmail.com', 'Art Bazaar');
+        $mail->addReplyTo('teamartbazaar.pk@gmail.com', 'Art Bazaar');
+        $mail->addAddress($row['buyer_email'], $row['buyer_name']);
+        $mail->isHTML(true);
+        $mail->CharSet = 'UTF-8';
+        $mail->SMTPDebug = 2;
+        $mail->Debugoutput = function($str, $level) {
+            error_log("PHPMailer [buyer] debug: $str");
+        };
+
+        if ($type === 'payment_confirmed') {
+            $mail->Subject = "Art Bazaar — Payment Confirmed: Order #{$row['order_number']}";
+            $mail->AltBody = "Hi {$row['buyer_name']}, your payment for \"{$row['artwork_title']}\" (Order #{$row['order_number']}) has been confirmed. The artist has been notified and will begin processing your order.";
+            $mail->Body    = "<p>Hi {$row['buyer_name']},</p>
+                <p>Good news — your payment for <strong>{$row['artwork_title']}</strong> (Order #{$row['order_number']}) has been <strong>confirmed</strong>.</p>
+                <p>The artist has been notified and will begin processing your order.</p>
+                <p>— Art Bazaar Team</p>";
+        } else { // cod_received
+            $mail->Subject = "Art Bazaar — Order Received: Order #{$row['order_number']}";
+            $mail->AltBody = "Hi {$row['buyer_name']}, we've received your Cash on Delivery order for \"{$row['artwork_title']}\" (Order #{$row['order_number']}). The artist has been notified and will begin processing it.";
+            $mail->Body    = "<p>Hi {$row['buyer_name']},</p>
+                <p>We've received your <strong>Cash on Delivery</strong> order for <strong>{$row['artwork_title']}</strong> (Order #{$row['order_number']}).</p>
+                <p>The artist has been notified and will begin processing it. You'll pay cash when it's delivered.</p>
+                <p>— Art Bazaar Team</p>";
+        }
+
+        $mail->send();
+        return 'OK: sent to ' . $row['buyer_email'];
+    } catch (Exception $e) {
+        error_log('Art Bazaar buyer order email failed: ' . $e->getMessage() . ' | ErrorInfo: ' . $mail->ErrorInfo);
+        return 'DEBUG: PHPMailer error — ' . $mail->ErrorInfo;
+    }
+}
+
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
     header('Location: ../../login.php');
     exit;
@@ -70,14 +144,18 @@ function getArtworkImageUrl($imagePath) {
 
 // Mark as Paid
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'mark_paid') {
+    error_log('[mark_paid] TRIGGERED, raw POST id=' . ($_POST['id'] ?? 'MISSING'));
     $id = (int)($_POST['id'] ?? 0);
     if ($id) {
+        error_log('[mark_paid] id=' . $id . ' parsed OK, querying payment_method');
         $methodRes = $conn->query("SELECT payment_method FROM orders WHERE id = $id");
         $methodRow = $methodRes ? $methodRes->fetch_assoc() : null;
+        error_log('[mark_paid] payment_method=' . ($methodRow['payment_method'] ?? 'NULL/MISSING'));
 
         if ($methodRow && $methodRow['payment_method'] === 'cod') {
             $toast = 'This order is Cash on Delivery — there is no screenshot to verify.';
         } else {
+            error_log('[mark_paid] entering non-COD branch, checking digital category');
             // Check if this order's artwork is Digital Art — if so, it's delivered immediately
             $digitalRes = $conn->query("
                 SELECT c.slug AS category_slug
@@ -109,14 +187,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'mark_
                 $stmt = $conn->prepare("UPDATE orders SET payment_status = 'paid', order_status = 'payment_confirmed' WHERE id = ?");
                 $stmt->bind_param('i', $id);
                 $stmt->execute();
+                error_log('[mark_paid] about to call sendArtistOrderEmail for order_id=' . $id);
                 $emailDebug = sendArtistOrderEmail($conn, $id, 'payment_confirmed');
+                error_log('[mark_paid] sendArtistOrderEmail returned: ' . $emailDebug);
+                error_log('[mark_paid] about to call sendBuyerOrderEmail for order_id=' . $id);
+                $buyerEmailDebug = sendBuyerOrderEmail($conn, $id, 'payment_confirmed');
+                error_log('[mark_paid] sendBuyerOrderEmail returned: ' . $buyerEmailDebug);
 
                 $note = 'Payment verified by admin. Order confirmed.';
                 $stmtH = $conn->prepare("INSERT INTO order_status_history (order_id, status_from, status_to, changed_by_role, changed_by_id, notes) VALUES (?, 'pending', 'payment_confirmed', 'admin', ?, ?)");
                 $stmtH->bind_param('iis', $id, $adminId, $note);
                 $stmtH->execute();
 
-                $toast = 'Order marked as paid and confirmed. [' . $emailDebug . ']';
+                $toast = 'Order marked as paid and confirmed. [artist: ' . $emailDebug . '] [buyer: ' . $buyerEmailDebug . ']';
             }
         }
     }
@@ -196,6 +279,9 @@ $newForwardStatus = $isCod ? 'cod' : 'payment_confirmed';
 
         if (!in_array($oldOrderStatus, ['cod', 'payment_confirmed'], true)) {
             sendArtistOrderEmail($conn, $id, $newForwardStatus);
+            if ($isCod) {
+                sendBuyerOrderEmail($conn, $id, 'cod_received');
+            }
         }
 
         $itemRes = $conn->query("SELECT item_id FROM order_items WHERE order_id = $id AND item_type = 'artwork' LIMIT 1");

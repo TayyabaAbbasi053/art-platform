@@ -28,9 +28,10 @@ if (file_exists($envFile)) {
         if (strpos($line, '=') !== false) {
             list($key, $value) = explode('=', $line, 2);
             $key = trim($key);
-            $value = trim($value);
-            putenv($key . '=' . $value);
-            $_ENV[$key] = $value;
+$value = trim($value);
+$value = trim($value, '"\''); // ← strips surrounding quotes
+putenv($key . '=' . $value);
+$_ENV[$key] = $value;
         }
     }
 }

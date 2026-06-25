@@ -37,10 +37,10 @@ function sendArtistCommissionEmail(mysqli $conn, int $orderId, string $type = 'p
     $mail = new PHPMailer(true);
     try {
         $mail->isSMTP();
-        $mail->Host       = 'smtp.gmail.com';
+        $mail->Host       = 'smtp-relay.brevo.com';
         $mail->SMTPAuth   = true;
-        $mail->Username   = 'teamartbazaar.pk@gmail.com';
-        $mail->Password   = 'REMOVED';
+        $mail->Username   = $_ENV['BREVO_SMTP_USERNAME'];
+        $mail->Password   = $_ENV['BREVO_SMTP_PASSWORD'];
         $mail->SMTPSecure = 'tls';
         $mail->Port       = 587;
         $mail->setFrom('teamartbazaar.pk@gmail.com', 'Art Bazaar');
@@ -63,6 +63,59 @@ function sendArtistCommissionEmail(mysqli $conn, int $orderId, string $type = 'p
         $mail->send();
         return true;
     } catch (Exception $e) {
+        return false;
+    }
+}
+function sendBuyerCommissionEmail(mysqli $conn, int $orderId): bool {
+    $stmt = $conn->prepare("
+        SELECT o.order_number, o.commission_description,
+               COALESCE(u.name, o.guest_name) AS buyer_name,
+               COALESCE(u.email, o.guest_email) AS buyer_email,
+               art.name AS artist_name
+        FROM orders o
+        LEFT JOIN users u ON o.buyer_id = u.id
+        LEFT JOIN commission_requests cr ON cr.order_id = o.id
+        LEFT JOIN users art ON cr.artist_id = art.id
+        WHERE o.id = ?
+        LIMIT 1
+    ");
+    $stmt->bind_param('i', $orderId);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    if (!$row || empty($row['buyer_email'])) return false;
+
+    $desc = $row['commission_description'] ? mb_substr($row['commission_description'], 0, 120) : 'your custom artwork';
+
+    $mail = new PHPMailer(true);
+    try {
+        $mail->isSMTP();
+        $mail->Host       = 'smtp-relay.brevo.com';
+        $mail->SMTPAuth   = true;
+        $mail->Username   = $_ENV['BREVO_SMTP_USERNAME'];
+        $mail->Password   = $_ENV['BREVO_SMTP_PASSWORD'];
+        $mail->SMTPSecure = 'tls';
+        $mail->Port       = 587;
+        $mail->setFrom('teamartbazaar.pk@gmail.com', 'Art Bazaar');
+        $mail->addReplyTo('teamartbazaar.pk@gmail.com', 'Art Bazaar');
+        $mail->addAddress($row['buyer_email'], $row['buyer_name']);
+        $mail->isHTML(true);
+        $mail->CharSet = 'UTF-8';
+        $mail->Subject = "Art Bazaar — Payment Confirmed: Commission #{$row['order_number']}";
+        $mail->AltBody = "Hi {$row['buyer_name']}, your payment for commission #{$row['order_number']} has been confirmed. The artist has been notified and will begin work shortly.";
+        $mail->Body    = "
+        <div style='font-family:sans-serif;max-width:420px;margin:auto;padding:32px;background:#fff;border-radius:12px'>
+            <p style='font-size:13px;color:#555;margin:0 0 8px'>Art Bazaar</p>
+            <h2 style='font-size:24px;font-weight:400;color:#0a0a0a;margin:0 0 20px;font-family:Georgia,serif'>Payment Confirmed</h2>
+            <p style='font-size:14px;color:#444;line-height:1.6;margin:0 0 16px'>Hi {$row['buyer_name']}, your payment has been confirmed for your commission request.</p>
+            <p style='font-size:13px;color:#666;margin:0 0 8px'><strong>Commission #{$row['order_number']}</strong></p>
+            <p style='font-size:13px;color:#666;margin:0 0 24px'>{$desc}</p>
+            " . ($row['artist_name'] ? "<p style='font-size:13px;color:#666;margin:0 0 16px'>Your artist <strong>{$row['artist_name']}</strong> has been notified and will begin work shortly.</p>" : "") . "
+            <p style='font-size:12px;color:#aaa;margin:0'>— Art Bazaar Team</p>
+        </div>";
+        $mail->send();
+        return true;
+    } catch (Exception $e) {
+        error_log('Art Bazaar buyer commission email failed: ' . $e->getMessage());
         return false;
     }
 }
@@ -331,6 +384,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'mark_
         $stmt->execute();
         if ($stmt->affected_rows > 0) {
             sendArtistCommissionEmail($conn, $id);
+            sendBuyerCommissionEmail($conn, $id);
         }
         $adminId = (int)$_SESSION['user_id'];
         $stmtH = $conn->prepare("INSERT INTO order_status_history (order_id, status_from, status_to, changed_by_role, changed_by_id, notes) VALUES (?, 'payment_review', 'payment_confirmed', 'admin', ?, 'Admin verified payment. Artist notified to begin work.')");
@@ -348,6 +402,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'appro
         $conn->query("UPDATE orders SET order_status = 'payment_confirmed', payment_status = 'paid' WHERE id = $id AND order_status = 'payment_review'");
         if ($conn->affected_rows > 0) {
             sendArtistCommissionEmail($conn, $id);
+            sendBuyerCommissionEmail($conn, $id);
         }
         $adminId = (int)$_SESSION['user_id'];
         $stmtH = $conn->prepare("INSERT INTO order_status_history (order_id, status_from, status_to, changed_by_role, changed_by_id, notes) VALUES (?, 'payment_review', 'payment_confirmed', 'admin', ?, 'Admin verified payment. Artist should now begin work.')");
