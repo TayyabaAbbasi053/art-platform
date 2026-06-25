@@ -205,6 +205,10 @@ $hasSadapay     = isset($_POST['has_sadapay'])       ? 1 : 0;
     $error = 'Password must be at least 8 characters.';
 } elseif ($password !== $confirm) {
     $error = 'Passwords do not match.';
+} elseif ($role === 'artist' && !trim($_POST['bio'] ?? '')) {
+    $error = 'Bio is required.';
+} elseif ($role === 'artist' && !trim($_POST['art_style'] ?? '')) {
+    $error = 'Art style is required.';
 } elseif ($role === 'artist' && !$city) {
     $error = 'City is required.';
 } elseif ($role === 'artist' && !$address) {

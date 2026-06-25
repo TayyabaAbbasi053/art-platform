@@ -106,7 +106,14 @@ elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $spNum      = $hasSadapay ? trim($_POST['sadapay_number'] ?? '') : null;
 
     // Determine if profile is now complete
-    $profileComplete = (!empty($city) && !empty($address) && ($hasBankAccount || $hasEasypaisa || $hasJazzcash || $hasNayapay || $hasSadapay)) ? 1 : 0;
+    $profileComplete = (
+    !empty($bio) &&
+    !empty($city) &&
+    !empty($address) &&
+    !empty($art_style) &&
+    !empty($newPicture) &&
+    ($hasBankAccount || $hasEasypaisa || $hasJazzcash || $hasNayapay || $hasSadapay)
+) ? 1 : 0;
     $profileCompletedAt = ($profileComplete && !($profile['profile_complete'] ?? 0)) ? date('Y-m-d H:i:s') : null;
 
     // Validation
