@@ -504,7 +504,29 @@ h1.htitle em{font-style:italic;color:var(--ink);}
     <img src="indexhero.jpeg" alt="Art Bazaar Hero">
 </div>
 </section>
+<?php if (isset($_SESSION['role']) && $_SESSION['role'] === 'artist'): ?>
+<div style="background:var(--ink);border-bottom:1px solid rgba(246,237,222,0.15);">
+    <div style="max-width:var(--w);margin:0 auto;padding:10px 28px;display:flex;align-items:center;justify-content:space-between;gap:12px;">
+        <span style="font-size:12.5px;color:var(--sand);">You're logged in as an artist — manage your artworks and orders from your dashboard.</span>
+        <a href="dashboard/artist/index.php" style="display:inline-flex;align-items:center;gap:6px;background:var(--sand);color:var(--ink);padding:8px 16px;border-radius:6px;font-size:12.5px;font-weight:500;white-space:nowrap;text-decoration:none;transition:background .12s;" onmouseover="this.style.background='#c4b69e'" onmouseout="this.style.background='var(--sand)'">
+            Go to Artist Dashboard →
+        </a>
+    </div>
+</div>
+<?php elseif (!isset($_SESSION['user_id'])): ?>
+<div style="background:var(--ink);border-bottom:1px solid rgba(246,237,222,0.15);">
+    <div style="max-width:var(--w);margin:0 auto;padding:10px 28px;display:flex;align-items:center;justify-content:space-between;gap:12px;">
+        <span style="font-size:12.5px;color:var(--sand);">Are you an artist? Join Art Bazaar and start selling your work today.</span>
+        <a href="register.php" style="display:inline-flex;align-items:center;gap:6px;background:var(--sand);color:var(--ink);padding:8px 16px;border-radius:6px;font-size:12.5px;font-weight:500;white-space:nowrap;text-decoration:none;transition:background .12s;" onmouseover="this.style.background='#c4b69e'" onmouseout="this.style.background='var(--sand)'">
+            Start as an Artist →
+        </a>
+    </div>
+</div>
+<?php endif; ?>
 
+<div class="wrap"><hr class="divhr"></div>
+
+<!-- CATEGORIES -->
 <div class="wrap"><hr class="divhr"></div>
 
 <!-- CATEGORIES -->

@@ -538,11 +538,20 @@ tr:hover td { background: var(--sand); color: var(--ink); }
     </div>
     <div class="topbar-right">
         <button class="ham-btn" onclick="openDrawer()"><span></span><span></span><span></span></button>
-        <div class="artist-chip">
-            <div class="avatar"><?= strtoupper(substr($artistName, 0, 1)) ?></div>
-            <span class="name"><?= htmlspecialchars($artistName) ?></span>
-            <span class="arrow">∨</span>
-        </div>
+        <a href="https://artbazaar.pk" target="_blank" style="
+    text-decoration:none; 
+    background: var(--sand); 
+    color: var(--ink); 
+    padding: 8px 18px; 
+    border-radius: 8px; 
+    font-size: 13px; 
+    font-weight: 500; 
+    font-family: 'DM Sans', sans-serif;
+    border: 1px solid var(--border);
+    transition: opacity .15s;
+" onmouseover="this.style.opacity='.8'" onmouseout="this.style.opacity='1'">
+    Home
+</a>
     </div>
 </header>
 
