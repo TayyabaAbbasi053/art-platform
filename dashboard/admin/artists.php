@@ -859,11 +859,7 @@ if ($incomplete):
                             <?php elseif ($a['status'] === 'blocked'): ?>
                                 <form method="POST" style="display:inline"><input type="hidden" name="action" value="unblock"><input type="hidden" name="id" value="<?= $a['id'] ?>"><button type="submit" class="act-btn approve">Unblock</button></form>
                             <?php elseif ($a['status'] === 'pending'): ?>
-    <form method="POST" style="display:inline">
-        <input type="hidden" name="action" value="unblock">
-        <input type="hidden" name="id" value="<?= $a['id'] ?>">
-        <button type="submit" class="act-btn approve">Approve</button>
-    </form>
+    <button type="button" class="act-btn approve" onclick="approveArtist(<?= $a['id'] ?>, this)">Approve</button>
     <?php if (!empty($a['status_reason'])): ?>
         <span style="font-size:11px;color:var(--muted);margin-left:6px;display:inline-flex;align-items:center;gap:4px;">
             <span style="font-size:13px;">⚠</span>
@@ -1042,15 +1038,7 @@ function openUnapprove(id, name) {
 function closeUnapprove() {
     document.getElementById('unapproveModal').classList.remove('open');
 }
-function submitUnapprove() {
-    const reason = document.getElementById('unapproveReason').value.trim();
-    if (!reason) {
-        document.getElementById('unapproveError').style.display = 'block';
-        return;
-    }
-    document.getElementById('unapproveReasonHidden').value = reason;
-    document.getElementById('unapproveForm').submit();
-}
+
 document.getElementById('unapproveModal').addEventListener('click', function(e) {
     if (e.target === this) closeUnapprove();
 });
@@ -1093,6 +1081,82 @@ if(window.innerWidth <= 768 && !document.querySelector('.ham-btn')){
 overlay.addEventListener('click', () => {
     drawer.classList.remove('open');
 });
+function approveArtist(id, btn) {
+    btn.disabled = true;
+    btn.textContent = 'Approving...';
+
+    const fd = new FormData();
+    fd.append('action', 'unblock');
+    fd.append('id', id);
+
+    fetch('artists.php', { method: 'POST', body: fd })
+        .then(() => {
+            const row = btn.closest('tr');
+            // Update status pill
+            row.querySelector('.pill').className = 'pill active';
+            row.querySelector('.pill').textContent = 'Active';
+            // Replace action buttons
+            const actions = row.querySelector('.td-actions');
+            actions.innerHTML = `
+                <form method="POST" style="display:inline"><input type="hidden" name="action" value="feature"><input type="hidden" name="id" value="${id}"><button type="submit" class="act-btn amber">Feature</button></form>
+                <button type="button" class="act-btn red" onclick="openBlock(${id}, '')">Block</button>
+                <button type="button" class="act-btn red" onclick="openDelete(${id}, '', 0)">Delete</button>
+            `;
+            showToast('Artist approved successfully.');
+        })
+        .catch(() => {
+            btn.disabled = false;
+            btn.textContent = 'Approve';
+            showToast('Something went wrong. Please try again.');
+        });
+}
+
+function submitUnapprove() {
+    const reason = document.getElementById('unapproveReason').value.trim();
+    if (!reason) {
+        document.getElementById('unapproveError').style.display = 'block';
+        return;
+    }
+
+    const id = document.getElementById('unapproveId').value;
+    const fd = new FormData();
+    fd.append('action', 'unapprove');
+    fd.append('user_id', id);
+    fd.append('reason', reason);
+
+    fetch('artists.php', { method: 'POST', body: fd })
+        .then(() => {
+            closeUnapprove();
+            // Find the row and update it
+            document.querySelectorAll('tr').forEach(row => {
+                const deleteBtn = row.querySelector('[onclick*="openDelete(' + id + '"]');
+                if (deleteBtn) {
+                    row.querySelector('.pill').className = 'pill pending';
+                    row.querySelector('.pill').textContent = 'Pending';
+                    const actions = row.querySelector('.td-actions');
+                    actions.innerHTML = `
+                        <form method="POST" style="display:inline"><input type="hidden" name="action" value="unblock"><input type="hidden" name="id" value="${id}"><button type="button" class="act-btn approve" onclick="approveArtist(${id}, this)">Approve</button></form>
+                        <span style="font-size:11px;color:var(--muted);margin-left:6px;">${reason}</span>
+                        <button type="button" class="act-btn red" onclick="openDelete(${id}, '', 0)">Delete</button>
+                    `;
+                }
+            });
+            showToast('Artist unapproved.');
+        });
+}
+
+function showToast(msg) {
+    let toast = document.querySelector('.toast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.className = 'toast';
+        toast.innerHTML = `<span></span><button class="toast-close" onclick="this.parentElement.classList.add('hidden')">&times;</button>`;
+        document.querySelector('.content').prepend(toast);
+    }
+    toast.classList.remove('hidden');
+    toast.querySelector('span').textContent = msg;
+    setTimeout(() => toast.classList.add('hidden'), 3500);
+}
 </script>
 </body>
 </html>
