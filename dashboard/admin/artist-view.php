@@ -43,7 +43,7 @@ if (empty($artist['art_style']))       $missingFields[] = 'Art Style';
 if (empty($artist['profile_picture'])) $missingFields[] = 'Profile Picture';
 $hasPayment = $artist['has_bank_account'] || $artist['has_easypaisa'] || $artist['has_jazzcash'] || $artist['has_nayapay'] || $artist['has_sadapay'];
 if (!$hasPayment)                      $missingFields[] = 'Payment Method';
-$isComplete = (bool)($artist['profile_complete'] ?? 0);
+$isComplete = empty($missingFields);
 
 // Fetch artworks
  $artworks = [];

@@ -845,11 +845,11 @@ tr:hover td { background: var(--bg); box-shadow: 0 4px 12px rgba(12,63,48,.06); 
                     <td data-label="Status">
                         <span class="pill <?= $a['status'] ?>"><?= ucfirst($a['status']) ?></span>
                         <?php
-                        $incomplete = empty($a['profile_complete']);
-                        if ($incomplete):
-                        ?>
-                            <span class="pill" style="background:var(--sand);color:var(--ink);margin-top:4px;display:inline-block;">⚠ Incomplete</span>
-                        <?php endif; ?>
+$incomplete = empty($a['bio']) || empty($a['city']) || empty($a['art_style']) || empty($a['profile_picture']);
+if ($incomplete):
+?>
+    <span class="pill" style="background:var(--sand);color:var(--ink);margin-top:4px;display:inline-block;">⚠ Incomplete</span>
+<?php endif; ?>
                     </td>
                     <td data-label="Actions">
                         <div class="td-actions">
