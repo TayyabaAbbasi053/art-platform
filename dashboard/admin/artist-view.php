@@ -354,7 +354,7 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
 <!-- ══════════════ TOPBAR ══════════════ -->
 <header class="topbar">
     <div class="topbar-left">
-        <a href="artists.php" class="back-link"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg> Artists</a>
+        <a href="<?= htmlspecialchars($_GET['back'] ?? 'artists.php') ?>" class="back-link">troke-width="2"><polyline points="15 18 9 12 15 6"/></svg> Artists</a>
         <h1>Artist Profile</h1>
     </div>
     <div class="topbar-right" style="display:flex;align-items:center;gap:12px;">

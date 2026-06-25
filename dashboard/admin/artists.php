@@ -170,7 +170,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
  $types   = '';
 
  $statusFilter = $_GET['status'] ?? '';
-if (in_array($statusFilter, ['active','blocked','pending'])) {
+if ($statusFilter === 'unapproved') {
+    $where[] = "u.status = 'pending' AND u.status_reason IS NOT NULL AND u.status_reason != ''";
+} elseif ($statusFilter === 'pending') {
+    $where[] = "u.status = 'pending' AND (u.status_reason IS NULL OR u.status_reason = '')";
+} elseif (in_array($statusFilter, ['active','blocked'])) {
     $where[] = "u.status = ?";
     $params[] = $statusFilter;
     $types .= 's';
@@ -290,7 +294,9 @@ foreach (['active','blocked','pending'] as $s) {
     $r = $conn->query("SELECT COUNT(*) FROM users WHERE role='artist' AND status='$s'");
     $statusCounts[$s] = (int)$r->fetch_row()[0];
 }
-$statusCounts['all'] = array_sum($statusCounts);
+$statusCounts['unapproved'] = (int)$conn->query("SELECT COUNT(*) FROM users WHERE role='artist' AND status='pending' AND status_reason IS NOT NULL AND status_reason != ''")->fetch_row()[0];
+$statusCounts['pending'] = $statusCounts['pending'] - $statusCounts['unapproved'];
+$statusCounts['all'] = $statusCounts['active'] + $statusCounts['blocked'] + $statusCounts['pending'] + $statusCounts['unapproved'];
 
 function buildQS($overrides = []) {
     $q = $_GET;
@@ -753,7 +759,7 @@ tr:hover td { background: var(--bg); box-shadow: 0 4px 12px rgba(12,63,48,.06); 
         <?php foreach (['active','blocked','pending'] as $s): ?>
         <a href="?<?= buildQS(['status' => $s, 'featured' => null]) ?>" class="tab <?= $statusFilter === $s ? 'active' : '' ?>"><?= ucfirst($s) ?> <span class="count <?= $s === 'pending' && $statusCounts['pending'] > 0 ? 'hot' : '' ?>"><?= $statusCounts[$s] ?></span></a>
         <?php endforeach; ?>
-        <a href="?<?= buildQS(['featured' => '1', 'status' => null]) ?>" class="tab <?= (isset($_GET['featured']) && $_GET['featured'] === '1' && !$statusFilter) ? 'active' : '' ?>">★ Featured</a>
+        <a href="?<?= buildQS(['status' => 'unapproved', 'featured' => null]) ?>" class="tab <?= $statusFilter === 'unapproved' ? 'active' : '' ?>">Unapproved <span class="count <?= $statusCounts['unapproved'] > 0 ? 'hot' : '' ?>"><?= $statusCounts['unapproved'] ?></span></a>
     </div>
 
     <!-- Filters -->
@@ -818,7 +824,7 @@ tr:hover td { background: var(--bg); box-shadow: 0 4px 12px rgba(12,63,48,.06); 
                     </td>
                     <td data-label="Artist">
                         <div class="td-name">
-                            <a href="artist-view.php?id=<?= $a['id'] ?>"><?= htmlspecialchars($a['name']) ?></a>
+                            <a href="artist-view.php?id=<?= $a['id'] ?>&back=<?= urlencode('artists.php?' . http_build_query($_GET)) ?>"><?= htmlspecialchars($a['name']) ?></a>
                             <?php if ($a['is_featured']): ?><span class="featured-star">★</span><?php endif; ?>
                         </div>
                         <div class="td-email"><?= htmlspecialchars($a['email']) ?></div>
