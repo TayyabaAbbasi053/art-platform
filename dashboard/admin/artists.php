@@ -170,6 +170,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
  $types   = '';
 
  $statusFilter = $_GET['status'] ?? '';
+ if ($statusFilter === 'updated') {
+    $where[] = "u.status = 'pending' AND u.status_reason IS NOT NULL AND u.status_reason != '' AND ap.bio IS NOT NULL AND ap.bio != '' AND ap.city IS NOT NULL AND ap.city != '' AND ap.address IS NOT NULL AND ap.address != '' AND ap.art_style IS NOT NULL AND ap.art_style != '' AND (ap.has_bank_account=1 OR ap.has_easypaisa=1 OR ap.has_jazzcash=1 OR ap.has_nayapay=1 OR ap.has_sadapay=1) AND (u.profile_picture IS NULL OR u.profile_picture = '')";
+} else
 if ($statusFilter === 'unapproved') {
     $where[] = "u.status = 'pending' AND u.status_reason IS NOT NULL AND u.status_reason != ''";
 } elseif ($statusFilter === 'pending') {
@@ -295,6 +298,7 @@ foreach (['active','blocked','pending'] as $s) {
     $statusCounts[$s] = (int)$r->fetch_row()[0];
 }
 $statusCounts['unapproved'] = (int)$conn->query("SELECT COUNT(*) FROM users WHERE role='artist' AND status='pending' AND status_reason IS NOT NULL AND status_reason != ''")->fetch_row()[0];
+$statusCounts['updated'] = (int)$conn->query("SELECT COUNT(*) FROM users u LEFT JOIN artist_profiles ap ON ap.user_id = u.id WHERE u.role='artist' AND u.status='pending' AND u.status_reason IS NOT NULL AND u.status_reason != '' AND ap.bio IS NOT NULL AND ap.bio != '' AND ap.city IS NOT NULL AND ap.city != '' AND ap.address IS NOT NULL AND ap.address != '' AND ap.art_style IS NOT NULL AND ap.art_style != '' AND (ap.has_bank_account=1 OR ap.has_easypaisa=1 OR ap.has_jazzcash=1 OR ap.has_nayapay=1 OR ap.has_sadapay=1) AND (u.profile_picture IS NULL OR u.profile_picture = '')")->fetch_row()[0];
 $statusCounts['pending'] = $statusCounts['pending'] - $statusCounts['unapproved'];
 $statusCounts['all'] = $statusCounts['active'] + $statusCounts['blocked'] + $statusCounts['pending'] + $statusCounts['unapproved'];
 
@@ -760,6 +764,7 @@ tr:hover td { background: var(--bg); box-shadow: 0 4px 12px rgba(12,63,48,.06); 
         <a href="?<?= buildQS(['status' => $s, 'featured' => null]) ?>" class="tab <?= $statusFilter === $s ? 'active' : '' ?>"><?= ucfirst($s) ?> <span class="count <?= $s === 'pending' && $statusCounts['pending'] > 0 ? 'hot' : '' ?>"><?= $statusCounts[$s] ?></span></a>
         <?php endforeach; ?>
         <a href="?<?= buildQS(['status' => 'unapproved', 'featured' => null]) ?>" class="tab <?= $statusFilter === 'unapproved' ? 'active' : '' ?>">Unapproved <span class="count <?= $statusCounts['unapproved'] > 0 ? 'hot' : '' ?>"><?= $statusCounts['unapproved'] ?></span></a>
+        <a href="?<?= buildQS(['status' => 'updated', 'featured' => null]) ?>" class="tab <?= $statusFilter === 'updated' ? 'active' : '' ?>">✓ Updated Profiles <span class="count <?= $statusCounts['updated'] > 0 ? 'hot' : '' ?>"><?= $statusCounts['updated'] ?></span></a>
     </div>
 
     <!-- Filters -->
