@@ -169,6 +169,8 @@ require_once __DIR__ . '/config/db.php';
 ];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    ignore_user_abort(true); // keep running even if the user's connection drops mid-request
+
     // If editing a pending application, the email is locked server-side —
     // we ignore whatever was posted in the email field and use the original.
     $postedEditEmail = trim($_POST['edit_email'] ?? '');
@@ -239,28 +241,78 @@ $hasSadapay     = isset($_POST['has_sadapay'])       ? 1 : 0;
             $error = 'An account with this email already exists.';
         } elseif ($check->num_rows > 0 && $existingRole === 'artist' && $existingStatus === 'pending') {
             // Allow pending artist to resubmit — update their record
-            $hash = password_hash($password, PASSWORD_BCRYPT);
-            $stmtUp = $conn->prepare("UPDATE users SET name=?, phone=?, password_hash=? WHERE id=?");
-            $stmtUp->bind_param('sssi', $name, $phone, $hash, $existingId);
-            $stmtUp->execute();
-            $userId = $existingId;
-            // profile INSERT/UPDATE handled below with ON DUPLICATE KEY UPDATE
-            goto do_profile_insert;
+            $conn->begin_transaction();
+            try {
+                $hash = password_hash($password, PASSWORD_BCRYPT);
+                $stmtUp = $conn->prepare("UPDATE users SET name=?, phone=?, password_hash=? WHERE id=?");
+                $stmtUp->bind_param('sssi', $name, $phone, $hash, $existingId);
+                $stmtUp->execute();
+                $userId = $existingId;
+
+                $bankName    = $hasBankAccount ? trim($_POST['bank_name'] ?? '')           : null;
+                $bankTitle   = $hasBankAccount ? trim($_POST['bank_account_title'] ?? '')  : null;
+                $bankNumber  = $hasBankAccount ? trim($_POST['bank_account_number'] ?? '') : null;
+                $epName   = $hasEasypaisa ? trim($_POST['easypaisa_name'] ?? '')   : null;
+                $epNum    = $hasEasypaisa ? trim($_POST['easypaisa_number'] ?? '')  : null;
+                $jcName   = $hasJazzcash  ? trim($_POST['jazzcash_name'] ?? '')    : null;
+                $jcNum    = $hasJazzcash  ? trim($_POST['jazzcash_number'] ?? '')   : null;
+                $npName   = $hasNayapay   ? trim($_POST['nayapay_name'] ?? '')     : null;
+                $npNum    = $hasNayapay   ? trim($_POST['nayapay_number'] ?? '')    : null;
+                $spName   = $hasSadapay   ? trim($_POST['sadapay_name'] ?? '')     : null;
+                $spNum    = $hasSadapay   ? trim($_POST['sadapay_number'] ?? '')    : null;
+                $bio_reg        = trim($_POST['bio'] ?? '');
+                $art_style_reg  = trim($_POST['art_style'] ?? '');
+                $instagram_reg  = trim($_POST['instagram_url'] ?? '');
+
+                $profile = $conn->prepare("INSERT INTO artist_profiles 
+                    (user_id, bio, art_style, instagram_url, city, address,
+                     has_bank_account, bank_name, bank_account_title, bank_account_number,
+                     has_easypaisa, easypaisa_name, easypaisa_number,
+                     has_jazzcash, jazzcash_name, jazzcash_number,
+                     has_nayapay, nayapay_name, nayapay_number,
+                     has_sadapay, sadapay_name, sadapay_number)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    ON DUPLICATE KEY UPDATE
+                     bio=VALUES(bio), art_style=VALUES(art_style), instagram_url=VALUES(instagram_url),
+                     city=VALUES(city), address=VALUES(address),
+                     has_bank_account=VALUES(has_bank_account), bank_name=VALUES(bank_name),
+                     bank_account_title=VALUES(bank_account_title), bank_account_number=VALUES(bank_account_number),
+                     has_easypaisa=VALUES(has_easypaisa), easypaisa_name=VALUES(easypaisa_name), easypaisa_number=VALUES(easypaisa_number),
+                     has_jazzcash=VALUES(has_jazzcash), jazzcash_name=VALUES(jazzcash_name), jazzcash_number=VALUES(jazzcash_number),
+                     has_nayapay=VALUES(has_nayapay), nayapay_name=VALUES(nayapay_name), nayapay_number=VALUES(nayapay_number),
+                     has_sadapay=VALUES(has_sadapay), sadapay_name=VALUES(sadapay_name), sadapay_number=VALUES(sadapay_number)");
+
+                $profile->bind_param('isssssississississssss',
+                    $userId, $bio_reg, $art_style_reg, $instagram_reg, $city, $address,
+                    $hasBankAccount, $bankName, $bankTitle, $bankNumber,
+                    $hasEasypaisa, $epName, $epNum,
+                    $hasJazzcash,  $jcName, $jcNum,
+                    $hasNayapay,   $npName, $npNum,
+                    $hasSadapay,   $spName, $spNum
+                );
+                $profile->execute();
+
+                $conn->commit();
+                $success = 'Artist account updated! Your account is pending admin approval. You will be able to log in once approved.';
+                $formData = [];
+            } catch (Exception $e) {
+                $conn->rollback();
+                $error = 'Something went wrong. Please try again.';
+            }
         } else {
-            $hash   = password_hash($password, PASSWORD_BCRYPT);
-$status = ($role === 'artist') ? 'pending' : 'active';
-$stmt   = $conn->prepare("INSERT INTO users (name, email, phone, password_hash, role, status) VALUES (?, ?, ?, ?, ?, ?)");
-            $stmt->bind_param('ssssss', $name, $email, $phone, $hash, $role, $status);
+            $conn->begin_transaction();
+            try {
+                $hash   = password_hash($password, PASSWORD_BCRYPT);
+                $status = ($role === 'artist') ? 'pending' : 'active';
+                $stmt   = $conn->prepare("INSERT INTO users (name, email, phone, password_hash, role, status) VALUES (?, ?, ?, ?, ?, ?)");
+                $stmt->bind_param('ssssss', $name, $email, $phone, $hash, $role, $status);
+                $stmt->execute();
+                $userId = $conn->insert_id;
 
-            if ($stmt->execute()) {
                 if ($role === 'artist') {
-                    $userId = $conn->insert_id;
-                    do_profile_insert:
-
                     $bankName    = $hasBankAccount ? trim($_POST['bank_name'] ?? '')           : null;
                     $bankTitle   = $hasBankAccount ? trim($_POST['bank_account_title'] ?? '')  : null;
                     $bankNumber  = $hasBankAccount ? trim($_POST['bank_account_number'] ?? '') : null;
-
                     $epName   = $hasEasypaisa ? trim($_POST['easypaisa_name'] ?? '')   : null;
                     $epNum    = $hasEasypaisa ? trim($_POST['easypaisa_number'] ?? '')  : null;
                     $jcName   = $hasJazzcash  ? trim($_POST['jazzcash_name'] ?? '')    : null;
@@ -269,8 +321,6 @@ $stmt   = $conn->prepare("INSERT INTO users (name, email, phone, password_hash, 
                     $npNum    = $hasNayapay   ? trim($_POST['nayapay_number'] ?? '')    : null;
                     $spName   = $hasSadapay   ? trim($_POST['sadapay_name'] ?? '')     : null;
                     $spNum    = $hasSadapay   ? trim($_POST['sadapay_number'] ?? '')    : null;
-
-                    // FIX 3: Corrected bind_param types and variables count (19 total)
                     $bio_reg        = trim($_POST['bio'] ?? '');
                     $art_style_reg  = trim($_POST['art_style'] ?? '');
                     $instagram_reg  = trim($_POST['instagram_url'] ?? '');
@@ -292,7 +342,7 @@ $stmt   = $conn->prepare("INSERT INTO users (name, email, phone, password_hash, 
                          has_jazzcash=VALUES(has_jazzcash), jazzcash_name=VALUES(jazzcash_name), jazzcash_number=VALUES(jazzcash_number),
                          has_nayapay=VALUES(has_nayapay), nayapay_name=VALUES(nayapay_name), nayapay_number=VALUES(nayapay_number),
                          has_sadapay=VALUES(has_sadapay), sadapay_name=VALUES(sadapay_name), sadapay_number=VALUES(sadapay_number)");
-                    
+
                     $profile->bind_param('isssssississississssss',
                         $userId, $bio_reg, $art_style_reg, $instagram_reg, $city, $address,
                         $hasBankAccount, $bankName, $bankTitle, $bankNumber,
@@ -302,12 +352,15 @@ $stmt   = $conn->prepare("INSERT INTO users (name, email, phone, password_hash, 
                         $hasSadapay,   $spName, $spNum
                     );
                     $profile->execute();
+                    $conn->commit();
                     $success = 'Artist account created! Your account is pending admin approval. You will be able to log in once approved.';
                 } else {
+                    $conn->commit();
                     $success = 'Account created successfully! You can now log in.';
                 }
                 $formData = [];
-            } else {
+            } catch (Exception $e) {
+                $conn->rollback();
                 $error = 'Something went wrong. Please try again.';
             }
         }
