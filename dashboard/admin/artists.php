@@ -71,10 +71,9 @@ $mail->Password   = $_ENV['BREVO_SMTP_PASSWORD'];
     $u->execute();
     $artistRow = $u->get_result()->fetch_assoc();
 
-    $stmt = $conn->prepare("UPDATE users SET status='pending', status_reason=? WHERE id=?");
-    $stmt->bind_param('si', $reason, $uid);
-    $stmt->execute();
-
+    $stmt = $conn->prepare("UPDATE users SET status='pending', status_reason=?, status_reason_set_at=NOW() WHERE id=?");
+$stmt->bind_param('si', $reason, $uid);
+$stmt->execute();
     if ($artistRow) {
         $mailSent = sendArtistStatusEmail($artistRow['email'], $artistRow['name'], 'unapproved', $reason);
         if (!$mailSent) {
@@ -171,7 +170,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
 
  $statusFilter = $_GET['status'] ?? '';
  if ($statusFilter === 'updated') {
-    $where[] = "u.status = 'pending' AND u.status_reason IS NOT NULL AND u.status_reason != '' AND ap.bio IS NOT NULL AND ap.bio != '' AND ap.city IS NOT NULL AND ap.city != '' AND ap.address IS NOT NULL AND ap.address != '' AND ap.art_style IS NOT NULL AND ap.art_style != '' AND (ap.has_bank_account=1 OR ap.has_easypaisa=1 OR ap.has_jazzcash=1 OR ap.has_nayapay=1 OR ap.has_sadapay=1) AND (u.profile_picture IS NULL OR u.profile_picture = '')";
+    $where[] = "u.status = 'pending' AND u.status_reason IS NOT NULL AND u.status_reason != '' AND ap.profile_updated_at IS NOT NULL AND ap.profile_updated_at > u.status_reason_set_at";
 } else
 if ($statusFilter === 'unapproved') {
     $where[] = "u.status = 'pending' AND u.status_reason IS NOT NULL AND u.status_reason != ''";
@@ -298,7 +297,7 @@ foreach (['active','blocked','pending'] as $s) {
     $statusCounts[$s] = (int)$r->fetch_row()[0];
 }
 $statusCounts['unapproved'] = (int)$conn->query("SELECT COUNT(*) FROM users WHERE role='artist' AND status='pending' AND status_reason IS NOT NULL AND status_reason != ''")->fetch_row()[0];
-$statusCounts['updated'] = (int)$conn->query("SELECT COUNT(*) FROM users u LEFT JOIN artist_profiles ap ON ap.user_id = u.id WHERE u.role='artist' AND u.status='pending' AND u.status_reason IS NOT NULL AND u.status_reason != '' AND ap.bio IS NOT NULL AND ap.bio != '' AND ap.city IS NOT NULL AND ap.city != '' AND ap.address IS NOT NULL AND ap.address != '' AND ap.art_style IS NOT NULL AND ap.art_style != '' AND (ap.has_bank_account=1 OR ap.has_easypaisa=1 OR ap.has_jazzcash=1 OR ap.has_nayapay=1 OR ap.has_sadapay=1) AND (u.profile_picture IS NULL OR u.profile_picture = '')")->fetch_row()[0];
+$statusCounts['updated'] = (int)$conn->query("SELECT COUNT(*) FROM users u LEFT JOIN artist_profiles ap ON ap.user_id = u.id WHERE u.role='artist' AND u.status='pending' AND u.status_reason IS NOT NULL AND u.status_reason != '' AND ap.profile_updated_at IS NOT NULL AND ap.profile_updated_at > u.status_reason_set_at")->fetch_row()[0];
 $statusCounts['pending'] = $statusCounts['pending'] - $statusCounts['unapproved'];
 $statusCounts['all'] = $statusCounts['active'] + $statusCounts['blocked'] + $statusCounts['pending'] + $statusCounts['unapproved'];
 

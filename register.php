@@ -292,6 +292,9 @@ $hasSadapay     = isset($_POST['has_sadapay'])       ? 1 : 0;
                 );
                 $profile->execute();
 
+                // Stamp profile_updated_at so admin can see they made changes after unapproval
+                $conn->query("UPDATE artist_profiles SET profile_updated_at = NOW() WHERE user_id = $userId");
+
                 $conn->commit();
                 $success = 'Artist account updated! Your account is pending admin approval. You will be able to log in once approved.';
                 $formData = [];
