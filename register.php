@@ -203,6 +203,8 @@ $hasSadapay     = isset($_POST['has_sadapay'])       ? 1 : 0;
     $error = 'Please enter a valid email address.';
 } elseif (!$phone) {
     $error = 'Phone / WhatsApp number is required.';
+} elseif (!preg_match('/^(\+92\d{10}|0\d{10})$/', preg_replace('/[\s\-()]/', '', $phone))) {
+    $error = 'Please enter a valid Pakistani phone number (e.g. 03001234567 or +923001234567).';
 } elseif (strlen($password) < 8) {
     $error = 'Password must be at least 8 characters.';
 } elseif ($password !== $confirm) {
