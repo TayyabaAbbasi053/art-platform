@@ -13,11 +13,14 @@ require_once __DIR__ . '/config/db.php';
  $perPage = 12;
  $offset = ($page - 1) * $perPage;
 
-// Build query
- $where = [
+$where = [
     "u.role = 'artist'",
     "u.status = 'active'",
-    "ap.profile_complete = 1"
+    "ap.bio IS NOT NULL AND ap.bio != ''",
+    "ap.city IS NOT NULL AND ap.city != ''",
+    "ap.art_style IS NOT NULL AND ap.art_style != ''",
+    "u.profile_picture IS NOT NULL AND u.profile_picture != ''",
+    "(ap.has_bank_account=1 OR ap.has_easypaisa=1 OR ap.has_jazzcash=1 OR ap.has_nayapay=1 OR ap.has_sadapay=1)"
 ];
  $params = [];
  $types = '';

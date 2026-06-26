@@ -20,7 +20,12 @@ if (!$artworkId) {
     JOIN users u ON a.artist_id = u.id
     JOIN categories c ON a.category_id = c.id
     LEFT JOIN artist_profiles ap ON ap.user_id = u.id
-    WHERE a.id = ? AND a.status IN ('active', 'sold') AND u.status = 'active' AND ap.profile_complete = 1
+    WHERE a.id = ? AND a.status IN ('active', 'sold') AND u.status = 'active' 
+AND ap.bio IS NOT NULL AND ap.bio != ''
+AND ap.city IS NOT NULL AND ap.city != ''
+AND ap.art_style IS NOT NULL AND ap.art_style != ''
+AND u.profile_picture IS NOT NULL AND u.profile_picture != ''
+AND (ap.has_bank_account=1 OR ap.has_easypaisa=1 OR ap.has_jazzcash=1 OR ap.has_nayapay=1 OR ap.has_sadapay=1)
 ");
  $stmt->bind_param('i', $artworkId);
  $stmt->execute();
@@ -47,7 +52,12 @@ if (!$artwork) {
     FROM artworks a
     JOIN users u ON a.artist_id = u.id
     WHERE a.category_id = ? AND a.id != ? AND a.status = 'active' AND u.status = 'active'
-AND EXISTS (SELECT 1 FROM artist_profiles ap2 WHERE ap2.user_id = u.id AND ap2.profile_complete = 1)
+AND EXISTS (SELECT 1 FROM artist_profiles ap2 WHERE ap2.user_id = u.id 
+AND ap2.bio IS NOT NULL AND ap2.bio != ''
+AND ap2.city IS NOT NULL AND ap2.city != ''
+AND ap2.art_style IS NOT NULL AND ap2.art_style != ''
+AND (SELECT u2.profile_picture FROM users u2 WHERE u2.id = ap2.user_id) IS NOT NULL
+AND (ap2.has_bank_account=1 OR ap2.has_easypaisa=1 OR ap2.has_jazzcash=1 OR ap2.has_nayapay=1 OR ap2.has_sadapay=1))
     LIMIT 4
 ");
  $similar->bind_param('ii', $artwork['category_id'], $artworkId);
