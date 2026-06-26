@@ -480,35 +480,20 @@ img{display:block;max-width:100%;}
     </select>
   </div>
 
-  <!-- Top bar -->
-  <div class="topbar">
-    <div class="topbar-left">
-      <p class="result-count">Showing <strong><?= $totalRows ?></strong> artwork<?= $totalRows != 1 ? 's' : '' ?><?= $search ? " for \"" . htmlspecialchars($search) . "\"" : '' ?></p>
-      <div class="active-filters">
-        <?php if ($catFilter): $cn = array_column($categories, 'name', 'id')[$catFilter] ?? ''; ?>
-        <span class="af-chip"><?= htmlspecialchars($cn) ?><a href="<?= strtok($_SERVER['REQUEST_URI'], '?') . '?' . http_build_query(array_diff_key($_GET, ['category' => ''])) ?>">×</a></span>
-        <?php endif; ?>
-        <?php if ($cityFilter): ?>
-        <span class="af-chip"><?= htmlspecialchars($cityFilter) ?><a href="<?= strtok($_SERVER['REQUEST_URI'], '?') . '?' . http_build_query(array_diff_key($_GET, ['city' => ''])) ?>">×</a></span>
-        <?php endif; ?>
-        <?php if ($medFilter): ?>
-        <span class="af-chip"><?= htmlspecialchars($medFilter) ?><a href="<?= strtok($_SERVER['REQUEST_URI'], '?') . '?' . http_build_query(array_diff_key($_GET, ['medium' => ''])) ?>">×</a></span>
-        <?php endif; ?>
-      </div>
-    </div>
-    <form class="sort-row" method="GET" action="artworks.php">
-      <?php foreach ($_GET as $k => $v): if ($k !== 'sort'): ?>
-      <input type="hidden" name="<?= htmlspecialchars($k) ?>" value="<?= htmlspecialchars($v) ?>">
-      <?php endif; endforeach; ?>
-      <label>Sort by</label>
-      <select name="sort" class="sort-sel" onchange="this.form.submit()">
-        <option value="newest" <?= $sort === 'newest' ? 'selected' : '' ?>>Newest first</option>
-        <option value="oldest" <?= $sort === 'oldest' ? 'selected' : '' ?>>Oldest first</option>
-        <option value="price_asc" <?= $sort === 'price_asc' ? 'selected' : '' ?>>Price: Low to High</option>
-        <option value="price_desc" <?= $sort === 'price_desc' ? 'selected' : '' ?>>Price: High to Low</option>
-      </select>
-    </form>
-  </div>
+  <!-- Search bar -->
+  <form method="GET" action="artworks.php" style="margin-bottom:20px;display:flex;gap:0;">
+    <?php foreach ($_GET as $k => $v): if ($k !== 'q'): ?>
+    <input type="hidden" name="<?= htmlspecialchars($k) ?>" value="<?= htmlspecialchars($v) ?>">
+    <?php endif; endforeach; ?>
+    <input type="text" name="q" value="<?= htmlspecialchars($search) ?>" placeholder="Search artworks by name..." style="flex:1;border:2px solid var(--border);border-right:none;border-radius:8px 0 0 8px;padding:11px 16px;font-size:13px;font-family:'DM Sans',sans-serif;color:var(--ink);background:var(--card);outline:none;">
+    <button type="submit" style="background:var(--ink);color:var(--bg);border:2px solid var(--border);border-left:none;border-radius:0 8px 8px 0;padding:11px 18px;font-size:13px;font-family:'DM Sans',sans-serif;cursor:pointer;display:flex;align-items:center;gap:6px;font-weight:500;">
+      <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+      Search
+    </button>
+    <?php if ($search): ?>
+    <a href="artworks.php<?= $catFilter ? '?category='.$catFilter : '' ?>" style="margin-left:8px;display:flex;align-items:center;font-size:12px;color:var(--muted);text-decoration:none;white-space:nowrap;">✕ Clear</a>
+    <?php endif; ?>
+  </form>
 
   <!-- Grid -->
   <?php if (empty($artworks)): ?>
