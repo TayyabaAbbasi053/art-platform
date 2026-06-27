@@ -68,6 +68,29 @@ $stats['total_commissions'] = (int)$conn->query("
     WHERE a.artist_id = $artistId AND o.order_type = 'artwork' AND o.order_status = 'pending'
 ")->fetch_row()[0];
 
+
+// ── Unread chat messages for this artist ──────────────────
+$stats['unread_commission_msgs'] = (int)$conn->query("
+    SELECT COUNT(*) FROM order_messages om
+    JOIN commission_requests cr ON cr.order_id = om.order_id
+    WHERE cr.artist_id = $artistId
+      AND om.sender_role != 'artist'
+      AND om.is_read_by_artist = 0
+")->fetch_row()[0];
+
+$stats['unread_order_msgs'] = (int)$conn->query("
+    SELECT COUNT(DISTINCT om.id) FROM order_messages om
+    JOIN orders o ON o.id = om.order_id
+    JOIN order_items oi ON o.id = oi.order_id
+    JOIN artworks a ON oi.item_id = a.id AND oi.item_type = 'artwork'
+    WHERE a.artist_id = $artistId
+      AND o.order_type = 'artwork'
+      AND om.sender_role != 'artist'
+      AND om.is_read_by_artist = 0
+")->fetch_row()[0];
+
+$stats['total_unread_msgs'] = $stats['unread_commission_msgs'] + $stats['unread_order_msgs'];
+
 // ── Profile completeness check ─────────────────────────────
  $profileRow = $conn->query("
     SELECT bio, city, instagram_url, profile_picture
@@ -467,6 +490,9 @@ tr:hover td { background: var(--sand); color: var(--ink); }
     .banner-right-btn { width: 100%; justify-content: center; }
     .artist-chip { display: none; }
 }
+.red-dot{border-radius:50%;display:inline-block;animation:pulse-dot 1.5s infinite;}
+@keyframes pulse-dot{0%{box-shadow:0 0 0 0 rgba(192,57,43,.5);}70%{box-shadow:0 0 0 5px rgba(192,57,43,0);}100%{box-shadow:0 0 0 0 rgba(192,57,43,0);}}
+
 </style>
 </head>
 <body>
@@ -500,7 +526,9 @@ tr:hover td { background: var(--sand); color: var(--ink); }
     <a href="commissions.php" class="nav-item">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
         Commission Requests
-        <?php if ($stats['new_commissions'] > 0): ?>
+        <?php if ($stats['unread_commission_msgs'] > 0): ?>
+            <span class="badge" style="background:#c0392b;color:#fff;display:flex;align-items:center;gap:4px;"><span class="red-dot" style="background:#fff;width:6px;height:6px;"></span><?= $stats['unread_commission_msgs'] ?></span>
+        <?php elseif ($stats['new_commissions'] > 0): ?>
             <span class="badge"><?= $stats['new_commissions'] ?></span>
         <?php endif; ?>
     </a>
@@ -509,7 +537,9 @@ tr:hover td { background: var(--sand); color: var(--ink); }
     <a href="orders.php" class="nav-item">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 7H4a2 2 0 00-2 2v6a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>
         Orders
-        <?php if ($stats['new_orders'] > 0): ?>
+        <?php if ($stats['unread_order_msgs'] > 0): ?>
+            <span class="badge" style="background:#c0392b;color:#fff;display:flex;align-items:center;gap:4px;"><span class="red-dot" style="background:#fff;width:6px;height:6px;"></span><?= $stats['unread_order_msgs'] ?></span>
+        <?php elseif ($stats['new_orders'] > 0): ?>
             <span class="badge"><?= $stats['new_orders'] ?></span>
         <?php endif; ?>
     </a>
@@ -537,6 +567,12 @@ tr:hover td { background: var(--sand); color: var(--ink); }
         <h1>Welcome, <?= htmlspecialchars(explode(' ', $artistName)[0]) ?></h1>        <div class="date"><?= $today ?></div>
     </div>
     <div class="topbar-right">
+        <?php if ($stats['total_unread_msgs'] > 0): ?>
+        <div style="display:flex;align-items:center;gap:6px;background:#c0392b;color:#fff;padding:6px 14px;border-radius:20px;font-size:12px;font-weight:600;">
+            <span class="red-dot" style="background:#fff;width:7px;height:7px;"></span>
+            <?= $stats['total_unread_msgs'] ?> New Message<?= $stats['total_unread_msgs'] > 1 ? 's' : '' ?>
+        </div>
+        <?php endif; ?>
         <button class="ham-btn" onclick="openDrawer()"><span></span><span></span><span></span></button>
         <a href="https://artbazaar.pk" target="_blank" style="
     text-decoration:none; 

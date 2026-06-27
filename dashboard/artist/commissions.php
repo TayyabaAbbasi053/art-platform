@@ -312,6 +312,29 @@ foreach ($requests as &$req) {
     $req['buyer_phone'] = $req['buyer_phone_real'] ?: $req['guest_phone'];
 }
 unset($req);
+// ── Fetch unread message counts per commission ───────────
+$unreadByOrder = [];
+$totalUnread = 0;
+if (!empty($requests)) {
+    $orderIds = array_column($requests, 'id');
+    $placeholders = implode(',', array_fill(0, count($orderIds), '?'));
+    $unreadSql = "
+        SELECT order_id, COUNT(*) AS unread_count
+        FROM order_messages
+        WHERE order_id IN ($placeholders)
+          AND sender_role != 'artist'
+          AND is_read_by_artist = 0
+        GROUP BY order_id
+    ";
+    $unreadStmt = $conn->prepare($unreadSql);
+    $unreadStmt->bind_param(str_repeat('i', count($orderIds)), ...$orderIds);
+    $unreadStmt->execute();
+    $unreadResult = $unreadStmt->get_result();
+    while ($row = $unreadResult->fetch_assoc()) {
+        $unreadByOrder[$row['order_id']] = (int)$row['unread_count'];
+        $totalUnread += (int)$row['unread_count'];
+    }
+}
 
 // ── Fetch specific request for modal ─────────────────
  $viewRequest = null;
@@ -326,6 +349,9 @@ if (isset($_GET['view'])) {
             $msgStmt->bind_param('i', $viewId);
             $msgStmt->execute();
             $viewMessages = $msgStmt->get_result()->fetch_all(MYSQLI_ASSOC);
+            $markReadStmt = $conn->prepare("UPDATE order_messages SET is_read_by_artist = 1 WHERE order_id = ? AND sender_role != 'artist' AND is_read_by_artist = 0");
+            $markReadStmt->bind_param('i', $viewId);
+            $markReadStmt->execute();
             break;
         }
     }
@@ -402,6 +428,9 @@ tr:hover td { background: var(--bg); box-shadow: 0 4px 12px rgba(12,63,48,.06); 
 .pill.shipped         { background: var(--sand); color: var(--ink); }
 .pill.delivered       { background: var(--ink); color: var(--bg); }
 .pill.cancelled       { background: var(--sand); color: var(--ink); }
+.new-msg-pill{display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:600;color:#c0392b;}
+.red-dot{width:8px;height:8px;border-radius:50%;background:#c0392b;display:inline-block;animation:pulse-dot 1.5s infinite;}
+@keyframes pulse-dot{0%{box-shadow:0 0 0 0 rgba(192,57,43,.5);}70%{box-shadow:0 0 0 5px rgba(192,57,43,0);}100%{box-shadow:0 0 0 0 rgba(192,57,43,0);}}
 
 .price-status-badge { display: inline-block; font-size: 8px; letter-spacing: .3px; text-transform: uppercase; font-weight: 600; padding: 2px 7px; border-radius: 20px; white-space: nowrap; }
 .price-status-badge.none     { background: #F4F4F4; color: #888; }
@@ -553,7 +582,9 @@ tr:hover td { background: var(--bg); box-shadow: 0 4px 12px rgba(12,63,48,.06); 
     <a href="upload-artwork.php" class="nav-item"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> Upload Artwork</a>
     <a href="my-artworks.php" class="nav-item"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9l4-4 4 4 4-4 4 4"/><circle cx="8.5" cy="14.5" r="1.5"/></svg> My Artworks</a>
     <a href="orders.php" class="nav-item"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 7H4a2 2 0 00-2 2v6a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/></svg> Orders</a>
-    <a href="commissions.php" class="nav-item active"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg> Commissions</a>
+    <a href="commissions.php" class="nav-item active"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg> Commissions
+    <?php if ($totalUnread > 0): ?><span style="margin-left:auto;display:inline-flex;align-items:center;gap:5px;background:#c0392b;color:#fff;font-size:9px;font-weight:600;padding:2px 8px;border-radius:20px;"><span class="red-dot" style="background:#fff;"></span>New</span><?php endif; ?>
+    </a>
     <div class="sidebar-section">Account</div>
     <a href="profile.php" class="nav-item"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg> My Profile</a>
     <div class="sidebar-bottom">
@@ -599,7 +630,14 @@ tr:hover td { background: var(--bg); box-shadow: 0 4px 12px rgba(12,63,48,.06); 
                     <td><strong><?= htmlspecialchars($req['buyer_name']) ?></strong><div style="font-size:11px;color:var(--muted);margin-top:2px;"><?= date('M j, Y', strtotime($req['created_at'])) ?></div></td>
                     <td><?= htmlspecialchars($req['category_name'] ?: 'Custom Artwork') ?></td>
                     <td style="font-size:12px;"><?= !empty($req['agreed_price']) ? '<strong style="color:var(--ink)">PKR '.number_format((float)$req['agreed_price']).'</strong>' : '<span style="color:var(--muted)">Pending</span>' ?></td>
-                    <td><span class="pill <?= $req['status'] ?>"><?= ucfirst(str_replace('_', ' ', $req['status'])) ?></span></td>
+                    <td><span class="pill <?= $req['status'] ?>"><?= ucfirst(str_replace('_', ' ', $req['status'])) ?></span>
+                        <?php if (!empty($unreadByOrder[$req['id']])): ?>
+                          <span class="new-msg-pill" style="margin-left:8px;">
+                            <span class="red-dot"></span>
+                            New Message<?= $unreadByOrder[$req['id']] > 1 ? 's' : '' ?>
+                          </span>
+                        <?php endif; ?>
+                    </td>
                     <td><a href="?view=<?= $req['id'] ?>" class="view-btn">View & Chat</a></td>
                 </tr>
                 <?php endforeach; ?>
