@@ -23,6 +23,7 @@ if (!$orderId) {
            c.name AS commission_category_name,
            c.slug AS commission_category_slug,
            ua.name AS commission_artist_name,
+           cr.artist_id AS commission_artist_id,
            (SELECT COUNT(*) FROM order_items WHERE order_id = o.id) AS item_count
     FROM orders o
     LEFT JOIN categories c ON o.commission_category_id = c.id
@@ -181,6 +182,55 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $order['commission_final_approved'] = 1;
     header('Location: order-detail.php?id=' . $orderId . '&msg=approved');
     exit;
+}
+
+// ── Handle artist rating submission ────────────────────
+$ratingError = '';
+$ratingSuccess = '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'rate_artist') {
+    $ratedArtistId = (int)($_POST['artist_id'] ?? 0);
+    $ratingVal = (int)($_POST['rating'] ?? 0);
+    $reviewText = trim($_POST['review'] ?? '');
+
+    $eligCheck = $conn->prepare("
+        SELECT COUNT(*) AS c FROM (
+            SELECT o.id FROM orders o
+            JOIN order_items oi ON oi.order_id = o.id
+            JOIN artworks a ON oi.item_id = a.id AND oi.item_type = 'artwork'
+            WHERE o.buyer_id = ? AND a.artist_id = ?
+            UNION
+            SELECT o.id FROM orders o
+            JOIN commission_requests cr ON cr.order_id = o.id
+            WHERE o.buyer_id = ? AND cr.artist_id = ?
+        ) t
+    ");
+    $eligCheck->bind_param('iiii', $buyerId, $ratedArtistId, $buyerId, $ratedArtistId);
+    $eligCheck->execute();
+    $isEligible = $eligCheck->get_result()->fetch_assoc()['c'] > 0;
+
+    if (!$isEligible) {
+        $ratingError = 'You can only rate artists you have purchased from or commissioned.';
+    } elseif ($ratingVal < 1 || $ratingVal > 5) {
+        $ratingError = 'Please select a rating between 1 and 5 stars.';
+    } else {
+        $stmt = $conn->prepare("
+            INSERT INTO artist_ratings (artist_id, buyer_id, order_id, rating, review)
+            VALUES (?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE rating = ?, review = ?, order_id = ?, updated_at = NOW()
+        ");
+        $stmt->bind_param('iiiisisi', $ratedArtistId, $buyerId, $orderId, $ratingVal, $reviewText, $ratingVal, $reviewText, $orderId);
+        $stmt->execute();
+
+        $agg = $conn->prepare("SELECT AVG(rating) AS avg_r, COUNT(*) AS cnt FROM artist_ratings WHERE artist_id = ?");
+        $agg->bind_param('i', $ratedArtistId);
+        $agg->execute();
+        $aggRow = $agg->get_result()->fetch_assoc();
+        $updAgg = $conn->prepare("UPDATE artist_profiles SET avg_rating = ?, total_ratings = ? WHERE user_id = ?");
+        $updAgg->bind_param('dii', $aggRow['avg_r'], $aggRow['cnt'], $ratedArtistId);
+        $updAgg->execute();
+
+        $ratingSuccess = 'Thank you for rating this artist!';
+    }
 }
 
 // ── Handle order cancellation request ────────────────────
@@ -417,6 +467,7 @@ img{max-width:100%;display:block;}
   .ham-btn{display:flex;}
   .buyer-chip{display:none;}
 }
+
 </style>
 </head>
 <body>
@@ -572,6 +623,36 @@ img{max-width:100%;display:block;}
   </div>
   <?php endif; ?>
 
+  <?php if ($isCommission && !empty($order['commission_artist_id'])): 
+      $artistIdToRate = (int)$order['commission_artist_id'];
+      $existingRating = $conn->prepare("SELECT rating, review FROM artist_ratings WHERE artist_id = ? AND buyer_id = ?");
+      $existingRating->bind_param('ii', $artistIdToRate, $buyerId);
+      $existingRating->execute();
+      $myRating = $existingRating->get_result()->fetch_assoc();
+  ?>
+  <div class="items-card" style="padding:20px;">
+    <h5 style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--ink);margin-bottom:10px;">
+        <?= $myRating ? '★ Your Rating for ' . htmlspecialchars($order['commission_artist_name']) : '⭐ Rate ' . htmlspecialchars($order['commission_artist_name']) ?>
+    </h5>
+    <?php if ($ratingSuccess): ?><div style="font-size:12px;color:#2E7D32;margin-bottom:8px;"><?= htmlspecialchars($ratingSuccess) ?></div><?php endif; ?>
+    <?php if ($ratingError): ?><div style="font-size:12px;color:#c0392b;margin-bottom:8px;"><?= htmlspecialchars($ratingError) ?></div><?php endif; ?>
+    <form method="POST" style="display:flex;flex-direction:column;gap:10px;">
+        <input type="hidden" name="action" value="rate_artist">
+        <input type="hidden" name="artist_id" value="<?= $artistIdToRate ?>">
+        <div class="star-rating-input" data-rating-group style="display:flex;gap:4px;">
+    <?php for ($i = 1; $i <= 5; $i++): ?>
+        <label>
+            <input type="radio" name="rating" value="<?= $i ?>" <?= ($myRating && $myRating['rating'] == $i) ? 'checked' : '' ?> onchange="paintStars(this)" style="display:none;" required>
+            <span class="star-glyph" style="cursor:pointer;font-size:24px;color:<?= ($myRating && $myRating['rating'] >= $i) ? 'var(--ink)' : '#ccc' ?>;">★</span>
+        </label>
+    <?php endfor; ?>
+</div>
+        <textarea name="review" placeholder="Optional review..." style="padding:10px;border-radius:8px;border:1.5px solid var(--border);font-family:inherit;font-size:12.5px;background:var(--bg);color:var(--ink);" rows="2"><?= htmlspecialchars($myRating['review'] ?? '') ?></textarea>
+        <button type="submit" style="align-self:flex-start;padding:9px 18px;background:var(--ink);color:var(--bg);border:none;border-radius:8px;font-size:12px;font-weight:500;cursor:pointer;"><?= $myRating ? 'Update Rating' : 'Submit Rating' ?></button>
+    </form>
+  </div>
+  <?php endif; ?>
+
   <?php if ($isCommission && $order['order_status'] === 'delivered' && ($order['commission_category_slug'] ?? '') === 'digital-art' && !empty($order['commission_digital_file_path'])): ?>
   <div class="items-card" style="padding:20px;text-align:center;">
     <p style="font-size:13px;margin-bottom:12px;color:var(--ink);">Your commissioned digital artwork is ready.</p>
@@ -600,6 +681,25 @@ img{max-width:100%;display:block;}
       <div class="item-details">
         <div class="item-title"><?= htmlspecialchars($item['artwork_title'] ?? 'Artwork') ?></div>
         <div class="item-artist">by <?= htmlspecialchars($item['artist_name'] ?? 'Art Bazaar') ?></div>
+        <?php if (!empty($item['artist_id'])): 
+            $itemArtistId = (int)$item['artist_id'];
+            $itemExistingRating = $conn->prepare("SELECT rating FROM artist_ratings WHERE artist_id = ? AND buyer_id = ?");
+            $itemExistingRating->bind_param('ii', $itemArtistId, $buyerId);
+            $itemExistingRating->execute();
+            $itemMyRating = $itemExistingRating->get_result()->fetch_assoc();
+        ?>
+        <form method="POST" style="margin-top:6px;display:flex;align-items:center;gap:4px;">
+            <input type="hidden" name="action" value="rate_artist">
+            <input type="hidden" name="artist_id" value="<?= $itemArtistId ?>">
+            <?php for ($i = 1; $i <= 5; $i++): ?>
+                <label>
+                    <input type="radio" name="rating" value="<?= $i ?>" <?= ($itemMyRating && $itemMyRating['rating'] == $i) ? 'checked' : '' ?> style="display:none;" onchange="this.form.submit()">
+                    <span style="cursor:pointer;font-size:15px;color:<?= ($itemMyRating && $itemMyRating['rating'] >= $i) ? 'var(--ink)' : '#ccc' ?>;">★</span>
+                </label>
+            <?php endfor; ?>
+            <span style="font-size:10px;color:var(--muted);margin-left:4px;"><?= $itemMyRating ? '(rated)' : 'Rate artist' ?></span>
+        </form>
+        <?php endif; ?>
         <div class="item-meta">
           <span>Ready-made Artwork</span>
           <?php 
@@ -722,6 +822,14 @@ img{max-width:100%;display:block;}
 </div>
 
 <script>
+  function paintStars(radio) {
+    const group = radio.closest('[data-rating-group]');
+    const value = parseInt(radio.value, 10);
+    group.querySelectorAll('label').forEach((label, idx) => {
+        const span = label.querySelector('.star-glyph');
+        span.style.color = (idx < value) ? 'var(--ink)' : '#ccc';
+    });
+}
 // Auto-scroll chat to bottom
 const chatContainer = document.getElementById('chatMessages');
 if (chatContainer) {

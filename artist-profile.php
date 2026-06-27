@@ -14,7 +14,8 @@ if (!$artistId) {
 // Fetch artist details
  $stmt = $conn->prepare("
     SELECT u.id, u.name, u.email, u.profile_picture, u.created_at,
-           ap.bio, ap.city, ap.instagram_url, ap.art_style, ap.accepts_commissions, ap.is_featured
+           ap.bio, ap.city, ap.instagram_url, ap.art_style, ap.accepts_commissions, ap.is_featured,
+           ap.avg_rating, ap.total_ratings
     FROM users u
     LEFT JOIN artist_profiles ap ON u.id = ap.user_id
     WHERE u.id = ? AND u.role = 'artist' AND u.status = 'active'
@@ -284,6 +285,10 @@ img{max-width:100%;display:block;}
 .stat{text-align:center;}
 .stat-num{font-family:'Playfair Display',serif;font-size:28px;font-weight:500;color:var(--ink);}
 .stat-label{font-size:11px;color:var(--muted);letter-spacing:.5px;}
+.amzn-stars{display:flex;gap:2px;}
+.amzn-star-wrap{position:relative;display:inline-block;font-size:20px;line-height:1;width:1em;}
+.amzn-star-bg{color:#ccc;}
+.amzn-star-fg{position:absolute;top:0;left:0;overflow:hidden;color:var(--ink);white-space:nowrap;}
 .social-link{display:inline-flex;align-items:center;gap:6px;background:var(--sand);padding:6px 12px;border-radius:20px;font-size:12px;color:var(--body);margin-top:8px;}
 .social-link:hover{background:var(--border);color:var(--ink);}
 
@@ -506,6 +511,27 @@ img{max-width:100%;display:block;}
       <div class="stat"><div class="stat-num"><?= $artworkCount ?></div><div class="stat-label">Artworks</div></div>
       <div class="stat"><div class="stat-num"><?= $availableCount ?></div><div class="stat-label">Available</div></div>
       <div class="stat"><div class="stat-num"><?= $soldCount ?></div><div class="stat-label">Sold</div></div>
+      <div class="stat">
+  <?php if ($artist['avg_rating']):
+      $ratingVal = (float)$artist['avg_rating'];
+  ?>
+    <div class="amzn-stars" title="<?= number_format($ratingVal, 1) ?> out of 5">
+      <?php for ($i = 1; $i <= 5; $i++):
+          $fillPct = max(0, min(100, ($ratingVal - ($i - 1)) * 100));
+      ?>
+        <span class="amzn-star-wrap">
+          <span class="amzn-star-bg">★</span>
+          <span class="amzn-star-fg" style="width:<?= $fillPct ?>%;">★</span>
+        </span>
+      <?php endfor; ?>
+    </div>
+    <div class="stat-num" style="font-size:16px;margin-top:4px;"><?= number_format($ratingVal, 1) ?></div>
+    <div class="stat-label"><?= (int)$artist['total_ratings'] ?> Rating<?= $artist['total_ratings'] != 1 ? 's' : '' ?></div>
+  <?php else: ?>
+    <div class="stat-num">—</div>
+    <div class="stat-label">No ratings yet</div>
+  <?php endif; ?>
+</div>
     </div>
       <?php if ($artist['accepts_commissions']): ?>
         <button class="comm-btn" onclick="openCM(<?= $artist['id'] ?>, '<?= addslashes($artist['name']) ?>')">

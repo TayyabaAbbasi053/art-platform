@@ -56,6 +56,7 @@ $conn->query("INSERT IGNORE INTO artist_profiles (user_id) VALUES ($artistId)");
 
 $profile = $conn->query("
     SELECT bio, city, address, instagram_url, contact_email, contact_phone, art_style, accepts_commissions,
+           avg_rating, total_ratings,
            has_bank_account, bank_name, bank_account_title, bank_account_number,
            has_easypaisa, easypaisa_name, easypaisa_number,
            has_jazzcash, jazzcash_name, jazzcash_number,
@@ -553,6 +554,13 @@ textarea.field-input { resize: vertical; min-height: 110px; line-height: 1.6; }
 <header class="topbar">
     <div class="topbar-left"><h1>My Profile</h1></div>
     <div class="topbar-right">
+        <?php if (!empty($profile['avg_rating'])): ?>
+        <div style="display:flex;align-items:center;gap:6px;background:var(--sand);color:var(--ink);padding:6px 14px;border-radius:20px;font-size:12px;font-weight:600;">
+            ★ <?= number_format($profile['avg_rating'], 1) ?> (<?= (int)$profile['total_ratings'] ?> rating<?= $profile['total_ratings'] != 1 ? 's' : '' ?>)
+        </div>
+        <?php else: ?>
+        <div style="font-size:11px;color:var(--muted);">No ratings yet</div>
+        <?php endif; ?>
     </div>
 </header>
 

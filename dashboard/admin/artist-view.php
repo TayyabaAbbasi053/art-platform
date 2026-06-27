@@ -22,6 +22,7 @@ if (!$id) { header('Location: artists.php'); exit; }
            ap.has_jazzcash, ap.jazzcash_name, ap.jazzcash_number,
            ap.has_nayapay, ap.nayapay_name, ap.nayapay_number,
            ap.has_sadapay, ap.sadapay_name, ap.sadapay_number,
+           ap.avg_rating, ap.total_ratings,
            u.status_reason
     FROM users u
     LEFT JOIN artist_profiles ap ON ap.user_id = u.id
@@ -391,6 +392,9 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
                 <h2>
                     <?= htmlspecialchars($artist['name']) ?>
                     <?php if ($artist['is_featured']): ?><span class="featured-tag">★ Featured</span><?php endif; ?>
+                    <span class="pill" style="background:var(--sand);color:var(--ink);">
+                        <?= $artist['avg_rating'] ? '★ ' . number_format($artist['avg_rating'], 1) . ' (' . (int)$artist['total_ratings'] . ')' : 'No ratings yet' ?>
+                    </span>
                     <!-- Change 4: Add Complete/Incomplete badge -->
                     <span class="pill <?= $artist['status'] ?>"><?= ucfirst($artist['status']) ?></span>
                     <?php if ($isComplete): ?>
