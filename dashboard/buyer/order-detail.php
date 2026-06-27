@@ -89,6 +89,8 @@ if ($isCommission) {
     $msgQuery->bind_param('i', $orderId);
     $msgQuery->execute();
     $messages = $msgQuery->get_result()->fetch_all(MYSQLI_ASSOC);
+    // Mark messages as read by buyer when they open this order
+$conn->query("UPDATE order_messages SET is_read_by_buyer = 1 WHERE order_id = $orderId AND sender_role != 'buyer' AND is_read_by_buyer = 0");
 }
 
 // ── Contact info filter function ─────────────────────────

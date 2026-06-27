@@ -190,6 +190,7 @@ foreach ($commissionOrders as $comm) {
     $msgStmt->bind_param('i', $comm['id']);
     $msgStmt->execute();
     $commissionMessages[$comm['id']] = $msgStmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $conn->query("UPDATE order_messages SET is_read_by_buyer = 1 WHERE order_id = " . (int)$comm['id'] . " AND sender_role != 'buyer' AND is_read_by_buyer = 0");
 }
 
 // ── Fetch cart items count ───────────────────────────────

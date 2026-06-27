@@ -67,6 +67,29 @@ if ($statusFilter) {
  $stmt->bind_param($types, ...$params);
  $stmt->execute();
  $orders = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+ // ── Fetch unread message counts per order ────────────────
+$unreadByOrder = [];
+$totalUnread = 0;
+if (!empty($orders)) {
+    $orderIds = array_column($orders, 'id');
+    $placeholders = implode(',', array_fill(0, count($orderIds), '?'));
+    $unreadSql = "
+        SELECT order_id, COUNT(*) AS unread_count
+        FROM order_messages
+        WHERE order_id IN ($placeholders)
+          AND sender_role != 'buyer'
+          AND is_read_by_buyer = 0
+        GROUP BY order_id
+    ";
+    $unreadStmt = $conn->prepare($unreadSql);
+    $unreadStmt->bind_param(str_repeat('i', count($orderIds)), ...$orderIds);
+    $unreadStmt->execute();
+    $unreadResult = $unreadStmt->get_result();
+    while ($row = $unreadResult->fetch_assoc()) {
+        $unreadByOrder[$row['order_id']] = (int)$row['unread_count'];
+        $totalUnread += (int)$row['unread_count'];
+    }
+}
 
 // ── Status counts for tabs ───────────────────────────────
  $statusCounts = [
@@ -182,6 +205,9 @@ tr:hover { box-shadow: 0 4px 12px rgba(12,63,48,.06); }
 .type-badge{display:inline-block;font-size:9px;letter-spacing:.5px;text-transform:uppercase;font-weight:600;padding:2px 8px;border-radius:20px;}
 .type-badge.commission{background:var(--sand);color:var(--ink);border:1px solid var(--border);}
 .type-badge.artwork{background:var(--sand);color:var(--ink);border:1px solid var(--border);}
+.new-msg-pill{display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:600;color:#c0392b;}
+.red-dot{width:8px;height:8px;border-radius:50%;background:#c0392b;display:inline-block;animation:pulse-dot 1.5s infinite;}
+@keyframes pulse-dot{0%{box-shadow:0 0 0 0 rgba(192,57,43,.5);}70%{box-shadow:0 0 0 5px rgba(192,57,43,0);}100%{box-shadow:0 0 0 0 rgba(192,57,43,0);}}
 
 .status-badge{display:inline-block;font-size:10px;letter-spacing:.5px;text-transform:uppercase;font-weight:600;padding:4px 10px;border-radius:20px; background:var(--sand); color:var(--ink);}
 .status-badge.delivered{background:var(--ink);color:var(--bg);}
@@ -275,7 +301,8 @@ tr:hover { box-shadow: 0 4px 12px rgba(12,63,48,.06); }
   <a href="orders.php" class="nav-item active">
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 7H4a2 2 0 00-2 2v6a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>
     My Orders
-    <?php if ($statusCounts['pending'] > 0): ?><span class="badge"><?= $statusCounts['pending'] ?></span><?php endif; ?>
+    <?php if ($totalUnread > 0): ?><span class="badge" style="background:#c0392b;color:#fff;display:inline-flex;align-items:center;gap:5px;"><span class="red-dot" style="background:#fff;"></span>New</span>
+    <?php elseif ($statusCounts['pending'] > 0): ?><span class="badge"><?= $statusCounts['pending'] ?></span><?php endif; ?>
   </a>
   <div class="sidebar-bottom">
     <a href="../../logout.php" class="signout-btn">
@@ -347,6 +374,12 @@ tr:hover { box-shadow: 0 4px 12px rgba(12,63,48,.06); }
                   <span class="type-badge commission">Commission</span>
                 <?php else: ?>
                   <span class="type-badge artwork">Artwork</span>
+                <?php endif; ?>
+                <?php if (!empty($unreadByOrder[$order['id']])): ?>
+                  <span class="new-msg-pill">
+                    <span class="red-dot"></span>
+                    New Message<?= $unreadByOrder[$order['id']] > 1 ? 's' : '' ?>
+                  </span>
                 <?php endif; ?>
               </div>
               <div class="order-date hide-desktop"><?= date('d M Y', strtotime($order['created_at'])) ?></div>
