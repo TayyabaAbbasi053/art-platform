@@ -6,11 +6,7 @@ $isLoggedIn = isset($_SESSION['user_id']);
 // ── Filters ──────────────────────────────────────────────
  $search     = trim($_GET['q'] ?? '');
  $catFilter  = (int)($_GET['category'] ?? 0);
- $cityFilter = trim($_GET['city'] ?? '');$where = [
-    "a.status IN ('active', 'sold')",
-    "u.status = 'active'",
-    "ap.profile_complete = 1"  // ❌ WRONG - This field is NEVER set to 1
-];
+ $cityFilter = trim($_GET['city'] ?? '');
  $medFilter  = trim($_GET['medium'] ?? '');
  $minPrice   = !empty($_GET['min_price']) ? (int)$_GET['min_price'] : null;
  $maxPrice   = !empty($_GET['max_price']) ? (int)$_GET['max_price'] : null;
@@ -23,7 +19,7 @@ $isLoggedIn = isset($_SESSION['user_id']);
 
 // ── Build query ──────────────────────────────────────────
  $where = [
-    "a.status IN ('active', 'sold')",
+    "a.status = 'active'",
     "u.status = 'active'",
     "ap.bio IS NOT NULL AND ap.bio != ''",
     "ap.city IS NOT NULL AND ap.city != ''",
@@ -71,10 +67,6 @@ if ($maxPrice) {
 }
 if ($avail === 'available') {
     $where[] = "a.status = 'active'";
-}
-if ($avail === 'sold') {
-    $where[] = "a.status = 'sold'";
-    $where = array_filter($where, fn($w) => $w !== "a.status = 'active'");
 }
 if ($featured) {
     $where[] = "a.is_featured = 1";

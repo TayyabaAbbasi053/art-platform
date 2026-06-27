@@ -120,7 +120,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $categoryId             = (int) ($_POST['category'] ?? 0);
     $medium                 = trim($_POST['medium'] ?? '');
     $size                   = trim($_POST['size'] ?? '');
-    $price                  = (float) ($_POST['price'] ?? 0);
+    $isShowcaseOnly         = isset($_POST['is_showcase_only']) ? 1 : 0;
+    $price                  = $isShowcaseOnly ? null : (float) ($_POST['price'] ?? 0);
     $city                   = trim($_POST['city'] ?? '');
     $description            = trim($_POST['description'] ?? '');
     $tags                   = trim($_POST['tags'] ?? '');
@@ -145,7 +146,7 @@ $is_framed              = isset($_POST['is_framed']) ? 1 : 0;
     $digitalFileExt = $hasDigitalFile ? strtolower(pathinfo($_FILES['digital_file']['name'], PATHINFO_EXTENSION)) : '';
     $allowedDigitalExt = ['zip', 'psd', 'ai', 'png', 'jpg', 'jpeg', 'pdf'];
 
-    if ($title === '' || $price <= 0 || $categoryId === 0 || !$hasFiles) {
+    if ($title === '' || (!$isShowcaseOnly && $price <= 0) || $categoryId === 0 || !$hasFiles) {
         $errorMsg = 'Please fill in all required fields and upload at least one image.';
     } elseif ($imageCount > 5) {
         $errorMsg = 'You can only upload up to 5 images.';
@@ -160,10 +161,11 @@ $is_framed              = isset($_POST['is_framed']) ? 1 : 0;
         // 1. Insert Artwork
         $conn->begin_transaction();
 
+$initialStatus = $isShowcaseOnly ? 'sold' : 'active';
 $stmt = $conn->prepare("
     INSERT INTO artworks 
-    (artist_id, category_id, title, description, tags, medium, size, is_framed, weight_kg, price, city, delivery_available, similar_work_available, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
+    (artist_id, category_id, title, description, tags, medium, size, is_framed, weight_kg, price, city, delivery_available, similar_work_available, status, is_showcase_only)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ");
 
 if (!$stmt) {
@@ -171,7 +173,7 @@ if (!$stmt) {
     $conn->rollback();
     $errorMsg = 'Could not save artwork. Please try again.';
 } else {
-    $stmt->bind_param('iisssssiddsii', $artistId, $categoryId, $title, $description, $tags, $medium, $size, $is_framed, $weight_kg, $price, $city, $delivery_available, $similar_work_available);
+    $stmt->bind_param('iisssssiddsiisi', $artistId, $categoryId, $title, $description, $tags, $medium, $size, $is_framed, $weight_kg, $price, $city, $delivery_available, $similar_work_available, $initialStatus, $isShowcaseOnly);
 
         if ($stmt->execute()) {
             $artworkId = $conn->insert_id;
@@ -722,8 +724,12 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
                     <input type="text" name="size" class="field-input" placeholder="e.g. 24 x 36 inches" required>
                 </div>
                 <div class="field-group">
-                    <label>Price (PKR) <span>*</span></label>
-                    <input type="number" name="price" class="field-input" placeholder="e.g. 25000" min="1" required>
+                    <label>Price (PKR) <span id="priceRequiredMark">*</span></label>
+                    <input type="number" name="price" id="priceInput" class="field-input" placeholder="e.g. 25000" min="1" required>
+                    <label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-weight:400;text-transform:none;letter-spacing:0;font-size:12px;">
+                        <input type="checkbox" name="is_showcase_only" id="showcaseCheckbox" value="1" style="width:auto;">
+                        This piece was already sold elsewhere — show as portfolio only (no price, not purchasable)
+                    </label>
                 </div>
             </div>
 
@@ -1053,6 +1059,24 @@ uploadForm.addEventListener('reset', function() {
     compressedFiles = [];
     renderPreviews();
 });
+// ── Showcase-only checkbox: disable price when ticked ────────────────────
+const showcaseCheckbox = document.getElementById('showcaseCheckbox');
+const priceInput = document.getElementById('priceInput');
+const priceRequiredMark = document.getElementById('priceRequiredMark');
+if (showcaseCheckbox) {
+    showcaseCheckbox.addEventListener('change', function() {
+        if (this.checked) {
+            priceInput.removeAttribute('required');
+            priceInput.value = '';
+            priceInput.disabled = true;
+            priceRequiredMark.style.display = 'none';
+        } else {
+            priceInput.disabled = false;
+            priceInput.setAttribute('required', 'required');
+            priceRequiredMark.style.display = 'inline';
+        }
+    });
+}
 </script>
 
 <div class="upload-overlay" id="uploadOverlay">

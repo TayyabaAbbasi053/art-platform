@@ -31,7 +31,7 @@ if (!$artist) {
 
 // Fetch artist's artworks (approved only)
  $artworks = $conn->prepare("
-    SELECT a.id, a.title, a.price, a.status, a.description, a.medium, a.size, a.created_at, c.name AS category_name,
+    SELECT a.id, a.title, a.price, a.status, a.is_showcase_only, a.description, a.medium, a.size, a.created_at, c.name AS category_name,
            (SELECT image_path FROM artwork_images WHERE artwork_id = a.id ORDER BY is_cover DESC LIMIT 1) AS cover_image
     FROM artworks a
     JOIN categories c ON a.category_id = c.id
@@ -578,7 +578,11 @@ img{max-width:100%;display:block;}
           <div class="artwork-info">
             <div class="artwork-title"><?= htmlspecialchars($aw['title']) ?></div>
             <div class="artwork-cat"><?= htmlspecialchars($aw['category_name']) ?></div>
+            <?php if (!$aw['is_showcase_only']): ?>
             <div class="artwork-price"><small>PKR</small> <?= number_format($aw['price']) ?></div>
+            <?php else: ?>
+            <div class="artwork-price" style="opacity:.6;">Sold — Portfolio Piece</div>
+            <?php endif; ?>
           </div>
         </div>
       <?php endforeach; ?>

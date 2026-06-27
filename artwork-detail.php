@@ -387,7 +387,11 @@ h1{font-family:'Playfair Display',serif;font-size:clamp(24px,2.5vw,32px);font-we
     </div>
 
     <h1><?= htmlspecialchars($artwork['title']) ?></h1>
+    <?php if (!$artwork['is_showcase_only']): ?>
     <div class="price"><small>PKR</small> <?= number_format($artwork['price']) ?></div>
+    <?php else: ?>
+    <div class="price" style="font-size:18px;opacity:.7;">Sold — Shown as Portfolio Example</div>
+    <?php endif; ?>
 
     <div class="meta-grid">
       <div class="meta-item"><div class="label">Category</div><div class="value"><?= htmlspecialchars($artwork['category_name']) ?></div></div>
