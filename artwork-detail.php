@@ -81,12 +81,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ask_question'])) {
     $qName  = trim($conn->real_escape_string($_POST['buyer_name'] ?? ''));
     $qEmail = '';
     $qText  = trim($conn->real_escape_string($_POST['question'] ?? ''));
+    $qBuyerId = $isLoggedIn ? (int)$_SESSION['user_id'] : null;
     if ($qName && $qText) {
-        $conn->query("INSERT INTO artwork_questions (artwork_id, buyer_name, buyer_email, question) VALUES ($artworkId, '$qName', '$qEmail', '$qText')");
+        $insQ = $conn->prepare("INSERT INTO artwork_questions (artwork_id, buyer_id, buyer_name, buyer_email, question) VALUES (?, ?, ?, ?, ?)");
+        $insQ->bind_param('iisss', $artworkId, $qBuyerId, $qName, $qEmail, $qText);
+        $insQ->execute();
         $qMsg = 'success';
     } else {
         $qMsg = 'error';
     }
+}
+
+// ── Notifications: this buyer's answered questions across ALL artworks ──
+$myAnsweredQuestions = [];
+if ($isLoggedIn) {
+    $uidForQ = (int)$_SESSION['user_id'];
+
+    // Mark this artwork's questions as seen now that the buyer is viewing it
+    $conn->query("UPDATE artwork_questions SET seen_by_buyer = 1 WHERE artwork_id = $artworkId AND buyer_id = $uidForQ AND answer IS NOT NULL");
+
+    $nStmt = $conn->prepare("
+        SELECT aq.id, aq.artwork_id, aq.question, aq.answer, aq.answered_at, a.title AS artwork_title
+        FROM artwork_questions aq
+        JOIN artworks a ON a.id = aq.artwork_id
+        WHERE aq.buyer_id = ? AND aq.answer IS NOT NULL AND aq.seen_by_buyer = 0
+        ORDER BY aq.answered_at DESC
+    ");
+    $nStmt->bind_param('i', $uidForQ);
+    $nStmt->execute();
+    $myAnsweredQuestions = $nStmt->get_result()->fetch_all(MYSQLI_ASSOC);
 }
 
 function getImageUrl($path) {

@@ -175,6 +175,21 @@ function getImgUrl($p) {
     if (strpos($p, 'uploads/') !== false) return $p;
     return 'uploads/artworks/' . $p;
 }
+// ── Notifications: this buyer's answered, unseen Q&A replies ──
+$myAnsweredQuestions = [];
+if ($isLoggedIn) {
+    $uidForQ = (int)$_SESSION['user_id'];
+    $nStmt = $conn->prepare("
+        SELECT aq.id, aq.artwork_id, aq.question, aq.answer, aq.answered_at, a.title AS artwork_title
+        FROM artwork_questions aq
+        JOIN artworks a ON a.id = aq.artwork_id
+        WHERE aq.buyer_id = ? AND aq.answer IS NOT NULL AND aq.seen_by_buyer = 0
+        ORDER BY aq.answered_at DESC
+    ");
+    $nStmt->bind_param('i', $uidForQ);
+    $nStmt->execute();
+    $myAnsweredQuestions = $nStmt->get_result()->fetch_all(MYSQLI_ASSOC);
+}
 function getProfileUrl($p) {
     if (!$p) return null; $p = ltrim($p, './');
     if (strpos($p, 'uploads/') !== false) return $p;
@@ -296,6 +311,23 @@ h1.htitle em{font-style:italic;color:var(--ink);}
 .cat-more-btn:hover{background:var(--sand);border-color:var(--ink);}
 .cat-row.hidden-cats .cat-item:nth-child(n+7){display:none;}
 
+.qa-bell-wrap{position:relative;}
+.qa-bell-btn{position:relative;background:transparent;border:1px solid rgba(246,237,222,.3);border-radius:7px;width:34px;height:34px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--bg);transition:background .12s,border-color .12s;}
+.qa-bell-btn:hover{background:rgba(246,237,222,.1);border-color:var(--sand);}
+.qa-bell-count{position:absolute;top:-5px;right:-5px;background:#c0392b;color:#fff;font-size:9.5px;font-weight:600;line-height:1;min-width:16px;height:16px;border-radius:9px;display:flex;align-items:center;justify-content:center;padding:0 3px;}
+.qa-bell-dropdown{display:none;position:absolute;top:calc(100% + 10px);right:0;width:300px;max-height:380px;overflow-y:auto;background:var(--card);border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 30px rgba(12,63,48,.18);z-index:300;}
+.qa-bell-dropdown.open{display:block;}
+.qa-bell-hd{font-size:11px;letter-spacing:1px;text-transform:uppercase;font-weight:600;color:var(--ink);padding:12px 16px 10px;border-bottom:1px solid var(--sand);}
+.qa-bell-empty{font-size:12.5px;opacity:.55;font-style:italic;padding:18px 16px;}
+.qa-bell-item{display:block;padding:12px 16px;border-bottom:1px solid var(--sand);transition:background .12s;}
+.qa-bell-item:last-child{border-bottom:none;}
+.qa-bell-item:hover{background:var(--sand);}
+.qa-bell-item-title{font-size:12.5px;font-weight:600;color:var(--ink);margin-bottom:3px;}
+.qa-bell-item-q{font-size:11.5px;color:var(--ink);opacity:.75;margin-bottom:5px;line-height:1.4;}
+.qa-bell-item-tag{font-size:10px;font-weight:600;color:#0C3F30;background:#e6f4ef;display:inline-block;padding:2px 8px;border-radius:20px;}
+@media(max-width:768px){
+  .qa-bell-dropdown{position:fixed;top:58px;right:8px;left:8px;width:auto;}
+}
 /* ─── ARTWORK CARD ─── */
 .aw-card{background:var(--card);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;transition:transform .15s,box-shadow .15s;}
 .aw-card:hover{transform:translateY(-3px);box-shadow:0 10px 28px rgba(12,63,48,.09);}
@@ -469,6 +501,28 @@ h1.htitle em{font-style:italic;color:var(--ink);}
     <div class="nend">
 
       <?php if ($isLoggedIn): ?>
+        <div class="qa-bell-wrap">
+          <button class="qa-bell-btn" id="qaBellBtn" aria-label="Question replies" onclick="toggleQABell()">
+            <svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+            <?php if (!empty($myAnsweredQuestions)): ?>
+              <span class="qa-bell-count"><?= count($myAnsweredQuestions) ?></span>
+            <?php endif; ?>
+          </button>
+          <div class="qa-bell-dropdown" id="qaBellDropdown">
+            <div class="qa-bell-hd">Question Replies</div>
+            <?php if (empty($myAnsweredQuestions)): ?>
+              <div class="qa-bell-empty">No new replies right now.</div>
+            <?php else: ?>
+              <?php foreach ($myAnsweredQuestions as $mq): ?>
+                <a class="qa-bell-item" href="artwork-detail.php?id=<?= (int)$mq['artwork_id'] ?>#qa-section">
+                  <div class="qa-bell-item-title"><?= htmlspecialchars($mq['artwork_title']) ?></div>
+                  <div class="qa-bell-item-q">You asked: "<?= htmlspecialchars(mb_strimwidth($mq['question'], 0, 60, '…')) ?>"</div>
+                  <div class="qa-bell-item-tag">✓ Artist replied</div>
+                </a>
+              <?php endforeach; ?>
+            <?php endif; ?>
+          </div>
+        </div>
         <span style="font-size:12.5px;color:var(--bg);">Hi, <?= htmlspecialchars($_SESSION['name'] ?? 'Buyer') ?></span>
         <a href="dashboard/buyer/account.php" class="btn-ghost">My Account</a>
         <a href="logout.php" class="btn-dark">Logout</a>
@@ -844,6 +898,15 @@ function closeDrawer(){ navDrawer.classList.remove('open'); navOverlay.classList
 if(hamBtn) hamBtn.addEventListener('click', openDrawer);
 if(navOverlay) navOverlay.addEventListener('click', closeDrawer);
 document.querySelector('.drawer-close')?.addEventListener('click', closeDrawer);
+function toggleQABell() {
+  document.getElementById('qaBellDropdown')?.classList.toggle('open');
+}
+document.addEventListener('click', function(e) {
+  const wrap = document.querySelector('.qa-bell-wrap');
+  if (wrap && !wrap.contains(e.target)) {
+    document.getElementById('qaBellDropdown')?.classList.remove('open');
+  }
+});
 
 // Commission Modal Helper
 function openCM(id, name) {
