@@ -392,6 +392,9 @@ h1.htitle em{font-style:italic;color:var(--ink);}
 
 /* ─── LATEST ARTWORKS ─── */
 .latest-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(185px,1fr));gap:14px;}
+@media(max-width:768px){
+  #latest-aw-grid .aw-card:nth-child(n+9){display:none;}
+}
 .blog-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:20px;}
 .post-card{background:var(--card);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;transition:transform .15s,box-shadow .15s;cursor:pointer;display:flex;flex-direction:column;}
 .post-card:hover{transform:translateY(-3px);box-shadow:0 10px 28px rgba(12,63,48,.09);}
@@ -721,7 +724,7 @@ h1.htitle em{font-style:italic;color:var(--ink);}
 <!-- LATEST ARTWORKS -->
 <div class="wrap"><div class="sec">
   <div class="sec-hd"><h2 class="sec-title">Latest Artworks</h2><a href="artworks.php" class="sec-lnk">View all</a></div>
-  <div class="latest-grid">
+  <div class="latest-grid" id="latest-aw-grid">
     <?php foreach ($latestArtworks as $art): $img = getImgUrl($art['cover_image']); ?>
     <div class="aw-card">
       <a href="artwork-detail.php?id=<?= $art['id'] ?>" class="aw-img" style="display:block;">
