@@ -202,6 +202,7 @@ $latestArtworks   = $conn->query("SELECT a.id,a.title,a.price,a.city,a.status,a.
 $featuredArtists  = $conn->query("SELECT u.id,u.name,u.profile_picture,ap.city,ap.art_style,ap.accepts_commissions FROM users u JOIN artist_profiles ap ON u.id=ap.user_id WHERE u.role='artist' AND u.status='active' AND ap.is_featured=1 AND ap.profile_complete=1 ORDER BY u.created_at DESC LIMIT 4")->fetch_all(MYSQLI_ASSOC);
  $categories       = $conn->query("SELECT id,name FROM categories ORDER BY name ASC")->fetch_all(MYSQLI_ASSOC);
  $heroArt = $featuredArtworks[0] ?? $latestArtworks[0] ?? null;
+ $latestBlogPosts = $conn->query("SELECT bp.id, bp.title, bp.slug, bp.content, bp.featured_image, bp.published_at, bp.created_at, u.name AS author_name FROM blog_posts bp JOIN users u ON u.id = bp.author_id WHERE bp.status = 'published' ORDER BY bp.published_at DESC LIMIT 4")->fetch_all(MYSQLI_ASSOC);
 
  $catIcons = [
     'Painting'     => '<svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>',
@@ -391,6 +392,22 @@ h1.htitle em{font-style:italic;color:var(--ink);}
 
 /* ─── LATEST ARTWORKS ─── */
 .latest-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(185px,1fr));gap:14px;}
+.blog-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:20px;}
+.post-card{background:var(--card);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;transition:transform .15s,box-shadow .15s;cursor:pointer;display:flex;flex-direction:column;}
+.post-card:hover{transform:translateY(-3px);box-shadow:0 10px 28px rgba(12,63,48,.09);}
+.pc-img{aspect-ratio:4/3;overflow:hidden;position:relative;background:var(--sand);}
+.pc-img img{width:100%;height:100%;object-fit:contain;transition:transform .3s;}
+.post-card:hover .pc-img img{transform:scale(1.04);}
+.pc-ph{width:100%;height:100%;display:flex;align-items:center;justify-content:center;}
+.pc-ph svg{opacity:.16;color:var(--ink);}
+.pc-body{padding:16px 18px 18px;flex:1;display:flex;flex-direction:column;}
+.pc-title{font-family:'Playfair Display',serif;font-size:17px;font-weight:400;color:var(--ink);line-height:1.3;margin-bottom:8px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+.pc-excerpt{font-size:12.5px;color:var(--ink);opacity:.65;line-height:1.55;margin-bottom:14px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;flex:1;}
+.pc-meta{display:flex;align-items:center;justify-content:space-between;font-size:11px;color:var(--ink);opacity:.5;}
+.pc-meta span{display:flex;align-items:center;gap:4px;}
+.pc-meta svg{width:12px;height:12px;}
+@media(max-width:1080px){.blog-grid{grid-template-columns:repeat(2,1fr);}}
+@media(max-width:768px){.blog-grid{grid-template-columns:repeat(2,1fr);}}
 
 /* ─── MODALS ─── */
 .mbg{display:none;position:fixed;inset:0;background:rgba(12,63,48,.58);backdrop-filter:blur(3px);z-index:500;align-items:center;justify-content:center;padding:16px;}
@@ -727,6 +744,46 @@ h1.htitle em{font-style:italic;color:var(--ink);}
     </div>
     <?php endforeach; ?>
   </div>
+</div></div>
+
+<div class="wrap"><hr class="divhr"></div>
+
+<!-- LATEST INSIGHTS -->
+<div class="wrap"><div class="sec">
+  <div class="sec-hd"><h2 class="sec-title">Latest Insights</h2><a href="blog.php" class="sec-lnk">View all posts</a></div>
+  <?php if (empty($latestBlogPosts)): ?>
+    <p style="color:var(--ink);font-size:13px;padding:16px 0;">No blog posts yet.</p>
+  <?php else: ?>
+  <div class="blog-grid">
+    <?php foreach ($latestBlogPosts as $p): ?>
+    <a href="blog-post.php?slug=<?= htmlspecialchars($p['slug']) ?>" class="post-card">
+      <div class="pc-img">
+        <?php if ($p['featured_image']): ?>
+          <img src="<?= htmlspecialchars($p['featured_image']) ?>" alt="" loading="lazy">
+        <?php else: ?>
+        <div class="pc-ph">
+          <svg width="36" height="36" fill="none" stroke="currentColor" stroke-width="1" viewBox="0 0 24 24"><path d="M4 4h16a1 1 0 011 1v14a1 1 0 01-1 1H4a1 1 0 01-1-1V5a1 1 0 011-1z"/><path d="M7 8h10M7 12h6"/><path d="M17 16l2 2"/></svg>
+        </div>
+        <?php endif; ?>
+      </div>
+      <div class="pc-body">
+        <div class="pc-title"><?= htmlspecialchars($p['title']) ?></div>
+        <div class="pc-excerpt"><?= htmlspecialchars(mb_substr(strip_tags($p['content'] ?? ''), 0, 120)) ?>...</div>
+        <div class="pc-meta">
+          <span>
+            <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            <?= htmlspecialchars($p['author_name']) ?>
+          </span>
+          <span>
+            <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            <?= date('M j, Y', strtotime($p['published_at'] ?? $p['created_at'])) ?>
+          </span>
+        </div>
+      </div>
+    </a>
+    <?php endforeach; ?>
+  </div>
+  <?php endif; ?>
 </div></div>
 
 <!-- FOOTER -->
