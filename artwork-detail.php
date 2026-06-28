@@ -400,12 +400,6 @@ h1{font-family:'Playfair Display',serif;font-size:clamp(24px,2.5vw,32px);font-we
     Back to Artworks
   </a>
 </div>
-<!-- BREADCRUMB -->
-<div class="breadcrumb">
-  <a href="index.php">Home</a> <span>/</span>
-  <a href="artworks.php">Artworks</a> <span>/</span>
-  <span><?= htmlspecialchars($artwork['title']) ?></span>
-</div>
 
 <!-- MAIN CONTENT -->
 <div class="main">
@@ -482,8 +476,6 @@ h1{font-family:'Playfair Display',serif;font-size:clamp(24px,2.5vw,32px);font-we
     <?php endif; ?>
 
     <div class="tags">
-      <?php if ($artwork['delivery_available']): ?><span class="tag">📦 Delivery Available</span><?php endif; ?>
-      <?php if ($artwork['similar_work_available']): ?><span class="tag">🎨 Similar Work Available</span><?php endif; ?>
       <?php if ($artwork['status'] === 'sold'): ?><span class="tag" style="background:#FDEAEA;color:var(--ink);">Sold</span><?php endif; ?>
     </div>
 
@@ -494,16 +486,16 @@ h1{font-family:'Playfair Display',serif;font-size:clamp(24px,2.5vw,32px);font-we
     </div>
     <?php endif; ?>
 
-    <div class="btn-group">
+    <div class="btn-group btn-group-2" style="flex-direction:row;">
   <?php if ($artwork['status'] === 'sold'): ?>
-    <button class="btn btn-secondary" disabled style="opacity:0.6;cursor:not-allowed;">🚫 Sold Out</button>
+    <button class="btn btn-secondary" disabled style="opacity:0.6;cursor:not-allowed;flex:1;width:auto;">Sold Out</button>
   <?php elseif ($isLoggedIn): ?>
-    <a href="checkout.php?artwork_id=<?= $artworkId ?>" class="btn btn-terr" style="text-align:center;">🛒 Buy Now</a>
+    <a href="checkout.php?artwork_id=<?= $artworkId ?>" class="btn btn-terr" style="text-align:center;flex:1;width:auto;">Buy Now</a>
   <?php else: ?>
-    <a href="login.php?redirect=<?= urlencode($_SERVER['REQUEST_URI']) ?>" class="btn btn-terr" style="text-align:center;">🛒 Login to Buy</a>
+    <a href="login.php?redirect=<?= urlencode($_SERVER['REQUEST_URI']) ?>" class="btn btn-terr" style="text-align:center;flex:1;width:auto;">Login to Buy</a>
   <?php endif; ?>
-  <a href="commission.php?artist=<?= $artwork['artist_id'] ?>" class="btn btn-outline" style="text-align:center;">
-    🎨 Request Similar Custom Work
+  <a href="commission.php?artist=<?= $artwork['artist_id'] ?>" class="btn btn-outline" style="text-align:center;flex:1;width:auto;">
+    Request Similar Custom Work
   </a>
 </div>
   </div>
