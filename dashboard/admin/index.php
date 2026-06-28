@@ -762,22 +762,11 @@ tr:hover td {
 <!-- ══════════════ TOPBAR ══════════════ -->
 <header class="topbar">
     <div class="topbar-left">
-        <h1>Good <?= (date('H') < 12) ? 'morning' : ((date('H') < 18) ? 'afternoon' : 'evening') ?>, <?= htmlspecialchars(explode(' ', $adminName)[0]) ?> </h1>
+        <h1>Hi, <?= htmlspecialchars(explode(' ', $adminName)[0]) ?></h1>
         <div class="date"><?= $today ?></div>
     </div>
     <div class="topbar-right">
         <button class="ham-btn" onclick="openDrawer()"><span></span><span></span><span></span></button>
-        <?php if ($stats['new_inquiries'] + $stats['new_commissions'] + $stats['unread_messages'] > 0): ?>
-        <div class="notif" title="You have pending notifications">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
-            <span class="notif-dot"></span>
-        </div>
-        <?php endif; ?>
-        <div class="admin-chip">
-            <div class="avatar"><?= strtoupper(substr($adminName, 0, 1)) ?></div>
-            <span class="name"><?= htmlspecialchars($adminName) ?></span>
-            <span class="arrow">∨</span>
-        </div>
     </div>
 </header>
 
