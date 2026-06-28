@@ -359,7 +359,7 @@ select.filter-input {
     <div class="nend">
 
       <?php if ($isLoggedIn): ?>
-        <span style="font-size:12.5px;color:var(--bg);">Hi, <?= htmlspecialchars($_SESSION['name'] ?? 'Buyer') ?></span>
+        
         <a href="dashboard/buyer/account.php" class="btn-ghost">My Account</a>
         <a href="logout.php" class="btn-dark">Logout</a>
       <?php else: ?>
