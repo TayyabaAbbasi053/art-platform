@@ -59,6 +59,23 @@ if (isset($_GET['delete'])) {
     exit;
 }
 
+// ── Handle Q&A Answer ─────────────────────────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['answer_question'])) {
+    $qId    = (int)($_POST['question_id'] ?? 0);
+    $answer = trim($_POST['answer'] ?? '');
+    if ($qId && $answer) {
+        // Make sure the question belongs to one of this artist's artworks
+        $conn->query("
+            UPDATE artwork_questions aq
+            JOIN artworks a ON aq.artwork_id = a.id
+            SET aq.answer = '" . $conn->real_escape_string($answer) . "', aq.answered_at = NOW()
+            WHERE aq.id = $qId AND a.artist_id = $artistId
+        ");
+    }
+    header("Location: my-artworks.php?status=" . urlencode($_GET['status'] ?? 'all') . "&msg=answered");
+    exit;
+}
+
 // ── Filtering ─────────────────────────────────────────
  $filterStatus = $_GET['status'] ?? '';
  $allowedFilters = ['all', 'active', 'sold', 'hidden'];
@@ -83,6 +100,18 @@ if ($filterStatus !== 'all') {
 
  $artworks = $conn->query($sql)->fetch_all(MYSQLI_ASSOC);
 
+ // ── Fetch Pending Questions for this artist's artworks ───
+$pendingQs = $conn->query("
+    SELECT aq.id, aq.artwork_id, aq.buyer_name, aq.question, aq.created_at,
+           a.title AS artwork_title
+    FROM artwork_questions aq
+    JOIN artworks a ON aq.artwork_id = a.id
+    WHERE a.artist_id = $artistId AND aq.answer IS NULL
+    ORDER BY aq.created_at DESC
+")->fetch_all(MYSQLI_ASSOC);
+
+$pendingQCount = count($pendingQs);
+
 // ── Stats for Tabs ───────────────────────────────────
  $counts = [
     'all'    => (int) $conn->query("SELECT COUNT(*) FROM artworks WHERE artist_id = $artistId")->fetch_row()[0],
@@ -95,6 +124,7 @@ if ($filterStatus !== 'all') {
 if (isset($_GET['msg'])) {
     if ($_GET['msg'] === 'uploaded') $successMsg = 'Artwork uploaded and live on the marketplace!';
     if ($_GET['msg'] === 'deleted') $successMsg = 'Artwork deleted successfully.';
+    if ($_GET['msg'] === 'answered') $successMsg = 'Reply posted successfully!';
 }
 ?>
 <!DOCTYPE html>
@@ -151,6 +181,24 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
 .main { margin-left: var(--sidebar); padding-top: var(--top); min-height: 100vh; }
 .content { padding: 32px; }
 .section-title { font-size: 11px; letter-spacing: 2.5px; text-transform: uppercase; color: var(--ink); font-weight: 500; margin-bottom: 20px; opacity: 0.7; }
+
+/* ── Q&A Panel ─────────────────────────────────────── */
+.qa-panel { background: var(--card); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 28px; overflow: hidden; }
+.qa-panel-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; cursor: pointer; background: var(--sand); }
+.qa-panel-header h3 { font-size: 13px; font-weight: 600; letter-spacing: .5px; display: flex; align-items: center; gap: 8px; }
+.qa-panel-header .badge-count { background: var(--ink); color: var(--bg); font-size: 10px; padding: 2px 8px; border-radius: 20px; }
+.qa-panel-body { display: none; padding: 0; }
+.qa-panel-body.open { display: block; }
+.qa-item { padding: 16px 20px; border-bottom: 1px solid var(--sand); }
+.qa-item:last-child { border-bottom: none; }
+.qa-artwork-label { font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; opacity: .5; margin-bottom: 6px; }
+.qa-question-text { font-size: 13.5px; font-weight: 500; margin-bottom: 4px; }
+.qa-meta { font-size: 11px; opacity: .5; margin-bottom: 12px; }
+.qa-answer-form textarea { width: 100%; border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; font-size: 13px; font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--ink); outline: none; resize: vertical; min-height: 80px; margin-bottom: 8px; }
+.qa-answer-form textarea:focus { border-color: var(--ink); }
+.qa-answer-form button { background: var(--ink); color: var(--bg); border: none; border-radius: 8px; padding: 8px 20px; font-size: 12px; font-family: 'DM Sans', sans-serif; cursor: pointer; font-weight: 500; }
+.qa-answer-form button:hover { opacity: .85; }
+.qa-empty-note { padding: 20px; font-size: 13px; opacity: .5; font-style: italic; }
 
 /* ── Messages ───────────────────────────────────────── */
 .msg { padding: 12px 18px; border-radius: 10px; font-size: 12.5px; margin-bottom: 24px; display: flex; align-items: center; gap: 8px; background: var(--sand); border: 1px solid var(--border); color: var(--ink); }
@@ -326,6 +374,39 @@ tr:hover td { background: var(--sand); }
             <?= htmlspecialchars($successMsg) ?>
         </div>
     <?php endif; ?>
+
+    <!-- Q&A Questions Panel -->
+    <div class="qa-panel">
+        <div class="qa-panel-header" onclick="this.nextElementSibling.classList.toggle('open'); this.querySelector('svg').style.transform = this.nextElementSibling.classList.contains('open') ? 'rotate(180deg)' : ''">
+            <h3>
+                <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                Questions from Buyers
+                <?php if ($pendingQCount > 0): ?>
+                    <span class="badge-count"><?= $pendingQCount ?> unanswered</span>
+                <?php endif; ?>
+            </h3>
+            <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="transition:transform .25s;"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+        <div class="qa-panel-body <?= $pendingQCount > 0 ? 'open' : '' ?>">
+            <?php if (empty($pendingQs)): ?>
+                <div class="qa-empty-note">No unanswered questions right now.</div>
+            <?php else: ?>
+                <?php foreach ($pendingQs as $q): ?>
+                <div class="qa-item">
+                    <div class="qa-artwork-label">On: <?= htmlspecialchars($q['artwork_title']) ?></div>
+                    <div class="qa-question-text"><?= htmlspecialchars($q['question']) ?></div>
+                    <div class="qa-meta">from <?= htmlspecialchars($q['buyer_name']) ?> · <?= date('M j, Y', strtotime($q['created_at'])) ?></div>
+                    <form class="qa-answer-form" method="POST">
+                        <input type="hidden" name="answer_question" value="1">
+                        <input type="hidden" name="question_id" value="<?= $q['id'] ?>">
+                        <textarea name="answer" placeholder="Type your reply…" required></textarea>
+                        <button type="submit">Post Reply</button>
+                    </form>
+                </div>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        </div>
+    </div>
 
     <div class="header-actions">
         <div class="tabs">

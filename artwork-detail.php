@@ -64,6 +64,31 @@ AND (ap2.has_bank_account=1 OR ap2.has_easypaisa=1 OR ap2.has_jazzcash=1 OR ap2.
  $similar->execute();
  $similarArtworks = $similar->get_result()->fetch_all(MYSQLI_ASSOC);
 
+ // Fetch answered questions for this artwork
+$qStmt = $conn->prepare("
+    SELECT buyer_name, question, answer, answered_at, created_at
+    FROM artwork_questions
+    WHERE artwork_id = ? AND answer IS NOT NULL
+    ORDER BY created_at DESC
+");
+$qStmt->bind_param('i', $artworkId);
+$qStmt->execute();
+$artworkQuestions = $qStmt->get_result()->fetch_all(MYSQLI_ASSOC);
+
+// Handle question submission
+$qMsg = '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ask_question'])) {
+    $qName  = trim($conn->real_escape_string($_POST['buyer_name'] ?? ''));
+    $qEmail = '';
+    $qText  = trim($conn->real_escape_string($_POST['question'] ?? ''));
+    if ($qName && $qText) {
+        $conn->query("INSERT INTO artwork_questions (artwork_id, buyer_name, buyer_email, question) VALUES ($artworkId, '$qName', '$qEmail', '$qText')");
+        $qMsg = 'success';
+    } else {
+        $qMsg = 'error';
+    }
+}
+
 function getImageUrl($path) {
     if (!$path) return null;
     $path = ltrim($path, './');
@@ -158,6 +183,32 @@ img{max-width:100%;display:block;}
 h1{font-family:'Playfair Display',serif;font-size:clamp(24px,2.5vw,32px);font-weight:500;margin-bottom:12px;}
 .price{font-size:26px;font-weight:600;color:var(--ink);margin-bottom:12px;}
 .price small{font-size:13px;font-weight:400;color:var(--muted);}
+
+/* ─── Q&A Section ─── */
+.qa-section{max-width:var(--w);margin:0 auto;padding:0 28px 60px;}
+.qa-toggle{display:flex;align-items:center;gap:10px;background:var(--sand);border:1px solid var(--border);border-radius:10px;padding:14px 20px;cursor:pointer;font-size:14px;font-weight:500;color:var(--ink);width:100%;text-align:left;font-family:'DM Sans',sans-serif;transition:background .15s;}
+.qa-toggle:hover{background:#cfc0a0;}
+.qa-toggle svg{transition:transform .25s;flex-shrink:0;margin-left:auto;}
+.qa-toggle.open svg{transform:rotate(180deg);}
+.qa-body{display:none;border:1px solid var(--border);border-top:none;border-radius:0 0 10px 10px;background:var(--card);padding:24px;}
+.qa-body.open{display:block;}
+.qa-list{margin-bottom:28px;}
+.qa-item{padding:16px 0;border-bottom:1px solid var(--sand);}
+.qa-item:last-child{border-bottom:none;}
+.qa-q{font-size:13.5px;font-weight:500;color:var(--ink);margin-bottom:8px;}
+.qa-q span{opacity:.5;font-weight:400;font-size:11px;margin-left:6px;}
+.qa-a{font-size:13px;color:var(--ink);background:var(--sand);border-radius:8px;padding:10px 14px;margin-top:6px;}
+.qa-a strong{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;display:block;margin-bottom:4px;opacity:.6;}
+.qa-form{border-top:1px solid var(--sand);padding-top:20px;}
+.qa-form h4{font-size:13px;font-weight:600;margin-bottom:14px;letter-spacing:.5px;}
+.qa-form input,.qa-form textarea{width:100%;border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-size:13px;font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--ink);outline:none;margin-bottom:10px;transition:border-color .15s;}
+.qa-form input:focus,.qa-form textarea:focus{border-color:var(--ink);}
+.qa-form textarea{resize:vertical;min-height:90px;}
+.qa-form button{background:var(--ink);color:var(--bg);border:none;border-radius:8px;padding:10px 24px;font-size:13px;font-family:'DM Sans',sans-serif;cursor:pointer;font-weight:500;transition:opacity .15s;}
+.qa-form button:hover{opacity:.85;}
+.qa-success{background:#e6f4ef;border:1px solid #0C3F30;border-radius:8px;padding:10px 14px;font-size:13px;color:#0C3F30;margin-bottom:14px;}
+.qa-error{background:#fdeaea;border:1px solid #c0392b;border-radius:8px;padding:10px 14px;font-size:13px;color:#c0392b;margin-bottom:14px;}
+.qa-empty{font-size:13px;opacity:.5;font-style:italic;margin-bottom:20px;}
 .meta-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0;padding:16px 0;border-top:1px solid var(--border);border-bottom:1px solid var(--border);}
 .meta-item .label{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:4px;}
 .meta-item .value{font-size:13px;font-weight:500;color:var(--ink);}
@@ -434,6 +485,55 @@ h1{font-family:'Playfair Display',serif;font-size:clamp(24px,2.5vw,32px);font-we
 </div>
   </div>
 </div>
+<!-- Q&A SECTION -->
+<div class="qa-section">
+  <button class="qa-toggle" id="qaToggle" onclick="toggleQA()">
+    <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+    Ask a Question about this Artwork
+    <?php if (!empty($artworkQuestions)): ?>
+      <span style="font-size:11px;opacity:.6;font-weight:400;">(<?= count($artworkQuestions) ?> answered)</span>
+    <?php endif; ?>
+    <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+  </button>
+
+  <div class="qa-body" id="qaBody">
+    <!-- Answered Questions -->
+    <?php if (!empty($artworkQuestions)): ?>
+    <div class="qa-list">
+      <?php foreach ($artworkQuestions as $q): ?>
+      <div class="qa-item">
+        <div class="qa-q">
+          <?= htmlspecialchars($q['question']) ?>
+          <span>— <?= htmlspecialchars($q['buyer_name']) ?> · <?= date('M j, Y', strtotime($q['created_at'])) ?></span>
+        </div>
+        <div class="qa-a">
+          <strong>Artist's Reply</strong>
+          <?= nl2br(htmlspecialchars($q['answer'])) ?>
+        </div>
+      </div>
+      <?php endforeach; ?>
+    </div>
+    <?php else: ?>
+    <p class="qa-empty">No questions yet. Be the first to ask!</p>
+    <?php endif; ?>
+
+    <!-- Ask Form -->
+    <div class="qa-form">
+      <h4>ASK A QUESTION</h4>
+      <?php if ($qMsg === 'success'): ?>
+        <div class="qa-success">✓ Your question has been sent! The artist will reply soon.</div>
+      <?php elseif ($qMsg === 'error'): ?>
+        <div class="qa-error">Please fill in your name and question.</div>
+      <?php endif; ?>
+      <form method="POST" action="artwork-detail.php?id=<?= $artworkId ?>">
+        <input type="hidden" name="ask_question" value="1">
+        <input type="text" name="buyer_name" placeholder="Your name *" required value="<?= htmlspecialchars($_POST['buyer_name'] ?? '') ?>">
+        <textarea name="question" placeholder="Your question about this artwork *" required><?= htmlspecialchars($_POST['question'] ?? '') ?></textarea>
+        <button type="submit">Send Question →</button>
+      </form>
+    </div>
+  </div>
+</div>
 
 <!-- SIMILAR ARTWORKS -->
 <?php if (!empty($similarArtworks)): ?>
@@ -513,6 +613,18 @@ if(hamBtn) hamBtn.addEventListener('click', openDrawer);
 if(navOverlay) navOverlay.addEventListener('click', closeDrawer);
 document.querySelector('.drawer-close')?.addEventListener('click', closeDrawer);
 
+// Q&A toggle
+function toggleQA() {
+  const btn = document.getElementById('qaToggle');
+  const body = document.getElementById('qaBody');
+  btn.classList.toggle('open');
+  body.classList.toggle('open');
+}
+// Auto-open if there was a form submission
+<?php if ($qMsg): ?>
+document.getElementById('qaToggle').classList.add('open');
+document.getElementById('qaBody').classList.add('open');
+<?php endif; ?>
 // Thumbnail switcher
 const thumbs = document.querySelectorAll('.thumb');
 const mainImg = document.getElementById('mainImage');
