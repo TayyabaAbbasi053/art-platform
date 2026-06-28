@@ -198,7 +198,7 @@ if ($search) {
 
  $whereSQL = implode(' AND ', $where);
 
-// ── CSV Export (always active artists only, ignores page filters & pagination) ──
+// ── CSV Export (respects current tab/search/featured filters, ignores pagination) ──
 if (isset($_GET['export'])) {
     $exportLimitRaw = $_GET['export_limit'] ?? 'all';
     $exportSortRaw  = $_GET['export_sort']  ?? 'newest';
@@ -210,14 +210,21 @@ if (isset($_GET['export'])) {
                ap.city, ap.address
         FROM users u
         LEFT JOIN artist_profiles ap ON ap.user_id = u.id
-        WHERE u.role = 'artist' AND u.status = 'active'
+        WHERE $whereSQL
         ORDER BY $exportOrderBy
     ";
     if (is_numeric($exportLimitRaw)) {
         $exportSQL .= " LIMIT " . (int)$exportLimitRaw;
     }
 
-    $exportResult = $conn->query($exportSQL);
+    if ($params) {
+        $exportStmt = $conn->prepare($exportSQL);
+        $exportStmt->bind_param($types, ...$params);
+        $exportStmt->execute();
+        $exportResult = $exportStmt->get_result();
+    } else {
+        $exportResult = $conn->query($exportSQL);
+    }
 
     $filename = 'artists_export_' . date('Y-m-d_His') . '.csv';
     header('Content-Type: text/csv; charset=utf-8');
