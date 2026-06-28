@@ -348,11 +348,6 @@ tr:hover td { background: var(--sand); box-shadow: 0 4px 12px rgba(12,63,48,.06)
         <div class="sub">Manage artwork categories</div>
     </div>
     <div class="topbar-right" style="display:flex;align-items:center;gap:12px;">
-        <div class="admin-chip">
-            <div class="avatar"><?= strtoupper(substr($adminName, 0, 1)) ?></div>
-            <span class="name"><?= htmlspecialchars($adminName) ?></span>
-            <span class="arrow">∨</span>
-        </div>
         <button class="ham-btn" id="hamBtn">
             <span></span><span></span><span></span>
         </button>

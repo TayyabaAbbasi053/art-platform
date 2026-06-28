@@ -801,7 +801,7 @@ td[data-label="Actions"]:before { display: none; }
 
     <header class="topbar">
         <div class="topbar-left"><h1>Orders & Inquiries</h1><div class="sub">Manage purchase inquiries and checkout orders</div></div>
-        <div class="topbar-right"><div class="admin-chip"><div class="avatar"><?= strtoupper(substr($adminName, 0, 1)) ?></div><span class="name"><?= htmlspecialchars($adminName) ?></span><span class="arrow">∨</span></div></div>
+        <div class="topbar-right"></div>
     </header>
 
     <main class="main">

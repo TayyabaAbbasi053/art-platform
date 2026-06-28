@@ -335,11 +335,6 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
     </div>
     <div class="topbar-right">
         <button class="ham-btn" onclick="openDrawer()"><span></span><span></span><span></span></button>
-        <div class="admin-chip">
-            <div class="avatar"><?= strtoupper(substr($adminName, 0, 1)) ?></div>
-            <span class="name"><?= htmlspecialchars($adminName) ?></span>
-            <span class="arrow">∨</span>
-        </div>
     </div>
 </header>
 

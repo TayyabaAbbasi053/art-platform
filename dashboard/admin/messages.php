@@ -330,11 +330,6 @@ tr.unread:hover td { background: var(--sand); }
         <div class="sub">Contact form submissions from visitors</div>
     </div>
     <div class="topbar-right" style="display:flex;align-items:center;gap:12px;">
-        <div class="admin-chip">
-            <div class="avatar"><?= strtoupper(substr($adminName, 0, 1)) ?></div>
-            <span class="name"><?= htmlspecialchars($adminName) ?></span>
-            <span class="arrow">∨</span>
-        </div>
         <button class="ham-btn" id="hamBtn">
             <span></span><span></span><span></span>
         </button>

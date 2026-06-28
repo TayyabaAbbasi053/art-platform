@@ -744,11 +744,6 @@ tr:hover td { background: var(--bg); box-shadow: 0 4px 12px rgba(12,63,48,.06); 
         <div class="sub">Manage artist accounts</div>
     </div>
     <div class="topbar-right">
-        <div class="admin-chip">
-            <div class="avatar"><?= strtoupper(substr($adminName, 0, 1)) ?></div>
-            <span class="name"><?= htmlspecialchars($adminName) ?></span>
-            <span class="arrow">∨</span>
-        </div>
     </div>
 </header>
 

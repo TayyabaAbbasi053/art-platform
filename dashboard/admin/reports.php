@@ -402,7 +402,7 @@ tr.is-paid{opacity:.55;}
 <!-- TOPBAR -->
 <header class="topbar">
     <div class="topbar-left"><h1>Reports</h1><div class="sub">Artist Performance &amp; Payment Tracking</div></div>
-    <div class="topbar-right"><div class="admin-chip"><div class="avatar"><?= strtoupper(substr($adminName,0,1)) ?></div><span class="name"><?= htmlspecialchars($adminName) ?></span></div></div>
+    
 </header>
 
 <main class="main">

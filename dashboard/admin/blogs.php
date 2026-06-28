@@ -556,11 +556,6 @@ tr:hover td { background: var(--sand); box-shadow: 0 4px 12px rgba(12,63,48,.06)
     </div>
     <div class="topbar-right">
         <button class="ham-btn" onclick="openDrawer()"><span></span><span></span><span></span></button>
-        <div class="admin-chip">
-            <div class="avatar"><?= strtoupper(substr($adminName, 0, 1)) ?></div>
-            <span class="name"><?= htmlspecialchars($adminName) ?></span>
-            <span class="arrow">∨</span>
-        </div>
     </div>
 </header>
 
