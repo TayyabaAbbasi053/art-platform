@@ -693,8 +693,8 @@ h1.htitle em{font-style:italic;color:var(--ink);}
     <div class="how-card">
       <div class="how-n">3</div>
       <div class="how-icon"><svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg></div>
-      <div class="how-t">Confirm Order</div>
-      <div class="how-d">Review your cart and complete the purchase with delivery details.</div>
+      <div class="how-t">Place Your Order</div>
+      <div class="how-d">Review your order and complete the purchase with delivery details at checkout.</div>
     </div>
     <div class="how-card">
       <div class="how-n">4</div>
