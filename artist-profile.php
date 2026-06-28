@@ -470,12 +470,6 @@ img{max-width:100%;display:block;}
     Back to Artists
   </a>
 </div>
-<!-- BREADCRUMB -->
-<div class="breadcrumb">
-  <a href="index.php">Home</a> <span>/</span>
-  <a href="artists.php">Artists</a> <span>/</span>
-  <span><?= htmlspecialchars($artist['name']) ?></span>
-</div>
 
 <!-- PROFILE HEADER -->
 <div class="profile-header">
