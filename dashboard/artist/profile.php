@@ -178,7 +178,7 @@ elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     has_jazzcash = ?, jazzcash_name = ?, jazzcash_number = ?,
                     has_nayapay = ?, nayapay_name = ?, nayapay_number = ?,
                     has_sadapay = ?, sadapay_name = ?, sadapay_number = ?,
-                    profile_complete = ?, profile_completed_at = ?
+                    profile_complete = ?, profile_completed_at = ?, profile_updated_at = NOW()
                 WHERE user_id = ?
             ");
             
@@ -207,6 +207,7 @@ elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $profileComplete, $profileCompletedAt,
                 $artistId
             );
+            error_log('PROFILE UPDATE - artistId: ' . $artistId . ' profileComplete: ' . $profileComplete . ' profileCompletedAt: ' . var_export($profileCompletedAt, true));
             $stmt->execute();
 
             // Refresh session and data
