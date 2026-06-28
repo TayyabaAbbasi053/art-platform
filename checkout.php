@@ -628,6 +628,7 @@ img{max-width:100%;display:block;}
     <div class="nlinks">
       <a href="artworks.php">Explore Art</a>
       <a href="artists.php">Artists</a>
+      <a href="blog.php">Blog</a>
       <a href="commission.php">Custom Artwork</a>
       <a href="sell.php">Sell Your Art</a>
       <a href="about.php">About Us</a>
@@ -638,7 +639,6 @@ img{max-width:100%;display:block;}
       <input type="text" placeholder="Search...">
     </div>
     <div class="nend">
-      <span style="font-size:12.5px;color:var(--bg);">Welcome, <?= htmlspecialchars($buyerName) ?></span>
       <a href="logout.php" class="btn-ghost">Logout</a>
 
       <button class="ham-btn" aria-label="Open menu">
@@ -906,6 +906,7 @@ img{max-width:100%;display:block;}
   <div class="drawer-links">
     <a href="artworks.php">Explore Art</a>
     <a href="artists.php">Artists</a>
+    <a href="blog.php">Blog</a>
     <a href="commission.php">Custom Artwork</a>
     <a href="sell.php">Sell Your Art</a>
     <a href="about.php">About Us</a>
