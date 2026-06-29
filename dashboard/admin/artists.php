@@ -233,11 +233,13 @@ if (isset($_GET['export'])) {
     $out = fopen('php://output', 'w');
     fputcsv($out, ['ID','Name','Email','Phone','Status','City','Address']);
     while ($row = $exportResult->fetch_assoc()) {
+        $phoneRaw = (string)($row['phone'] ?? '');
+        $phoneSafe = $phoneRaw !== '' ? '="' . str_replace('"', '', $phoneRaw) . '"' : '';
         fputcsv($out, [
             $row['id'],
             $row['name'],
             $row['email'],
-            $row['phone'],
+            $phoneSafe,
             $row['status'],
             $row['city'],
             $row['address'],
