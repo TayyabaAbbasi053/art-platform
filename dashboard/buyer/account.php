@@ -281,19 +281,20 @@ a{text-decoration:none;color:inherit;}
 img{max-width:100%;display:block;}
 
 /* SIDEBAR */
-.sidebar{position:fixed;top:0;left:0;width:var(--sidebar);height:100vh;background:#EFE3D2;border-right:1px solid var(--border);display:flex;flex-direction:column;z-index:100;overflow-y:auto;}
+.sidebar{position:fixed;top:0;left:0;width:var(--sidebar);height:100vh;background:var(--ink);border-right:1px solid var(--border);display:flex;flex-direction:column;z-index:100;overflow-y:auto;}
 .sidebar-brand{padding:24px 24px 20px;border-bottom:1px solid var(--border);}
-.sidebar-brand .logo-text{font-family:'Playfair Display',serif;font-size:20px;font-weight:500;color:var(--ink);}
-.sidebar-brand .logo-tag{font-size:9px;letter-spacing:2px;color:var(--muted);margin-top:2px;}
-.sidebar-section{padding:20px 20px 8px;font-size:9px;letter-spacing:2.5px;text-transform:uppercase;color:var(--muted);font-weight:500;}
-.nav-item{display:flex;align-items:center;gap:12px;padding:10px 20px;font-size:13px;color:var(--body);border-left:2px solid transparent;transition:all .15s;}
-.nav-item:hover{color:var(--ink);background:rgba(255,255,255,0.3);border-left-color:var(--border);}
-.nav-item.active{color:var(--ink);background:rgba(255,255,255,0.4);border-left-color:var(--sand);font-weight:500;}
-.nav-item .icon{width:18px;height:18px;opacity:.6;}
-.badge{margin-left:auto;background:var(--sand);color:#fff;font-size:9px;padding:2px 7px;border-radius:20px;}
+.sidebar-brand .logo-text{font-family:'Playfair Display',serif;font-size:20px;font-weight:500;color:var(--bg);}
+.sidebar-brand .logo-tag{font-size:9px;letter-spacing:2px;color:var(--sand);margin-top:2px;}
+.sidebar-section{padding:20px 20px 8px;font-size:9px;letter-spacing:2.5px;text-transform:uppercase;color:var(--sand);font-weight:500;}
+.nav-item{display:flex;align-items:center;gap:12px;padding:10px 20px;font-size:13px;color:var(--bg);border-left:2px solid transparent;transition:all .15s;}
+.nav-item:hover{color:var(--ink);background:rgba(246,237,222,0.15);border-left-color:var(--sand);}
+.nav-item.active{color:var(--ink);background:var(--sand);font-weight:500;border-left-color:var(--ink);}
+.nav-item .icon{width:18px;height:18px;opacity:.8;stroke:var(--bg);}
+.nav-item.active .icon, .nav-item:hover .icon{stroke:var(--ink);}
+.badge{margin-left:auto;background:var(--sand);color:var(--ink);font-size:9px;padding:2px 7px;border-radius:20px;}
 .sidebar-bottom{margin-top:auto;padding:20px;border-top:1px solid var(--border);}
-.signout-btn{display:flex;align-items:center;gap:10px;padding:10px;font-size:13px;color:var(--body);border-radius:8px;transition:all .15s;}
-.signout-btn:hover{background:var(--bg);color:var(--ink);}
+.signout-btn{display:flex;align-items:center;gap:10px;padding:10px;font-size:13px;color:var(--bg);border-radius:8px;transition:all .15s;}
+.signout-btn:hover{background:#FFF0EC;color:var(--ink);}
 
 /* TOPBAR */
 .topbar{position:fixed;top:0;left:var(--sidebar);right:0;height:var(--top);background:var(--ink);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 32px;z-index:99;}
@@ -486,6 +487,19 @@ img{max-width:100%;display:block;}
     My Orders
     <?php if ($orderStats['pending'] > 0): ?><span class="badge"><?= $orderStats['pending'] ?></span><?php endif; ?>
   </a>
+  <div class="sidebar-section">Browse</div>
+  <a href="../../index.php" class="nav-item">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+    Home
+  </a>
+  <a href="../../artworks.php" class="nav-item">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="M21 15l-5-5L5 21"/></svg>
+    Artworks
+  </a>
+  <a href="../../artists.php" class="nav-item">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+    Artists
+  </a>
   <div class="sidebar-bottom">
     <a href="../../logout.php" class="signout-btn">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
@@ -498,16 +512,6 @@ img{max-width:100%;display:block;}
 <header class="topbar">
   <div class="topbar-left"><h1>My Account</h1></div>
   <div class="topbar-right" style="display:flex;align-items:center;gap:12px;">
-    <div class="buyer-chip">
-      <div class="avatar">
-        <?php if ($avatarUrl): ?>
-          <img src="<?= htmlspecialchars($avatarUrl) ?>" alt="">
-        <?php else: ?>
-          <?= strtoupper(substr($buyerName, 0, 1)) ?>
-        <?php endif; ?>
-      </div>
-      <span class="name"><?= htmlspecialchars($buyerName) ?></span>
-    </div>
     <button class="ham-btn" onclick="openDrawer()"><span></span><span></span><span></span></button>
   </div>
 </header>
@@ -848,6 +852,9 @@ img{max-width:100%;display:block;}
     <div class="drawer-links">
         <a href="account.php">Overview</a>
         <a href="orders.php">My Orders</a>
+        <a href="../../index.php">Home</a>
+        <a href="../../artworks.php">Artworks</a>
+        <a href="../../artists.php">Artists</a>
     </div>
     <div class="drawer-actions">
         <a href="../../logout.php">Sign Out</a>

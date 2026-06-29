@@ -487,6 +487,19 @@ img{max-width:100%;display:block;}
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 7H4a2 2 0 00-2 2v6a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>
     My Orders
   </a>
+  <div class="sidebar-section">Browse</div>
+  <a href="../../index.php" class="nav-item">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+    Home
+  </a>
+  <a href="../../artworks.php" class="nav-item">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="M21 15l-5-5L5 21"/></svg>
+    Artworks
+  </a>
+  <a href="../../artists.php" class="nav-item">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+    Artists
+  </a>
   <div class="sidebar-bottom">
     <a href="../../logout.php" class="signout-btn">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
@@ -499,10 +512,6 @@ img{max-width:100%;display:block;}
 <header class="topbar">
   <div class="topbar-left"><h1>Order Details</h1></div>
   <div class="topbar-right" style="display:flex;align-items:center;gap:12px;">
-    <div class="buyer-chip">
-      <div class="avatar"><?= strtoupper(substr($buyerName, 0, 1)) ?></div>
-      <span class="name"><?= htmlspecialchars($buyerName) ?></span>
-    </div>
     <button class="ham-btn" id="hamBtn">
       <span></span><span></span><span></span>
     </button>
@@ -816,6 +825,9 @@ img{max-width:100%;display:block;}
   <div class="d-header">Menu</div>
   <a href="account.php" class="d-link">Overview</a>
   <a href="orders.php" class="d-link">My Orders</a>
+  <a href="../../index.php" class="d-link">Home</a>
+  <a href="../../artworks.php" class="d-link">Artworks</a>
+  <a href="../../artists.php" class="d-link">Artists</a>
   <div style="margin-top:auto;border-top:1px solid rgba(246,237,222,0.1);padding-top:16px;">
     <a href="../../logout.php" class="d-link" style="color:#ff9999;">Sign Out</a>
   </div>

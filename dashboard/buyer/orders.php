@@ -304,6 +304,19 @@ tr:hover { box-shadow: 0 4px 12px rgba(12,63,48,.06); }
     <?php if ($totalUnread > 0): ?><span class="badge" style="background:#c0392b;color:#fff;display:inline-flex;align-items:center;gap:5px;"><span class="red-dot" style="background:#fff;"></span>New</span>
     <?php elseif ($statusCounts['pending'] > 0): ?><span class="badge"><?= $statusCounts['pending'] ?></span><?php endif; ?>
   </a>
+  <div class="sidebar-section">Browse</div>
+  <a href="../../index.php" class="nav-item">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+    Home
+  </a>
+  <a href="../../artworks.php" class="nav-item">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="M21 15l-5-5L5 21"/></svg>
+    Artworks
+  </a>
+  <a href="../../artists.php" class="nav-item">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+    Artists
+  </a>
   <div class="sidebar-bottom">
     <a href="../../logout.php" class="signout-btn">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
@@ -316,10 +329,6 @@ tr:hover { box-shadow: 0 4px 12px rgba(12,63,48,.06); }
 <header class="topbar">
   <div class="topbar-left"><h1>My Orders</h1></div>
   <div class="topbar-right" style="display:flex;align-items:center;gap:12px;">
-    <div class="buyer-chip">
-      <div class="avatar"><?= strtoupper(substr($buyerName, 0, 1)) ?></div>
-      <span class="name"><?= htmlspecialchars($buyerName) ?></span>
-    </div>
     <button class="ham-btn" onclick="openDrawer()"><span></span><span></span><span></span></button>
   </div>
 </header>
@@ -430,6 +439,9 @@ tr:hover { box-shadow: 0 4px 12px rgba(12,63,48,.06); }
     <div class="drawer-links">
         <a href="account.php">Account Overview</a>
         <a href="orders.php">My Orders</a> 
+        <a href="../../index.php">Home</a>
+        <a href="../../artworks.php">Artworks</a>
+        <a href="../../artists.php">Artists</a>
     </div>
     <div class="drawer-actions">
         <a href="../../logout.php">Sign Out</a>
