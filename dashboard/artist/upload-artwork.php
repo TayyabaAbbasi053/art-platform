@@ -84,16 +84,42 @@ if (isset($_SESSION['heic_support_checked']) && (time() - $_SESSION['heic_suppor
 
 // ── Fetch New Orders Count for Sidebar Badge ────────────
  $newOrdersCount = 0;
- $countStmt = $conn->prepare("
-    SELECT COUNT(DISTINCT o.id) 
-    FROM orders o
+$countStmt = $conn->prepare("
+   SELECT COUNT(DISTINCT o.id) 
+   FROM orders o
+   JOIN order_items oi ON o.id = oi.order_id
+   JOIN artworks a ON oi.item_id = a.id AND oi.item_type = 'artwork'
+   WHERE a.artist_id = ? AND o.order_type = 'artwork'
+     AND o.order_status NOT IN ('pending', 'payment_review')
+     AND o.seen_by_artist = 0
+");
+$countStmt->bind_param('i', $artistId);
+$countStmt->execute();
+$newOrdersCount = $countStmt->get_result()->fetch_row()[0];
+ $unreadCommissionMsgs = (int)$conn->query("
+    SELECT COUNT(*) FROM order_messages om
+    JOIN commission_requests cr ON cr.order_id = om.order_id
+    WHERE cr.artist_id = $artistId
+      AND om.sender_role != 'artist'
+      AND om.is_read_by_artist = 0
+")->fetch_row()[0];
+
+$unreadOrderMsgs = (int)$conn->query("
+    SELECT COUNT(DISTINCT om.id) FROM order_messages om
+    JOIN orders o ON o.id = om.order_id
     JOIN order_items oi ON o.id = oi.order_id
     JOIN artworks a ON oi.item_id = a.id AND oi.item_type = 'artwork'
-    WHERE a.artist_id = ? AND o.order_type = 'artwork' AND o.order_status = 'pending'
-");
- $countStmt->bind_param('i', $artistId);
- $countStmt->execute();
- $newOrdersCount = $countStmt->get_result()->fetch_row()[0];
+    WHERE a.artist_id = $artistId
+      AND o.order_type = 'artwork'
+      AND om.sender_role != 'artist'
+      AND om.is_read_by_artist = 0
+")->fetch_row()[0];
+
+$pendingQCount = (int)$conn->query("
+    SELECT COUNT(*) FROM artwork_questions aq
+    JOIN artworks a ON aq.artwork_id = a.id
+    WHERE a.artist_id = $artistId AND aq.answer IS NULL
+")->fetch_row()[0];
 
 // ── Handle form submission ───────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -605,19 +631,19 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
     <a href="my-artworks.php" class="nav-item">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9l4-4 4 4 4-4 4 4"/><circle cx="8.5" cy="14.5" r="1.5"/></svg>
         My Artworks
+        <?php if ($pendingQCount > 0): ?><span class="badge" style="background:#c0392b;color:#fff;display:flex;align-items:center;gap:4px;"><span style="background:#fff;width:6px;height:6px;border-radius:50%;display:inline-block;"></span><?= $pendingQCount ?></span><?php endif; ?>
     </a>
     <a href="commissions.php" class="nav-item">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
         Commission Requests
+        <?php if ($unreadCommissionMsgs > 0): ?><span class="badge" style="background:#c0392b;color:#fff;display:flex;align-items:center;gap:4px;"><span style="background:#fff;width:6px;height:6px;border-radius:50%;display:inline-block;"></span><?= $unreadCommissionMsgs ?></span><?php endif; ?>
     </a>
     
     <!-- ADDED ORDERS LINK -->
     <a href="orders.php" class="nav-item">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 7H4a2 2 0 00-2 2v6a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>
         Orders
-        <?php if ($newOrdersCount > 0): ?>
-            <span class="badge"><?= $newOrdersCount ?></span>
-        <?php endif; ?>
+        <?php if ($newOrdersCount > 0): ?><span class="badge" style="background:#c0392b;color:#fff;"><?= $newOrdersCount ?></span><?php endif; ?>
     </a>
 
     <div class="sidebar-section">Account</div>
@@ -817,9 +843,15 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
         <a href="../../index.php">Home</a>
         <a href="index.php">Dashboard</a>
         <a href="upload-artwork.php">Upload Artwork</a>
-        <a href="my-artworks.php">My Artworks</a>
-        <a href="commissions.php">Commissions</a>
-        <a href="orders.php">Orders</a>
+        <a href="my-artworks.php">My Artworks
+            <?php if ($pendingQCount > 0): ?><span style="background:#c0392b;color:#fff;font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;margin-left:6px;"><?= $pendingQCount ?></span><?php endif; ?>
+        </a>
+        <a href="commissions.php">Commissions
+            <?php if ($unreadCommissionMsgs > 0): ?><span style="background:#c0392b;color:#fff;font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;margin-left:6px;"><?= $unreadCommissionMsgs ?></span><?php endif; ?>
+        </a>
+        <a href="orders.php">Orders
+            <?php if ($newOrdersCount > 0): ?><span style="background:#c0392b;color:#fff;font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;margin-left:6px;"><?= $newOrdersCount ?></span><?php endif; ?>
+        </a>
         <a href="profile.php">Profile</a>
     </div>
     <div class="drawer-actions">

@@ -39,7 +39,7 @@ if (!in_array($statusFilter, $allowedStatuses)) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'update_status') {
     $orderId = (int) ($_POST['order_id'] ?? 0);
     $newStatus = $_POST['new_status'] ?? '';
-    $allowedUpdates = ['cod', 'shipped', 'delivered', 'cancelled'];
+    $allowedUpdates = ['processing', 'cod', 'shipped', 'delivered', 'cancelled'];
     
     if ($orderId && in_array($newStatus, $allowedUpdates)) {
         // Verify this order belongs to the artist's artwork
@@ -214,6 +214,32 @@ while ($row = $countResult->fetch_assoc()) {
 // Fetch artist avatar
  $artistInfo = $conn->query("SELECT profile_picture FROM users WHERE id = $artistId")->fetch_assoc();
  $avatarUrl = $artistInfo['profile_picture'] ? '../../' . ltrim($artistInfo['profile_picture'], './') : null;
+
+ // ── Notification counts for sidebar badges ───────────────
+$unreadCommissionMsgs = (int)$conn->query("
+    SELECT COUNT(*) FROM order_messages om
+    JOIN commission_requests cr ON cr.order_id = om.order_id
+    WHERE cr.artist_id = $artistId
+      AND om.sender_role != 'artist'
+      AND om.is_read_by_artist = 0
+")->fetch_row()[0];
+
+$unreadOrderMsgs = (int)$conn->query("
+    SELECT COUNT(DISTINCT om.id) FROM order_messages om
+    JOIN orders o ON o.id = om.order_id
+    JOIN order_items oi ON o.id = oi.order_id
+    JOIN artworks a ON oi.item_id = a.id AND oi.item_type = 'artwork'
+    WHERE a.artist_id = $artistId
+      AND o.order_type = 'artwork'
+      AND om.sender_role != 'artist'
+      AND om.is_read_by_artist = 0
+")->fetch_row()[0];
+
+$pendingQCount = (int)$conn->query("
+    SELECT COUNT(*) FROM artwork_questions aq
+    JOIN artworks a ON aq.artwork_id = a.id
+    WHERE a.artist_id = $artistId AND aq.answer IS NULL
+")->fetch_row()[0];
 
 // Helper function for images
 function getArtworkImageUrl($imagePath) {
@@ -442,19 +468,30 @@ tr:hover td{background:var(--sand);box-shadow: 0 4px 12px rgba(12,63,48,.06);}
   <a href="my-artworks.php" class="nav-item">
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9l4-4 4 4 4-4 4 4"/><circle cx="8.5" cy="14.5" r="1.5"/></svg>
     My Artworks
+    <?php if ($pendingQCount > 0): ?><span class="badge" style="background:#c0392b;color:#fff;display:flex;align-items:center;gap:4px;"><span style="background:#fff;width:6px;height:6px;border-radius:50%;display:inline-block;"></span><?= $pendingQCount ?></span><?php endif; ?>
   </a>
   <a href="commissions.php" class="nav-item">
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
     Commission Requests
+    <?php if ($unreadCommissionMsgs > 0): ?><span class="badge" style="background:#c0392b;color:#fff;display:flex;align-items:center;gap:4px;"><span style="background:#fff;width:6px;height:6px;border-radius:50%;display:inline-block;"></span><?= $unreadCommissionMsgs ?></span><?php endif; ?>
   </a>
   <a href="orders.php" class="nav-item active">
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 7H4a2 2 0 00-2 2v6a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>
     Orders
     <?php
-$unseenCount = 0;
-foreach ($orders as $o) {
-    if (!$o['seen_by_artist']) $unseenCount++;
-}
+$unseenStmt = $conn->prepare("
+    SELECT COUNT(DISTINCT o.id)
+    FROM orders o
+    JOIN order_items oi ON o.id = oi.order_id
+    JOIN artworks a ON oi.item_id = a.id AND oi.item_type = 'artwork'
+    WHERE a.artist_id = ? 
+      AND o.order_type = 'artwork'
+      AND o.order_status NOT IN ('pending', 'payment_review')
+      AND o.seen_by_artist = 0
+");
+$unseenStmt->bind_param('i', $artistId);
+$unseenStmt->execute();
+$unseenCount = (int) $unseenStmt->get_result()->fetch_row()[0];
 ?>
 <?php if ($unseenCount > 0): ?><span class="badge"><?= $unseenCount ?> New</span><?php elseif ($statusCounts['payment_confirmed'] > 0): ?><span class="badge"><?= $statusCounts['payment_confirmed'] ?></span><?php endif; ?>
   </a>
@@ -600,9 +637,16 @@ foreach ($orders as $o) {
   <div class="d-header">Menu</div>
   <a href="index.php" class="d-link">Overview</a>
   <a href="upload-artwork.php" class="d-link">Upload Artwork</a>
-  <a href="my-artworks.php" class="d-link">My Artworks</a>
-  <a href="commissions.php" class="d-link">Commission Requests</a>
-  <a href="orders.php" class="d-link">Orders</a>
+  <a href="my-artworks.php" class="d-link">My Artworks
+    <?php if ($pendingQCount > 0): ?><span style="background:#c0392b;color:#fff;font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;margin-left:6px;"><?= $pendingQCount ?></span><?php endif; ?>
+  </a>
+  <a href="commissions.php" class="d-link">Commission Requests
+    <?php if ($unreadCommissionMsgs > 0): ?><span style="background:#c0392b;color:#fff;font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;margin-left:6px;"><?= $unreadCommissionMsgs ?></span><?php endif; ?>
+  </a>
+  <a href="orders.php" class="d-link">Orders
+    <?php if ($unreadOrderMsgs > 0): ?><span style="background:#c0392b;color:#fff;font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;margin-left:6px;"><?= $unreadOrderMsgs ?></span>
+    <?php elseif ($unseenCount > 0): ?><span style="background:var(--sand);color:var(--ink);font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;margin-left:6px;"><?= $unseenCount ?> New</span><?php endif; ?>
+  </a>
   <a href="profile.php" class="d-link">My Profile</a>
   <div style="margin-top:auto;border-top:1px solid rgba(246,237,222,0.1);padding-top:16px;">
     <a href="../../logout.php" class="d-link" style="color:#ff9999;">Sign Out</a>

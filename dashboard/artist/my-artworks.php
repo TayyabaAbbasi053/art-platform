@@ -111,6 +111,40 @@ $pendingQs = $conn->query("
 ")->fetch_all(MYSQLI_ASSOC);
 
 $pendingQCount = count($pendingQs);
+$unreadCommissionMsgs = (int)$conn->query("
+    SELECT COUNT(*) FROM order_messages om
+    JOIN commission_requests cr ON cr.order_id = om.order_id
+    WHERE cr.artist_id = $artistId
+      AND om.sender_role != 'artist'
+      AND om.is_read_by_artist = 0
+")->fetch_row()[0];
+
+$unreadOrderMsgs = (int)$conn->query("
+    SELECT COUNT(DISTINCT om.id) FROM order_messages om
+    JOIN orders o ON o.id = om.order_id
+    JOIN order_items oi ON o.id = oi.order_id
+    JOIN artworks a ON oi.item_id = a.id AND oi.item_type = 'artwork'
+    WHERE a.artist_id = $artistId
+      AND o.order_type = 'artwork'
+      AND om.sender_role != 'artist'
+      AND om.is_read_by_artist = 0
+")->fetch_row()[0];
+
+$unseenOrderCount = (int)$conn->query("
+    SELECT COUNT(DISTINCT o.id) FROM orders o
+    JOIN order_items oi ON o.id = oi.order_id
+    JOIN artworks a ON oi.item_id = a.id AND oi.item_type = 'artwork'
+    WHERE a.artist_id = $artistId
+      AND o.order_type = 'artwork'
+      AND o.order_status NOT IN ('pending', 'payment_review')
+      AND o.seen_by_artist = 0
+")->fetch_row()[0];
+
+$newCommCount = (int)$conn->query("
+    SELECT COUNT(*) FROM commission_requests cr
+    JOIN orders o ON cr.order_id = o.id
+    WHERE cr.artist_id = $artistId AND o.order_type = 'commission' AND o.order_status = 'assigned'
+")->fetch_row()[0];
 
 // ── Stats for Tabs ───────────────────────────────────
  $counts = [
@@ -319,14 +353,17 @@ tr:hover td { background: var(--sand); }
     <a href="my-artworks.php" class="nav-item active">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9l4-4 4 4 4-4 4 4"/><circle cx="8.5" cy="14.5" r="1.5"/></svg>
         My Artworks
+        <?php if ($pendingQCount > 0): ?><span class="badge" style="background:#c0392b;color:#fff;display:flex;align-items:center;gap:4px;"><span style="background:#fff;width:6px;height:6px;border-radius:50%;display:inline-block;"></span><?= $pendingQCount ?></span><?php endif; ?>
     </a>
     <a href="commissions.php" class="nav-item">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
         Commission Requests
+        <?php if ($unreadCommissionMsgs > 0): ?><span class="badge" style="background:#c0392b;color:#fff;display:flex;align-items:center;gap:4px;"><span style="background:#fff;width:6px;height:6px;border-radius:50%;display:inline-block;"></span><?= $unreadCommissionMsgs ?></span><?php elseif ($newCommCount > 0): ?><span class="badge"><?= $newCommCount ?></span><?php endif; ?>
     </a>
     <a href="orders.php" class="nav-item">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 7H4a2 2 0 00-2 2v6a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>
         Orders
+        <?php if ($unreadOrderMsgs > 0): ?><span class="badge" style="background:#c0392b;color:#fff;display:flex;align-items:center;gap:4px;"><span style="background:#fff;width:6px;height:6px;border-radius:50%;display:inline-block;"></span><?= $unreadOrderMsgs ?></span><?php elseif ($unseenOrderCount > 0): ?><span class="badge"><?= $unseenOrderCount ?> New</span><?php endif; ?>
     </a>
     <div class="sidebar-section">Account</div>
     <a href="profile.php" class="nav-item">
@@ -481,9 +518,15 @@ tr:hover td { background: var(--sand); }
   <div class="d-header">Menu</div>
   <a href="index.php" class="d-link">Overview</a>
   <a href="upload-artwork.php" class="d-link">Upload Artwork</a>
-  <a href="my-artworks.php" class="d-link">My Artworks</a>
-  <a href="commissions.php" class="d-link">Commission Requests</a>
-  <a href="orders.php" class="d-link">Orders</a>
+  <a href="my-artworks.php" class="d-link">My Artworks
+    <?php if ($pendingQCount > 0): ?><span style="background:#c0392b;color:#fff;font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;margin-left:6px;"><?= $pendingQCount ?></span><?php endif; ?>
+  </a>
+  <a href="commissions.php" class="d-link">Commission Requests
+    <?php if ($unreadCommissionMsgs > 0): ?><span style="background:#c0392b;color:#fff;font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;margin-left:6px;"><?= $unreadCommissionMsgs ?></span><?php elseif ($newCommCount > 0): ?><span style="background:var(--sand);color:var(--ink);font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;margin-left:6px;"><?= $newCommCount ?></span><?php endif; ?>
+  </a>
+  <a href="orders.php" class="d-link">Orders
+    <?php if ($unreadOrderMsgs > 0): ?><span style="background:#c0392b;color:#fff;font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;margin-left:6px;"><?= $unreadOrderMsgs ?></span><?php elseif ($unseenOrderCount > 0): ?><span style="background:var(--sand);color:var(--ink);font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;margin-left:6px;"><?= $unseenOrderCount ?> New</span><?php endif; ?>
+  </a>
   <a href="profile.php" class="d-link">My Profile</a>
   <div style="margin-top:auto;border-top:1px solid rgba(246,237,222,0.1);padding-top:16px;">
     <a href="../../logout.php" class="d-link" style="color:#ff9999;">Sign Out</a>

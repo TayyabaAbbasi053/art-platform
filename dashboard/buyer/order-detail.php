@@ -187,7 +187,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 // ── Handle artist rating submission ────────────────────
 $ratingError = '';
 $ratingSuccess = '';
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'rate_artist') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'rate_artist' && $order['order_status'] === 'delivered') {
     $ratedArtistId = (int)($_POST['artist_id'] ?? 0);
     $ratingVal = (int)($_POST['rating'] ?? 0);
     $reviewText = trim($_POST['review'] ?? '');
@@ -632,7 +632,7 @@ img{max-width:100%;display:block;}
   </div>
   <?php endif; ?>
 
-  <?php if ($isCommission && !empty($order['commission_artist_id'])): 
+  <?php if ($isCommission && !empty($order['commission_artist_id']) && $order['order_status'] === 'delivered'): 
       $artistIdToRate = (int)$order['commission_artist_id'];
       $existingRating = $conn->prepare("SELECT rating, review FROM artist_ratings WHERE artist_id = ? AND buyer_id = ?");
       $existingRating->bind_param('ii', $artistIdToRate, $buyerId);
@@ -690,7 +690,7 @@ img{max-width:100%;display:block;}
       <div class="item-details">
         <div class="item-title"><?= htmlspecialchars($item['artwork_title'] ?? 'Artwork') ?></div>
         <div class="item-artist">by <?= htmlspecialchars($item['artist_name'] ?? 'Art Bazaar') ?></div>
-        <?php if (!empty($item['artist_id'])): 
+        <?php if (!empty($item['artist_id']) && $order['order_status'] === 'delivered'): 
             $itemArtistId = (int)$item['artist_id'];
             $itemExistingRating = $conn->prepare("SELECT rating FROM artist_ratings WHERE artist_id = ? AND buyer_id = ?");
             $itemExistingRating->bind_param('ii', $itemArtistId, $buyerId);

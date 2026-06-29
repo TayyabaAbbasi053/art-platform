@@ -65,7 +65,9 @@ $stats['total_commissions'] = (int)$conn->query("
     SELECT COUNT(DISTINCT o.id) FROM orders o
     JOIN order_items oi ON o.id = oi.order_id
     JOIN artworks a ON oi.item_id = a.id AND oi.item_type = 'artwork'
-    WHERE a.artist_id = $artistId AND o.order_type = 'artwork' AND o.order_status = 'pending'
+    WHERE a.artist_id = $artistId AND o.order_type = 'artwork' 
+      AND o.order_status NOT IN ('pending', 'payment_review')
+      AND o.seen_by_artist = 0
 ")->fetch_row()[0];
 
 
@@ -517,12 +519,22 @@ tr:hover td { background: var(--sand); color: var(--ink); }
         Upload Artwork
     </a>
     <a href="my-artworks.php" class="nav-item">
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9l4-4 4 4 4-4 4 4"/><circle cx="8.5" cy="14.5" r="1.5"/></svg>
-        My Artworks
-        <?php if ($stats['pending_artworks'] > 0): ?>
-            <span class="badge amber"><?= $stats['pending_artworks'] ?></span>
-        <?php endif; ?>
-    </a>
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9l4-4 4 4 4-4 4 4"/><circle cx="8.5" cy="14.5" r="1.5"/></svg>
+    My Artworks
+    <?php if ($stats['pending_artworks'] > 0): ?>
+        <span class="badge amber"><?= $stats['pending_artworks'] ?></span>
+    <?php endif; ?>
+    <?php
+    $stats['pending_questions'] = (int)$conn->query("
+        SELECT COUNT(*) FROM artwork_questions aq
+        JOIN artworks a ON aq.artwork_id = a.id
+        WHERE a.artist_id = $artistId AND aq.answer IS NULL
+    ")->fetch_row()[0];
+    ?>
+    <?php if ($stats['pending_questions'] > 0): ?>
+        <span class="badge" style="background:#c0392b;color:#fff;display:flex;align-items:center;gap:4px;"><span class="red-dot" style="background:#fff;width:6px;height:6px;"></span><?= $stats['pending_questions'] ?></span>
+    <?php endif; ?>
+</a>
     <a href="commissions.php" class="nav-item">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
         Commission Requests
@@ -567,12 +579,7 @@ tr:hover td { background: var(--sand); color: var(--ink); }
         <h1>Welcome, <?= htmlspecialchars(explode(' ', $artistName)[0]) ?></h1>        <div class="date"><?= $today ?></div>
     </div>
     <div class="topbar-right">
-        <?php if ($stats['total_unread_msgs'] > 0): ?>
-        <div style="display:flex;align-items:center;gap:6px;background:#c0392b;color:#fff;padding:6px 14px;border-radius:20px;font-size:12px;font-weight:600;">
-            <span class="red-dot" style="background:#fff;width:7px;height:7px;"></span>
-            <?= $stats['total_unread_msgs'] ?> New Message<?= $stats['total_unread_msgs'] > 1 ? 's' : '' ?>
-        </div>
-        <?php endif; ?>
+        
         <button class="ham-btn" onclick="openDrawer()"><span></span><span></span><span></span></button>
         <a href="https://artbazaar.pk" target="_blank" style="
     text-decoration:none; 
@@ -827,9 +834,18 @@ tr:hover td { background: var(--sand); color: var(--ink); }
     <div class="drawer-links">
         <a href="../../index.php">Home</a>
         <a href="index.php">Dashboard</a>
-        <a href="my-artworks.php">My Artworks</a>
-        <a href="commissions.php">Commissions</a>
-        <a href="orders.php">Orders</a>
+        <a href="my-artworks.php">My Artworks
+    <?php if ($stats['pending_artworks'] > 0): ?><span style="background:var(--sand);color:var(--ink);font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;margin-left:6px;"><?= $stats['pending_artworks'] ?></span><?php endif; ?>
+<?php if ($stats['pending_questions'] > 0): ?><span style="background:#c0392b;color:#fff;font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;margin-left:4px;"><?= $stats['pending_questions'] ?></span><?php endif; ?>
+</a>
+<a href="commissions.php">Commissions
+    <?php if ($stats['unread_commission_msgs'] > 0): ?><span style="background:#c0392b;color:#fff;font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;margin-left:6px;"><?= $stats['unread_commission_msgs'] ?></span><?php endif; ?>
+    <?php if ($stats['unread_commission_msgs'] == 0 && $stats['new_commissions'] > 0): ?><span style="background:var(--sand);color:var(--ink);font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;margin-left:6px;"><?= $stats['new_commissions'] ?></span><?php endif; ?>
+</a>
+<a href="orders.php">Orders
+    <?php if ($stats['unread_order_msgs'] > 0): ?><span style="background:#c0392b;color:#fff;font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;margin-left:6px;"><?= $stats['unread_order_msgs'] ?></span><?php endif; ?>
+    <?php if ($stats['unread_order_msgs'] == 0 && $stats['new_orders'] > 0): ?><span style="background:var(--sand);color:var(--ink);font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;margin-left:6px;"><?= $stats['new_orders'] ?></span><?php endif; ?>
+</a>
         <a href="profile.php">Profile</a>
     </div>
     <div class="drawer-actions">
