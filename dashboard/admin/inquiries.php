@@ -320,19 +320,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'cancel_order') {
     $id = (int)($_POST['id'] ?? 0);
     if ($id) {
-        $conn->query("UPDATE artworks SET status = 'active', reserved_by = NULL WHERE id IN (SELECT item_id FROM order_items WHERE order_id = $id AND item_type = 'artwork')");
+        // Fetch BEFORE updating
+        $oldStatusRes = $conn->query("SELECT order_status, tracking_number FROM orders WHERE id = $id");
+        $oldRow    = $oldStatusRes ? $oldStatusRes->fetch_assoc() : null;
+        $oldStatus = $oldRow['order_status']    ?? 'pending';
+        $hasCN     = !empty($oldRow['tracking_number']);
+
+        $conn->query("UPDATE artworks SET status = 'active', reserved_by = NULL, delivery_status = 'not_applicable' WHERE id IN (SELECT item_id FROM order_items WHERE order_id = $id AND item_type = 'artwork')");
+
         $stmt = $conn->prepare("UPDATE orders SET order_status = 'cancelled' WHERE id = ?");
         $stmt->bind_param('i', $id);
         $stmt->execute();
+
         $adminId = (int)$_SESSION['user_id'];
-        $note = 'Order cancelled by admin. Artworks released back to available.';
-        $oldStatusRes = $conn->query("SELECT order_status FROM orders WHERE id = $id");
-        $oldStatus = $oldStatusRes ? ($oldStatusRes->fetch_assoc()['order_status'] ?? 'pending') : 'pending';
-        
+        $slNote  = '';
+
+        if ($hasCN) {
+            $slResult = smartlane_cancel_consignment((string) $id);
+            error_log('[cancel_order] Smartlane cancel for order_id=' . $id . ' result: ' . json_encode($slResult));
+            $slNote = $slResult['ok']
+                ? ' Smartlane consignment cancelled successfully.'
+                : ' WARNING: Smartlane cancel failed — ' . ($slResult['error'] ?? 'unknown error');
+        }
+
+        $note = 'Order cancelled by admin. Artworks released.' . $slNote;
         $stmtH = $conn->prepare("INSERT INTO order_status_history (order_id, status_from, status_to, changed_by_role, changed_by_id, notes) VALUES (?, ?, 'cancelled', 'admin', ?, ?)");
         $stmtH->bind_param('isis', $id, $oldStatus, $adminId, $note);
         $stmtH->execute();
-        $toast = 'Order cancelled and artworks released.';
+
+        if (!$hasCN) {
+            $toast = 'Order cancelled. No Smartlane booking to cancel.';
+        } elseif ($slResult['ok']) {
+            $toast = 'Order cancelled and Smartlane booking cancelled.';
+        } else {
+            $toast = 'Order cancelled locally, but Smartlane cancel failed: ' . ($slResult['error'] ?? 'unknown') . ' — cancel manually on their dashboard.';
+        }
     }
 }
 

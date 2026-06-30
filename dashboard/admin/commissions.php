@@ -218,22 +218,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
     $id = (int)($_POST['id'] ?? 0);
     $newStatus = $_POST['new_status'] ?? '';
     if ($id && in_array($newStatus, $validStatuses)) {
+        // Fetch BEFORE updating
+        $oldRes = $conn->query("SELECT order_status, tracking_number FROM orders WHERE id=$id");
+        $oldRow = $oldRes->fetch_assoc();
+        $oldStatus = $oldRow['order_status'] ?? '';
+        $hasCN = !empty($oldRow['tracking_number']);
+
         $stmt = $conn->prepare("UPDATE orders SET order_status = ? WHERE id = ?");
         $stmt->bind_param('si', $newStatus, $id);
         $stmt->execute();
-        
+
         $adminId = (int)$_SESSION['user_id'];
-        $oldRes = $conn->query("SELECT order_status FROM orders WHERE id=$id");
-        $oldStatus = $oldRes->fetch_assoc()['order_status'] ?? '';
-        $note = "Status updated to " . ucfirst($newStatus);
+        $slNote = '';
+
+        // If cancelling and a Smartlane booking exists, cancel it
+        if ($newStatus === 'cancelled' && $hasCN) {
+            $slResult = smartlane_cancel_consignment((string) $id);
+            error_log('[commission cancel] Smartlane cancel for order_id=' . $id . ' result: ' . json_encode($slResult));
+            $slNote = $slResult['ok']
+                ? ' Smartlane consignment cancelled.'
+                : ' WARNING: Smartlane cancel failed — ' . ($slResult['error'] ?? 'unknown');
+        }
+
+        $note = "Status updated to " . ucfirst($newStatus) . $slNote;
         $stmtH = $conn->prepare("INSERT INTO order_status_history (order_id, status_from, status_to, changed_by_role, changed_by_id, notes) VALUES (?, ?, ?, 'admin', ?, ?)");
         $stmtH->bind_param('issis', $id, $oldStatus, $newStatus, $adminId, $note);
         $stmtH->execute();
 
         $toast = 'Commission status updated to ' . str_replace('_', ' ', ucfirst($newStatus)) . '.';
+        if ($newStatus === 'cancelled' && $hasCN && !$slResult['ok']) {
+            $toast .= ' (Smartlane cancel failed — cancel manually on their dashboard.)';
+        }
     }
 }
-
 // Update Maximum Budget (Updates Orders Table) - No Save Button, handled via AJAX
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'update_agreed_price') {
     $id = (int)($_POST['id'] ?? 0);
@@ -288,10 +305,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
     $targetStatus = $map[$deliveryStatus] ?? $deliveryStatus;
     
     if ($id && in_array($targetStatus, $validStatuses)) {
+        $slNote = '';
+
+        // If cancelling, check for a Smartlane booking and cancel it
+        if ($targetStatus === 'cancelled') {
+            $cnRes = $conn->query("SELECT tracking_number FROM orders WHERE id = $id");
+            $cnRow = $cnRes ? $cnRes->fetch_assoc() : null;
+            if (!empty($cnRow['tracking_number'])) {
+                $slResult = smartlane_cancel_consignment((string) $id);
+                error_log('[delivery_status cancel] Smartlane cancel for order_id=' . $id . ' result: ' . json_encode($slResult));
+                $slNote = $slResult['ok']
+                    ? ' Smartlane consignment cancelled.'
+                    : ' WARNING: Smartlane cancel failed — ' . ($slResult['error'] ?? 'unknown');
+            }
+        }
+
         $stmt = $conn->prepare("UPDATE orders SET order_status = ? WHERE id = ?");
         $stmt->bind_param('si', $targetStatus, $id);
         $stmt->execute();
-        $toast = 'Status updated to ' . str_replace('_', ' ', ucfirst($deliveryStatus)) . '.';
+        $toast = 'Status updated to ' . str_replace('_', ' ', ucfirst($deliveryStatus)) . '.' . $slNote;
     }
 }
 
