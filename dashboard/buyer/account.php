@@ -41,17 +41,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['commission_action']))
                 exit;
 
             } elseif ($actionType === 'reject_price') {
-                // Reset back to pending, clear proposed price
-                $upd = $conn->prepare("UPDATE orders SET order_status = 'assigned', price_status = 'rejected', proposed_price = NULL, updated_at = NOW() WHERE id = ?");
+                // Cancel the order
+                $upd = $conn->prepare("UPDATE orders SET order_status = 'cancelled', price_status = 'rejected', updated_at = NOW() WHERE id = ?");
                 $upd->bind_param('i', $actionOrderId);
                 $upd->execute();
 
                 // Log status change
-                $hist = $conn->prepare("INSERT INTO order_status_history (order_id, status_from, status_to, changed_by_role, changed_by_id, notes) VALUES (?, 'price_proposed', 'assigned', 'buyer', ?, 'Buyer rejected proposed price — renegotiation requested')");
+                $hist = $conn->prepare("INSERT INTO order_status_history (order_id, status_from, status_to, changed_by_role, changed_by_id, notes) VALUES (?, 'price_proposed', 'cancelled', 'buyer', ?, 'Buyer rejected proposed price — order cancelled')");
                 $hist->bind_param('ii', $actionOrderId, $buyerId);
                 $hist->execute();
 
-                // Stay on page, show rejection confirmation
+                // Stay on page, show cancellation confirmation
                 $priceRejected = true;
             }
         }
@@ -543,8 +543,8 @@ img{max-width:100%;display:block;}
       <svg width="20" height="20" fill="none" stroke="#fff" stroke-width="2" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>
     </div>
     <div class="notif-text">
-      <h4>Price proposal rejected</h4>
-      <p>Your commission has been sent back for renegotiation. We'll propose a revised price soon.</p>
+      <h4>Commission cancelled</h4>
+      <p>You rejected the proposed price, so this commission has been cancelled.</p>
     </div>
     <button class="notif-close" onclick="document.getElementById('rejectBanner').style.display='none'">
       <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>
@@ -687,12 +687,12 @@ img{max-width:100%;display:block;}
                   Accept & Pay
                 </button>
               </form>
-              <form method="POST" style="display:inline;" onsubmit="return confirm('Reject this price? The commission will go back for renegotiation.');">
+              <form method="POST" style="display:inline;" onsubmit="return confirm('Reject this price? Your commission order will be cancelled.');">
                 <input type="hidden" name="order_id" value="<?= $comm['id'] ?>">
                 <input type="hidden" name="commission_action" value="reject_price">
-                <button type="submit" class="btn-reject">Reject Price</button>
+                <button type="submit" class="btn-reject">Reject & Cancel</button>
               </form>
-              <span style="font-size:11px;color:var(--muted);margin-left:8px;">You can negotiate or request changes</span>
+              <span style="font-size:11px;color:var(--muted);margin-left:8px;">Rejecting will cancel this commission</span>
             </div>
             <?php elseif ($isPriceProposed && !$proposedPrice): ?>
             <!-- Price proposed but no price set yet (edge case) -->
