@@ -38,7 +38,15 @@ $_ENV[$key] = $value;
 // ─── END .ENV LOADER ────────────────────────────────────────────
 
 if (!defined('SMARTLANE_BASE_URL')) {
-    define('SMARTLANE_BASE_URL', 'https://gcp.smartlane.dev');
+    // Reads from .env so the base URL can be changed without touching code.
+    // Smartlane moved from the old sandbox host (gcp.smartlane.dev) to a
+    // production host (smartapi.pk) — set SMARTLANE_BASE_URL in .env to
+    // whichever Smartlane gives you. Falls back to the new production host
+    // if not set in .env.
+    $envBaseUrl = getenv('SMARTLANE_BASE_URL');
+    define('SMARTLANE_BASE_URL', $envBaseUrl !== false && $envBaseUrl !== ''
+        ? rtrim($envBaseUrl, '/')
+        : 'https://smartapi.pk/api/production');
 }
 
 /**
@@ -173,7 +181,7 @@ function smartlane_create_consignment(array $params): array {
         ];
     }
 
-    $result = smartlane_request('POST', '/api/consignment/create', $body);
+    $result = smartlane_request('POST', '/consignment/create', $body);
 
     return [
         'ok'    => $result['ok'],
@@ -190,7 +198,7 @@ function smartlane_cancel_consignment(string $storeOrderId): array {
     if (smartlane_test_mode()) {
         return ['ok' => true, 'error' => null, 'raw' => ['test_mode' => true]];
     }
-    $result = smartlane_request('POST', '/api/consignment/cancel', ['store_order_id' => $storeOrderId]);
+    $result = smartlane_request('POST', '/consignment/cancel', ['store_order_id' => $storeOrderId]);
     return ['ok' => $result['ok'], 'error' => $result['error'], 'raw' => $result['body']];
 }
 
@@ -207,6 +215,6 @@ function smartlane_track_consignments(array $storeOrderIds): array {
         $qs .= 'store_order_id[]=' . urlencode((string) $id) . '&';
     }
     $qs = rtrim($qs, '&');
-    $result = smartlane_request('GET', '/api/consignment/track?' . $qs);
+    $result = smartlane_request('GET', '/consignment/track?' . $qs);
     return ['ok' => $result['ok'], 'error' => $result['error'], 'raw' => $result['body']];
 }

@@ -451,7 +451,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_
                 'consignee_address' => $orderRow['shipping_address'] ?: 'Address not provided',
                 'consignee_city'    => $orderRow['shipping_city'] ?: 'Unknown',
                 'description'       => $orderRow['commission_description'] ? mb_substr($orderRow['commission_description'], 0, 150) : 'Custom artwork commission',
-                'payment_method'    => 'bank_transfer',
+                'payment_method'    => 'paid',
                 'amount'            => $orderRow['total'] ?? 0,
                 'product_count'     => 1,
                 'weight'            => (float)($orderRow['proposed_weight_kg'] ?? 0.5),
@@ -932,7 +932,7 @@ tr:hover td{background:var(--grey1)}
 
 <header class="topbar">
     <div class="topbar-left"><h1>Commissions</h1><div class="sub">Manage custom artwork requests</div></div>
-    <div class="topbar-right"></div>
+    <div class="topbar-right"><div class="admin-chip"><div class="avatar"><?= strtoupper(substr($adminName, 0, 1)) ?></div><span class="name"><?= htmlspecialchars($adminName) ?></span><span class="arrow">∨</span></div></div>
 </header>
 
 <main class="main">
@@ -1286,6 +1286,3 @@ function applyFilters(){let p=new URLSearchParams(window.location.search);let q=
 </script>
 </body>
 </html>
-
-
- 

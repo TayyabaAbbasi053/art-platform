@@ -400,7 +400,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_
                 'consignee_address' => $orderRow['shipping_address'] ?: 'Address not provided',
                 'consignee_city'    => $orderRow['shipping_city'] ?: 'Unknown',
                 'description'       => $orderRow['artwork_title'] ?: 'Art Bazaar artwork order',
-                'payment_method'    => $orderRow['payment_method'] ?: 'bank_transfer',
+                'payment_method'    => ($orderRow['payment_method'] === 'cod') ? 'cod' : 'paid',
                 'amount'            => $orderRow['total'] ?? 0,
                 'product_count'     => 1,
                 'weight'            => 0.5,
