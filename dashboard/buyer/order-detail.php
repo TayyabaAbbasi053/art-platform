@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once __DIR__ . '/../../config/db.php';
+require_once __DIR__ . '/../../config/smartlane.php';
 
 // ── Auth guard ───────────────────────────────────────────
 if (!isset($_SESSION['user_id'])) {
@@ -234,18 +235,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'rate_
 }
 
 // ── Handle order cancellation request ────────────────────
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cancel_order']) && $order['order_status'] === 'pending') {
+$canCancelOrder = ($order['payment_method'] === 'cod')
+    && in_array($order['order_status'], ['pending', 'shipped'], true);
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cancel_order']) && $canCancelOrder) {
+    $statusFrom = $order['order_status'];
+    $hasTrackingNumber = !empty($order['tracking_number']);
+
     $conn->query("UPDATE orders SET order_status = 'cancelled' WHERE id = $orderId");
     
     // Release artworks back to available
     $conn->query("UPDATE artworks SET status = 'approved', reserved_by = NULL WHERE id IN (SELECT item_id FROM order_items WHERE order_id = $orderId AND item_type = 'artwork')");
-    
+
+    // If this order was already booked with the courier, cancel the Smartlane consignment too
+    $smartlaneNote = '';
+    if ($hasTrackingNumber) {
+        $slResult = smartlane_cancel_consignment((string) $orderId);
+        error_log('[buyer_cancel_order] Smartlane cancel for order_id=' . $orderId . ' result: ' . json_encode($slResult));
+        $smartlaneNote = $slResult['ok']
+            ? ' Smartlane consignment cancelled successfully.'
+            : ' WARNING: Smartlane cancel failed — ' . ($slResult['error'] ?? 'unknown error');
+    }
+
     // Add status history
+    $cancelNote = 'Order cancelled by buyer.' . $smartlaneNote;
     $stmt = $conn->prepare("
         INSERT INTO order_status_history (order_id, status_from, status_to, changed_by_role, changed_by_id, notes)
-        VALUES (?, 'pending', 'cancelled', 'buyer', ?, 'Order cancelled by buyer')
+        VALUES (?, ?, 'cancelled', 'buyer', ?, ?)
     ");
-    $stmt->bind_param('ii', $orderId, $buyerId);
+    $stmt->bind_param('isis', $orderId, $statusFrom, $buyerId, $cancelNote);
     $stmt->execute();
     
     $order['order_status'] = 'cancelled';
@@ -549,7 +567,7 @@ img{max-width:100%;display:block;}
       </h1>
       <p style="color:var(--muted);margin-top:4px;opacity:0.7;">Placed on <?= date('F j, Y \a\t g:i A', strtotime($order['created_at'])) ?></p>
     </div>
-    <?php if ($order['order_status'] === 'pending'): ?>
+    <?php if ($canCancelOrder): ?>
       <form method="POST" onsubmit="return confirm('Are you sure you want to cancel this order?')">
         <button type="submit" name="cancel_order" class="cancel-btn">Cancel Order</button>
       </form>
