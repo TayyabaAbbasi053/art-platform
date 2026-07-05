@@ -101,7 +101,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'unblo
         $prevRow = $conn->query("SELECT status, email, name FROM users WHERE id = $id AND role = 'artist'")->fetch_assoc();
         $wasPending = $prevRow && $prevRow['status'] === 'pending';
 
-        $conn->query("UPDATE users SET status = 'active', status_reason = NULL WHERE id = $id AND role = 'artist'");
+        $conn->query("UPDATE users SET status = 'active', status_reason = NULL, activated_at = NOW() WHERE id = $id AND role = 'artist'");
 
         if ($prevRow && $wasPending) {
             sendArtistStatusEmail($prevRow['email'], $prevRow['name'], 'approved');
@@ -203,7 +203,13 @@ if (isset($_GET['export'])) {
     $exportLimitRaw = $_GET['export_limit'] ?? 'all';
     $exportSortRaw  = $_GET['export_sort']  ?? 'newest';
 
-    $exportOrderBy = $exportSortRaw === 'oldest' ? 'u.created_at ASC' : 'u.created_at DESC';
+    if ($statusFilter === 'active') {
+        $exportOrderBy = $exportSortRaw === 'oldest'
+            ? 'COALESCE(u.activated_at, u.created_at) ASC'
+            : 'COALESCE(u.activated_at, u.created_at) DESC';
+    } else {
+        $exportOrderBy = $exportSortRaw === 'oldest' ? 'u.created_at ASC' : 'u.created_at DESC';
+    }
 
     $exportSQL = "
         SELECT u.id, u.name, u.email, u.phone, u.status,
@@ -249,13 +255,23 @@ if (isset($_GET['export'])) {
     exit;
 }
 
- $sortMap = [
-    'newest'  => 'u.created_at DESC',
-    'oldest'  => 'u.created_at ASC',
-    'name'    => 'u.name ASC',
-    'artworks'=> 'art_count DESC',
-];
- $sortBy = $sortMap[$_GET['sort'] ?? ''] ?? 'u.created_at DESC';
+ if ($statusFilter === 'active') {
+    $sortMap = [
+        'newest'  => 'COALESCE(u.activated_at, u.created_at) DESC',
+        'oldest'  => 'COALESCE(u.activated_at, u.created_at) ASC',
+        'name'    => 'u.name ASC',
+        'artworks'=> 'art_count DESC',
+    ];
+    $sortBy = $sortMap[$_GET['sort'] ?? ''] ?? 'COALESCE(u.activated_at, u.created_at) DESC';
+} else {
+    $sortMap = [
+        'newest'  => 'u.created_at DESC',
+        'oldest'  => 'u.created_at ASC',
+        'name'    => 'u.name ASC',
+        'artworks'=> 'art_count DESC',
+    ];
+    $sortBy = $sortMap[$_GET['sort'] ?? ''] ?? 'u.created_at DESC';
+}
 
  $page    = max(1, (int)($_GET['page'] ?? 1));
  $perPage = 15;

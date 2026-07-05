@@ -31,10 +31,11 @@ if (!$artist) {
 
 // Fetch artist's artworks (approved only)
  $artworks = $conn->prepare("
-    SELECT a.id, a.title, a.price, a.status, a.is_showcase_only, a.description, a.medium, a.size, a.created_at, c.name AS category_name,
+    SELECT a.id, a.title, a.price, a.status, a.is_showcase_only, a.description, a.medium, a.size, a.created_at,
+           COALESCE(c.name, 'Uncategorized') AS category_name,
            (SELECT image_path FROM artwork_images WHERE artwork_id = a.id ORDER BY is_cover DESC LIMIT 1) AS cover_image
     FROM artworks a
-    JOIN categories c ON a.category_id = c.id
+    LEFT JOIN categories c ON a.category_id = c.id
     WHERE a.artist_id = ? AND a.status IN ('active', 'sold')
     ORDER BY a.created_at DESC
 ");
