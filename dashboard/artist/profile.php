@@ -1,7 +1,61 @@
 <?php
 session_start();
-require_once __DIR__ . '/../../config/db.php';
 
+require_once __DIR__ . '/../../config/db.php';
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\Exception;
+require_once __DIR__ . '/../../vendor/autoload.php';
+
+function abChanged($old, $new): bool {
+    return (string)($old ?? '') !== (string)($new ?? '');
+}
+
+function sendProfileChangeAlert(string $artistName, string $artistEmail, int $artistId, array $changes): bool {
+    if (empty($changes)) return true;
+    $mail = new PHPMailer(true);
+    try {
+        $mail->isSMTP();
+        $mail->Host       = 'smtp-relay.brevo.com';
+        $mail->SMTPAuth   = true;
+        $mail->Username   = $_ENV['BREVO_SMTP_USERNAME'];
+        $mail->Password   = $_ENV['BREVO_SMTP_PASSWORD'];
+        $mail->SMTPSecure = 'tls';
+        $mail->Port       = 587;
+        $mail->setFrom('teamartbazaar.pk@gmail.com', 'Art Bazaar Alerts');
+        $mail->addAddress('teamartbazaar.pk@gmail.com', 'Art Bazaar Team');
+        $mail->isHTML(true);
+        $mail->CharSet = 'UTF-8';
+        $mail->Subject = "Artist Profile Change — {$artistName} (ID: {$artistId})";
+
+        $rows = '';
+        foreach ($changes as $label => $vals) {
+            $old = htmlspecialchars($vals[0] === '' || $vals[0] === null ? '(empty)' : (string)$vals[0]);
+            $new = htmlspecialchars($vals[1] === '' || $vals[1] === null ? '(empty)' : (string)$vals[1]);
+            $rows .= "<tr><td style='padding:6px 10px;font-weight:600;color:#333'>{$label}</td>"
+                   . "<td style='padding:6px 10px;color:#a33'>{$old}</td>"
+                   . "<td style='padding:6px 10px;color:#0a5'>{$new}</td></tr>";
+        }
+
+        $mail->AltBody = "Artist {$artistName} (ID {$artistId}, {$artistEmail}) changed: " . implode(', ', array_keys($changes));
+        $mail->Body = "
+        <div style='font-family:sans-serif;max-width:520px;margin:auto;padding:24px;background:#fff;border-radius:12px'>
+            <p style='font-size:13px;color:#555;margin:0 0 8px'>Art Bazaar — Admin Alert</p>
+            <h2 style='font-size:20px;font-weight:500;color:#0a0a0a;margin:0 0 16px'>Sensitive Profile Field Changed</h2>
+            <p style='font-size:14px;color:#444;margin:0 0 6px'><strong>Artist:</strong> {$artistName} (ID: {$artistId})</p>
+            <p style='font-size:14px;color:#444;margin:0 0 16px'><strong>Account Email:</strong> {$artistEmail}</p>
+            <table style='width:100%;border-collapse:collapse;font-size:13px;border:1px solid #eee'>
+                <tr style='background:#f7f7f7'><th style='padding:6px 10px;text-align:left'>Field</th><th style='padding:6px 10px;text-align:left'>Old Value</th><th style='padding:6px 10px;text-align:left'>New Value</th></tr>
+                {$rows}
+            </table>
+            <p style='font-size:12px;color:#aaa;margin:20px 0 0'>Automated notification from Art Bazaar profile system.</p>
+        </div>";
+        $mail->send();
+        return true;
+    } catch (Exception $e) {
+        error_log('Profile change alert email failed: ' . $e->getMessage());
+        return false;
+    }
+}
 // ── Auth guard — artist only ────────────────────────────
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'artist') {
     header('Location: ../../login.php');
@@ -161,6 +215,60 @@ elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt = $conn->prepare("UPDATE users SET name = ?, profile_picture = ? WHERE id = ?");
             $stmt->bind_param('ssi', $name, $newPicture, $artistId);
             $stmt->execute();
+            // ── Detect sensitive field changes and alert admin ─────
+            $sensitiveChanges = [];
+
+            if (abChanged($profile['contact_phone'], $contact_phone)) {
+                $sensitiveChanges['Phone Number'] = [$profile['contact_phone'], $contact_phone];
+            }
+            if (abChanged($profile['address'], $address)) {
+                $sensitiveChanges['Address'] = [$profile['address'], $address];
+            }
+            if (abChanged($profile['has_bank_account'], $hasBankAccount) ||
+                abChanged($profile['bank_name'], $bankName) ||
+                abChanged($profile['bank_account_title'], $bankTitle) ||
+                abChanged($profile['bank_account_number'], $bankNumber)) {
+                $sensitiveChanges['Bank Account'] = [
+                    $profile['has_bank_account'] ? "{$profile['bank_name']} / {$profile['bank_account_title']} / {$profile['bank_account_number']}" : '(not set)',
+                    $hasBankAccount ? "{$bankName} / {$bankTitle} / {$bankNumber}" : '(not set)'
+                ];
+            }
+            if (abChanged($profile['has_easypaisa'], $hasEasypaisa) ||
+                abChanged($profile['easypaisa_name'], $epName) ||
+                abChanged($profile['easypaisa_number'], $epNum)) {
+                $sensitiveChanges['Easypaisa'] = [
+                    $profile['has_easypaisa'] ? "{$profile['easypaisa_name']} / {$profile['easypaisa_number']}" : '(not set)',
+                    $hasEasypaisa ? "{$epName} / {$epNum}" : '(not set)'
+                ];
+            }
+            if (abChanged($profile['has_jazzcash'], $hasJazzcash) ||
+                abChanged($profile['jazzcash_name'], $jcName) ||
+                abChanged($profile['jazzcash_number'], $jcNum)) {
+                $sensitiveChanges['JazzCash'] = [
+                    $profile['has_jazzcash'] ? "{$profile['jazzcash_name']} / {$profile['jazzcash_number']}" : '(not set)',
+                    $hasJazzcash ? "{$jcName} / {$jcNum}" : '(not set)'
+                ];
+            }
+            if (abChanged($profile['has_nayapay'], $hasNayapay) ||
+                abChanged($profile['nayapay_name'], $npName) ||
+                abChanged($profile['nayapay_number'], $npNum)) {
+                $sensitiveChanges['NayaPay'] = [
+                    $profile['has_nayapay'] ? "{$profile['nayapay_name']} / {$profile['nayapay_number']}" : '(not set)',
+                    $hasNayapay ? "{$npName} / {$npNum}" : '(not set)'
+                ];
+            }
+            if (abChanged($profile['has_sadapay'], $hasSadapay) ||
+                abChanged($profile['sadapay_name'], $spName) ||
+                abChanged($profile['sadapay_number'], $spNum)) {
+                $sensitiveChanges['SadaPay'] = [
+                    $profile['has_sadapay'] ? "{$profile['sadapay_name']} / {$profile['sadapay_number']}" : '(not set)',
+                    $hasSadapay ? "{$spName} / {$spNum}" : '(not set)'
+                ];
+            }
+
+            if (!empty($sensitiveChanges)) {
+                sendProfileChangeAlert($name, $user['email'], $artistId, $sensitiveChanges);
+            }
 
             // Update artist_profiles table with all fields
             // COUNT: 26 fields being updated: bio, city, address, instagram_url, contact_email, 
