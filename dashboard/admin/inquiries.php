@@ -561,7 +561,10 @@ foreach ($items as &$item) {
                ap.smartlane_warehouse_code,
                (SELECT image_path FROM artwork_images
                 WHERE artwork_id = a.id
-                ORDER BY is_cover DESC, sort_order ASC LIMIT 1) AS image_path
+                ORDER BY is_cover DESC, sort_order ASC LIMIT 1) AS image_path,
+               (SELECT media_type FROM artwork_images
+                WHERE artwork_id = a.id
+                ORDER BY is_cover DESC, sort_order ASC LIMIT 1) AS media_type
         FROM order_items oi
         JOIN artworks a ON oi.item_id = a.id
         JOIN users u ON a.artist_id = u.id
@@ -571,6 +574,7 @@ foreach ($items as &$item) {
     $item['artworks'] = $artRes ? $artRes->fetch_all(MYSQLI_ASSOC) : [];
     $item['artwork_title'] = !empty($item['artworks']) ? $item['artworks'][0]['title'] : 'Artwork Item(s)';
     $item['artwork_image'] = !empty($item['artworks']) ? $item['artworks'][0]['image_path'] : '';
+    $item['artwork_media_type'] = !empty($item['artworks']) ? ($item['artworks'][0]['media_type'] ?: 'image') : 'image';
     $item['artist_name']   = !empty($item['artworks']) ? $item['artworks'][0]['artist_name'] : '';
     $item['smartlane_warehouse_code'] = !empty($item['artworks']) ? $item['artworks'][0]['smartlane_warehouse_code'] : null;
 }
@@ -889,7 +893,11 @@ foreach ($tabLabels as $s => $label): ?>
                         </td>
                         <td data-label="Artwork / Order">
                             <div class="td-artwork">
-                                <?php if ($imageUrl): ?>
+                                <?php if ($imageUrl && ($item['artwork_media_type'] ?? 'image') === 'video'): ?>
+                                    <video class="td-artwork-img" src="<?= htmlspecialchars($imageUrl) ?>" muted playsinline preload="metadata"></video>
+                                <?php elseif ($imageUrl && ($item['artwork_media_type'] ?? 'image') === 'audio'): ?>
+                                    <div class="td-artwork-img-placeholder" style="font-size:16px;">🎵</div>
+                                <?php elseif ($imageUrl): ?>
                                     <img class="td-artwork-img" src="<?= htmlspecialchars($imageUrl) ?>" alt="">
                                 <?php else: ?>
                                     <div class="td-artwork-img-placeholder">No img</div>
@@ -1082,12 +1090,20 @@ if ($item['item_status'] === 'pending' && $item['payment_method'] === 'cod') {
                 html += `<div style="margin-top:16px;"><div class="dl" style="margin-bottom:8px;">Order Items (${item.artworks.length})</div>`;
                 item.artworks.forEach(aw => {
                     const awImg = aw.image_path ? `../../uploads/artworks/${aw.image_path.replace(/^.*uploads\/artworks\//, '')}` : '';
+                    const awMediaType = aw.media_type || 'image';
+                    let awMediaHtml;
+                    if (awImg && awMediaType === 'video') {
+                        awMediaHtml = `<video src="${esc(awImg)}" muted playsinline preload="metadata" style="width:100px;height:100px;object-fit:cover;border-radius:8px;border:1px solid var(--border);"></video>`;
+                    } else if (awImg && awMediaType === 'audio') {
+                        awMediaHtml = `<div style="width:100px;height:100px;background:var(--sand);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:28px;flex-shrink:0;">🎵</div>`;
+                    } else if (awImg) {
+                        awMediaHtml = `<img src="${esc(awImg)}" alt="">`;
+                    } else {
+                        awMediaHtml = `<div style="width:100px;height:100px;background:var(--sand);border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--ink);font-size:10px;flex-shrink:0;">No Image</div>`;
+                    }
                     html += `
                         <div class="artwork-preview" style="margin-bottom:10px;">
-                            ${awImg
-                                ? `<img src="${esc(awImg)}" alt="">`
-                                : `<div style="width:100px;height:100px;background:var(--sand);border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--ink);font-size:10px;flex-shrink:0;">No Image</div>`
-                            }
+                            ${awMediaHtml}
                             <div class="artwork-preview-info">
                                 <div class="dv">${esc(aw.title)}</div>
                                 <div style="margin-top:6px;display:flex;gap:16px;flex-wrap:wrap;">

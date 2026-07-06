@@ -51,6 +51,7 @@ if (!$order) {
     SELECT oi.*, 
            a.title AS artwork_title, 
            (SELECT ai.image_path FROM artwork_images ai WHERE ai.artwork_id = a.id AND ai.is_cover = 1 LIMIT 1) AS cover_image, 
+           (SELECT ai.media_type FROM artwork_images ai WHERE ai.artwork_id = a.id AND ai.is_cover = 1 LIMIT 1) AS cover_media_type,
            a.artist_id,
            a.delivery_status AS artwork_delivery_status,
            u.name AS artist_name,
@@ -698,7 +699,12 @@ img{max-width:100%;display:block;}
       $imgUrl = getImageUrl($item['cover_image'] ?? '', 'artwork');
     ?>
     <div class="order-item">
-      <?php if ($item['item_type'] === 'artwork' && $imgUrl): ?>
+      <?php $mediaType = $item['cover_media_type'] ?: 'image'; ?>
+      <?php if ($item['item_type'] === 'artwork' && $imgUrl && $mediaType === 'video'): ?>
+        <video class="item-img" src="<?= htmlspecialchars($imgUrl) ?>" muted playsinline preload="metadata"></video>
+      <?php elseif ($item['item_type'] === 'artwork' && $imgUrl && $mediaType === 'audio'): ?>
+        <div class="item-img" style="display:flex;align-items:center;justify-content:center;font-size:22px;">🎵</div>
+      <?php elseif ($item['item_type'] === 'artwork' && $imgUrl): ?>
         <img class="item-img" src="<?= htmlspecialchars($imgUrl) ?>" alt="">
       <?php else: ?>
         <div class="item-img" style="display:flex;align-items:center;justify-content:center;">

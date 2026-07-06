@@ -130,7 +130,8 @@ if ($params) {
 // Fetch artworks
  $dataSQL = "
     SELECT a.*, c.name AS category_name, u.name AS artist_name, u.status AS artist_status,
-           (SELECT image_path FROM artwork_images WHERE artwork_id = a.id ORDER BY is_cover DESC, sort_order ASC LIMIT 1) AS cover_image
+           (SELECT image_path FROM artwork_images WHERE artwork_id = a.id ORDER BY is_cover DESC, sort_order ASC LIMIT 1) AS cover_image,
+           (SELECT media_type FROM artwork_images WHERE artwork_id = a.id ORDER BY is_cover DESC, sort_order ASC LIMIT 1) AS cover_media_type
     FROM artworks a
     JOIN users u ON u.id = a.artist_id
     JOIN categories c ON c.id = a.category_id
@@ -670,9 +671,9 @@ tr:hover td { background: var(--sand); box-shadow: 0 4px 12px rgba(12,63,48,.06)
                 <tr>
                     <td>
                         <?php
-$imgRes = $conn->query("SELECT image_path FROM artwork_images WHERE artwork_id = {$aw['id']} ORDER BY is_cover DESC, sort_order ASC");
+$imgRes = $conn->query("SELECT image_path, media_type FROM artwork_images WHERE artwork_id = {$aw['id']} ORDER BY is_cover DESC, sort_order ASC");
 $allImages = [];
-while ($imgRow = $imgRes->fetch_assoc()) $allImages[] = $imgRow['image_path'];
+while ($imgRow = $imgRes->fetch_assoc()) $allImages[] = ['path' => $imgRow['image_path'], 'type' => $imgRow['media_type']];
 
 $awData = json_encode([
     'title'         => $aw['title'],
@@ -687,12 +688,20 @@ $awData = json_encode([
                             'artist_status' => ucfirst($aw['artist_status'] ?? ''),
                             'description'   => $aw['description'] ?? '',
                             'cover_image'   => $aw['cover_image'] ?? '',
+                            'cover_media_type' => $aw['cover_media_type'] ?? 'image',
 'images'        => $allImages,
                         ]);
                         ?>
                         <?php if ($aw['cover_image']): ?>
-                            <img class="td-img" src="../../<?= htmlspecialchars($aw['cover_image']) ?>" alt=""
-                                 style="cursor:zoom-in;" onclick='openView(<?= htmlspecialchars($awData, ENT_QUOTES) ?>)'>
+                            <?php if (($aw['cover_media_type'] ?? '') === 'video'): ?>
+                                <video class="td-img" src="../../<?= htmlspecialchars($aw['cover_image']) ?>" muted playsinline
+                                       style="cursor:pointer;" onclick='openView(<?= htmlspecialchars($awData, ENT_QUOTES) ?>)'></video>
+                            <?php elseif (($aw['cover_media_type'] ?? '') === 'audio'): ?>
+                                <div class="td-img" style="display:flex;align-items:center;justify-content:center;font-size:16px;cursor:pointer;" onclick='openView(<?= htmlspecialchars($awData, ENT_QUOTES) ?>)'>🎵</div>
+                            <?php else: ?>
+                                <img class="td-img" src="../../<?= htmlspecialchars($aw['cover_image']) ?>" alt=""
+                                     style="cursor:zoom-in;" onclick='openView(<?= htmlspecialchars($awData, ENT_QUOTES) ?>)'>
+                            <?php endif; ?>
                         <?php else: ?>
                             <div class="td-img" style="display:flex;align-items:center;justify-content:center;color:var(--ink);font-size:10px;">No img</div>
                         <?php endif; ?>
@@ -918,12 +927,23 @@ function openView(data) {
     document.getElementById('viewArtistStatus').textContent = data.artist_status || '—';
     document.getElementById('viewDesc').textContent     = data.description || 'No description provided.';
     const gallery = document.getElementById('viewGallery');
-const imgs = data.images && data.images.length ? data.images : (data.cover_image ? [data.cover_image] : []);
+const imgs = data.images && data.images.length
+    ? data.images
+    : (data.cover_image ? [{ path: data.cover_image, type: data.cover_media_type || 'image' }] : []);
 const w = imgs.length === 1 ? '100%' : 'calc(50% - 4px)';
-gallery.innerHTML = imgs.map(src =>
-    `<img src="../../${src}" onclick="openZoom('../../${src}')"
-     style="width:${w};aspect-ratio:1;object-fit:cover;border-radius:8px;border:1px solid var(--border);cursor:zoom-in;">`
-).join('');
+gallery.innerHTML = imgs.map(item => {
+    const src = '../../' + item.path;
+    const baseStyle = `width:${w};aspect-ratio:1;object-fit:cover;border-radius:8px;border:1px solid var(--border);`;
+    if (item.type === 'video') {
+        return `<video src="${src}" controls style="${baseStyle}"></video>`;
+    } else if (item.type === 'audio') {
+        return `<div style="${baseStyle}display:flex;align-items:center;justify-content:center;font-size:22px;background:var(--sand);">🎵
+                    <div style="position:absolute;">Playable below</div>
+                </div><audio src="${src}" controls style="width:100%;margin-top:6px;"></audio>`;
+    } else {
+        return `<img src="${src}" onclick="openZoom('${src}')" style="${baseStyle}cursor:zoom-in;">`;
+    }
+}).join('');
     document.getElementById('viewModal').classList.add('open');
 }
 function closeView() {

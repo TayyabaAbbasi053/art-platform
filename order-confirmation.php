@@ -81,7 +81,8 @@ if ($order['order_type'] === 'artwork') {
     $itemQuery = $conn->prepare("
         SELECT oi.*,
                a.title AS artwork_title,
-               (SELECT ai.image_path FROM artwork_images ai WHERE ai.artwork_id = a.id AND ai.is_cover = 1 LIMIT 1) AS cover_image
+               (SELECT ai.image_path FROM artwork_images ai WHERE ai.artwork_id = a.id AND ai.is_cover = 1 LIMIT 1) AS cover_image,
+               (SELECT ai.media_type FROM artwork_images ai WHERE ai.artwork_id = a.id AND ai.is_cover = 1 LIMIT 1) AS cover_media_type
         FROM order_items oi
         LEFT JOIN artworks a ON oi.item_type = 'artwork' AND oi.item_id = a.id
         WHERE oi.order_id = ?
@@ -211,7 +212,7 @@ img{max-width:100%;display:block;}
 .card-header{padding:16px 20px;border-bottom:1px solid var(--border);font-weight:600;font-size:15px;}
 .order-item{display:flex;gap:16px;padding:16px 20px;border-bottom:1px solid var(--border);}
 .order-item:last-child{border-bottom:none;}
-.item-img{width:60px;height:60px;border-radius:8px;object-fit:cover;background:var(--sand);flex-shrink:0;}
+.item-img,video.item-img{width:60px;height:60px;border-radius:8px;object-fit:cover;background:var(--sand);flex-shrink:0;}
 .item-details{flex:1;}
 .item-title{font-weight:600;margin-bottom:4px;}
 .item-artist{font-size:12px;color:var(--muted);margin-bottom:4px;}
@@ -523,9 +524,14 @@ img{max-width:100%;display:block;}
     <div class="card-header">Order Items (<?= count($items) ?>)</div>
     <?php foreach ($items as $item): 
       $imgUrl = getImageUrl($item['cover_image'] ?? null, 'artwork');
+      $itemMediaType = $item['cover_media_type'] ?? 'image';
     ?>
     <div class="order-item">
-      <?php if ($imgUrl && $item['item_type'] === 'artwork'): ?>
+      <?php if ($imgUrl && $item['item_type'] === 'artwork' && $itemMediaType === 'video'): ?>
+        <video class="item-img" src="<?= htmlspecialchars($imgUrl) ?>" muted playsinline></video>
+      <?php elseif ($imgUrl && $item['item_type'] === 'artwork' && $itemMediaType === 'audio'): ?>
+        <div class="item-img" style="display:flex;align-items:center;justify-content:center;background:var(--sand);font-size:20px;">🎵</div>
+      <?php elseif ($imgUrl && $item['item_type'] === 'artwork'): ?>
         <img class="item-img" src="<?= htmlspecialchars($imgUrl) ?>" alt="<?= htmlspecialchars($item['artwork_title'] ?? 'Artwork') ?>">
       <?php else: ?>
       <div class="item-img" style="display:flex;align-items:center;justify-content:center;background:var(--sand);">

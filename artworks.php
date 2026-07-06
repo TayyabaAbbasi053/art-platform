@@ -98,7 +98,8 @@ if ($params) {
  $sql = "SELECT a.id, a.title, a.price, a.city, a.status, a.medium, a.is_featured, a.reserved_by,
                u.name AS artist_name, u.id AS artist_id,
                c.name AS category_name,
-               (SELECT image_path FROM artwork_images WHERE artwork_id = a.id ORDER BY is_cover DESC, sort_order ASC LIMIT 1) AS cover_image
+               (SELECT image_path FROM artwork_images WHERE artwork_id = a.id ORDER BY is_cover DESC, sort_order ASC LIMIT 1) AS cover_image,
+               (SELECT media_type FROM artwork_images WHERE artwork_id = a.id ORDER BY is_cover DESC, sort_order ASC LIMIT 1) AS cover_media_type
         FROM artworks a
         JOIN users u ON a.artist_id = u.id
         JOIN categories c ON a.category_id = c.id
@@ -274,6 +275,9 @@ img{display:block;max-width:100%;}
 .aw-img{aspect-ratio:1;overflow:hidden;position:relative;background:var(--sand);cursor:pointer;}
 .aw-img img{width:100%;height:100%;object-fit:cover;transition:transform .3s;}
 .aw-card:hover .aw-img img{transform:scale(1.04);}
+.aw-img img, .aw-img video {
+  width:100%; height:100%; object-fit:cover; display:block;
+}
 .aw-ph{width:100%;height:100%;display:flex;align-items:center;justify-content:center;}
 .aw-ph svg{opacity:.15;color:var(--muted);}
 .aw-badges{position:absolute;top:8px;left:8px;display:flex;gap:4px;}
@@ -500,7 +504,11 @@ img{display:block;max-width:100%;}
     ?>
     <div class="aw-card">
       <div class="aw-img" onclick="location.href='artwork-detail.php?id=<?= $art['id'] ?>'">
-        <?php if ($img): ?>
+        <?php if ($img && $art['cover_media_type'] === 'video'): ?>
+        <video src="<?= htmlspecialchars($img) ?>" muted playsinline></video>
+        <?php elseif ($img && $art['cover_media_type'] === 'audio'): ?>
+        <div class="aw-ph" style="font-size:28px;">🎵</div>
+        <?php elseif ($img): ?>
         <img src="<?= htmlspecialchars($img) ?>" alt="<?= htmlspecialchars($art['title']) ?>" loading="lazy">
         <?php else: ?>
         <div class="aw-ph">

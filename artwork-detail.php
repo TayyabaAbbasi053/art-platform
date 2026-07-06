@@ -38,7 +38,7 @@ if (!$artwork) {
 
 // Fetch all images for this artwork
  $images = $conn->prepare("
-    SELECT image_path, is_cover FROM artwork_images 
+    SELECT image_path, is_cover, media_type FROM artwork_images 
     WHERE artwork_id = ? ORDER BY is_cover DESC, sort_order ASC
 ");
  $images->bind_param('i', $artworkId);
@@ -48,7 +48,8 @@ if (!$artwork) {
 // Fetch similar artworks (same category, different artwork, limit 4)
  $similar = $conn->prepare("
     SELECT a.id, a.title, a.price, a.artist_id, u.name AS artist_name,
-           (SELECT image_path FROM artwork_images WHERE artwork_id = a.id ORDER BY is_cover DESC LIMIT 1) AS cover_image
+           (SELECT image_path FROM artwork_images WHERE artwork_id = a.id ORDER BY is_cover DESC LIMIT 1) AS cover_image,
+           (SELECT media_type FROM artwork_images WHERE artwork_id = a.id ORDER BY is_cover DESC LIMIT 1) AS cover_media_type
     FROM artworks a
     JOIN users u ON a.artist_id = u.id
     WHERE a.category_id = ? AND a.id != ? AND a.status = 'active' AND u.status = 'active'
@@ -192,7 +193,7 @@ img{max-width:100%;display:block;}
 .thumb-grid{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap;}
 .thumb{width:80px;height:80px;border-radius:8px;overflow:hidden;cursor:pointer;border:2px solid transparent;background:var(--sand);}
 .thumb.active{border-color:var(--ink);}
-.thumb img{width:100%;height:100%;object-fit:cover;}
+.thumb img, .thumb video{width:100%;height:100%;object-fit:cover;}
 .thumb-placeholder{width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--light);font-size:10px;}
 
 /* INFO */
@@ -262,7 +263,7 @@ h1{font-family:'Playfair Display',serif;font-size:clamp(24px,2.5vw,32px);font-we
 .similar-card{background:var(--card);border-radius:10px;overflow:hidden;cursor:pointer;transition:transform .15s;}
 .similar-card:hover{transform:translateY(-2px);}
 .similar-img{aspect-ratio:1;overflow:hidden;background:var(--sand);}
-.similar-img img{width:100%;height:100%;object-fit:cover;}
+.similar-img img, .similar-img video{width:100%;height:100%;object-fit:cover;}
 .similar-info{padding:10px 12px;}
 .similar-title-txt{font-size:13px;font-weight:500;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .similar-price{font-size:12px;font-weight:600;color:var(--ink);margin-top:4px;}
@@ -414,7 +415,14 @@ h1{font-family:'Playfair Display',serif;font-size:clamp(24px,2.5vw,32px);font-we
       if (!$coverImage && !empty($artworkImages)) $coverImage = $artworkImages[0];
       $mainImgUrl = $coverImage ? getImageUrl($coverImage['image_path']) : null;
       ?>
-      <?php if ($mainImgUrl): ?>
+      <?php $coverType = $coverImage['media_type'] ?? 'image'; ?>
+      <?php if ($mainImgUrl && $coverType === 'video'): ?>
+        <video src="<?= htmlspecialchars($mainImgUrl) ?>" id="mainImage" controls playsinline style="width:100%;height:100%;object-fit:cover;"></video>
+      <?php elseif ($mainImgUrl && $coverType === 'audio'): ?>
+        <div id="mainImage" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;">
+          <audio src="<?= htmlspecialchars($mainImgUrl) ?>" controls style="width:85%;"></audio>
+        </div>
+      <?php elseif ($mainImgUrl): ?>
         <img src="<?= htmlspecialchars($mainImgUrl) ?>" alt="<?= htmlspecialchars($artwork['title']) ?>" id="mainImage">
       <?php else: ?>
         <div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--muted);">No image</div>
@@ -424,9 +432,14 @@ h1{font-family:'Playfair Display',serif;font-size:clamp(24px,2.5vw,32px);font-we
     <div class="thumb-grid" id="thumbGrid">
       <?php foreach ($artworkImages as $idx => $img): 
         $thumbUrl = getImageUrl($img['image_path']);
+        $thumbType = $img['media_type'] ?? 'image';
       ?>
-        <div class="thumb <?= $idx === 0 ? 'active' : '' ?>" data-img="<?= htmlspecialchars($thumbUrl) ?>">
-          <?php if ($thumbUrl): ?>
+        <div class="thumb <?= $idx === 0 ? 'active' : '' ?>" data-img="<?= htmlspecialchars($thumbUrl) ?>" data-type="<?= htmlspecialchars($thumbType) ?>">
+          <?php if ($thumbUrl && $thumbType === 'video'): ?>
+            <video src="<?= htmlspecialchars($thumbUrl) ?>" muted playsinline></video>
+          <?php elseif ($thumbUrl && $thumbType === 'audio'): ?>
+            <div class="thumb-placeholder" style="font-size:18px;">🎵</div>
+          <?php elseif ($thumbUrl): ?>
             <img src="<?= htmlspecialchars($thumbUrl) ?>" alt="Thumbnail">
           <?php else: ?>
             <div class="thumb-placeholder">No img</div>
@@ -557,10 +570,15 @@ h1{font-family:'Playfair Display',serif;font-size:clamp(24px,2.5vw,32px);font-we
   <div class="similar-grid">
     <?php foreach ($similarArtworks as $sim): 
       $simImg = getImageUrl($sim['cover_image']);
+      $simType = $sim['cover_media_type'] ?? 'image';
     ?>
     <div class="similar-card" onclick="location.href='artwork-detail.php?id=<?= (int)$sim['id'] ?>'">
       <div class="similar-img">
-        <?php if ($simImg): ?>
+        <?php if ($simImg && $simType === 'video'): ?>
+          <video src="<?= htmlspecialchars($simImg) ?>" muted playsinline></video>
+        <?php elseif ($simImg && $simType === 'audio'): ?>
+          <div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:22px;">🎵</div>
+        <?php elseif ($simImg): ?>
           <img src="<?= htmlspecialchars($simImg) ?>" alt="<?= htmlspecialchars($sim['title']) ?>">
         <?php else: ?>
           <div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:10px;">No image</div>
@@ -640,16 +658,44 @@ function toggleQA() {
 document.getElementById('qaToggle').classList.add('open');
 document.getElementById('qaBody').classList.add('open');
 <?php endif; ?>
-// Thumbnail switcher
+// Thumbnail switcher (rebuilds the main viewer as img/video/audio as needed)
 const thumbs = document.querySelectorAll('.thumb');
-const mainImg = document.getElementById('mainImage');
-if (thumbs.length > 0 && mainImg) {
+const mainImgContainer = document.getElementById('mainImageContainer');
+if (thumbs.length > 0 && mainImgContainer) {
   thumbs.forEach(thumb => {
     thumb.addEventListener('click', () => {
       thumbs.forEach(t => t.classList.remove('active'));
       thumb.classList.add('active');
-      const imgSrc = thumb.getAttribute('data-img');
-      if (imgSrc) mainImg.src = imgSrc;
+      const src = thumb.getAttribute('data-img');
+      const type = thumb.getAttribute('data-type') || 'image';
+      if (!src) return;
+
+      mainImgContainer.innerHTML = '';
+      let el;
+      if (type === 'video') {
+        el = document.createElement('video');
+        el.src = src;
+        el.controls = true;
+        el.playsInline = true;
+        el.style.width = '100%';
+        el.style.height = '100%';
+        el.style.objectFit = 'cover';
+      } else if (type === 'audio') {
+        const wrap = document.createElement('div');
+        wrap.style.cssText = 'width:100%;height:100%;display:flex;align-items:center;justify-content:center;';
+        const audio = document.createElement('audio');
+        audio.src = src;
+        audio.controls = true;
+        audio.style.width = '85%';
+        wrap.appendChild(audio);
+        el = wrap;
+      } else {
+        el = document.createElement('img');
+        el.src = src;
+        el.alt = 'Artwork';
+      }
+      el.id = 'mainImage';
+      mainImgContainer.appendChild(el);
     });
   });
 }

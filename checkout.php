@@ -203,6 +203,7 @@ if ($isCommissionCheckout) {
     $awQuery = $conn->prepare("
         SELECT a.id, a.title, a.price, a.status, a.artist_id,
                (SELECT ai.image_path FROM artwork_images ai WHERE ai.artwork_id = a.id AND ai.is_cover = 1 LIMIT 1) AS cover_image,
+               (SELECT ai.media_type FROM artwork_images ai WHERE ai.artwork_id = a.id AND ai.is_cover = 1 LIMIT 1) AS cover_media_type,
                ua.name AS artist_name,
                c.slug AS category_slug
         FROM artworks a
@@ -236,6 +237,7 @@ if ($isCommissionCheckout) {
         'artist_id' => $artworkRow['artist_id'],
         'artist_name' => $artworkRow['artist_name'],
         'cover_image' => $artworkRow['cover_image'],
+        'cover_media_type' => $artworkRow['cover_media_type'] ?? 'image',
         'status' => $artworkRow['status'],
         'is_digital' => $isDigitalItem,
     ];
@@ -533,7 +535,7 @@ img{max-width:100%;display:block;}
 .order-items{margin-bottom:16px;max-height:320px;overflow-y:auto;}
 .order-item{display:flex;gap:12px;align-items:center;margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border);}
 .order-item:last-child{border-bottom:none;margin-bottom:0;padding-bottom:0;}
-.order-item-img{width:56px;height:56px;border-radius:8px;object-fit:cover;background:var(--sand);flex-shrink:0;}
+.order-item-img,video.order-item-img{width:56px;height:56px;border-radius:8px;object-fit:cover;background:var(--sand);flex-shrink:0;}
 .order-item-img-ph{width:56px;height:56px;border-radius:8px;background:var(--sand);flex-shrink:0;display:flex;align-items:center;justify-content:center;}
 .order-item-details{flex:1;}
 .order-item-title{font-size:13px;font-weight:500;color:var(--ink);margin-bottom:2px;}
@@ -770,9 +772,14 @@ img{max-width:100%;display:block;}
           <div class="order-items">
             <?php foreach ($cartItems as $item): 
               $imgUrl = getImageUrl($item['cover_image'] ?? null);
+              $itemMediaType = $item['cover_media_type'] ?? 'image';
             ?>
             <div class="order-item">
-              <?php if ($imgUrl): ?>
+              <?php if ($imgUrl && $itemMediaType === 'video'): ?>
+                <video src="<?= htmlspecialchars($imgUrl) ?>" class="order-item-img" muted playsinline></video>
+              <?php elseif ($imgUrl && $itemMediaType === 'audio'): ?>
+                <div class="order-item-img-ph" style="font-size:18px;">🎵</div>
+              <?php elseif ($imgUrl): ?>
                 <img src="<?= htmlspecialchars($imgUrl) ?>" alt="<?= htmlspecialchars($item['title']) ?>" class="order-item-img">
               <?php else: ?>
                 <div class="order-item-img-ph">

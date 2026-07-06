@@ -7,11 +7,11 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'artist') {
     header('Location: ../../login.php');
     exit;
 }
-$__stmtStatus = $conn->prepare("SELECT status, status_reason FROM users WHERE id = ?");
-$__stmtStatus->bind_param('i', $_SESSION['user_id']);
-$__stmtStatus->execute();
-$__userStatus = $__stmtStatus->get_result()->fetch_assoc();
-$__stmtStatus->close();
+ $__stmtStatus = $conn->prepare("SELECT status, status_reason FROM users WHERE id = ?");
+ $__stmtStatus->bind_param('i', $_SESSION['user_id']);
+ $__stmtStatus->execute();
+ $__userStatus = $__stmtStatus->get_result()->fetch_assoc();
+ $__stmtStatus->close();
 if ($__userStatus['status'] === 'blocked') {
     session_destroy();
     header('Location: ../../login.php?blocked=1&reason=' . urlencode($__userStatus['status_reason'] ?? ''));
@@ -24,10 +24,10 @@ header('Location: ../../login.php?pending=1&email=' . urlencode($__pendingEmail)
     exit;
 }
 
-$artistId = (int) $_SESSION['user_id'];
+ $artistId = (int) $_SESSION['user_id'];
 
 // ── Profile completeness check ───────────────────────
-$__profile = $conn->query("
+ $__profile = $conn->query("
     SELECT ap.bio, ap.city, ap.address, ap.art_style,
            u.profile_picture,
            (ap.has_bank_account OR ap.has_easypaisa OR ap.has_jazzcash OR ap.has_nayapay OR ap.has_sadapay) AS has_payment
@@ -36,7 +36,7 @@ $__profile = $conn->query("
     WHERE ap.user_id = $artistId
 ")->fetch_assoc();
 
-$__missingFields = [];
+ $__missingFields = [];
 if (empty($__profile['bio']))             $__missingFields[] = 'Bio';
 if (empty($__profile['city']))            $__missingFields[] = 'City';
 if (empty($__profile['address']))         $__missingFields[] = 'Address';
@@ -69,7 +69,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
 // ── HEIC support health check ────────────────────────
 // Cached in session for 1 hour so we're not shelling out on every page load
-$heicSupported = false;
+ $heicSupported = false;
 if (isset($_SESSION['heic_support_checked']) && (time() - $_SESSION['heic_support_checked']) < 3600) {
     $heicSupported = $_SESSION['heic_support_ok'] ?? false;
 } else {
@@ -84,7 +84,7 @@ if (isset($_SESSION['heic_support_checked']) && (time() - $_SESSION['heic_suppor
 
 // ── Fetch New Orders Count for Sidebar Badge ────────────
  $newOrdersCount = 0;
-$countStmt = $conn->prepare("
+ $countStmt = $conn->prepare("
    SELECT COUNT(DISTINCT o.id) 
    FROM orders o
    JOIN order_items oi ON o.id = oi.order_id
@@ -93,9 +93,9 @@ $countStmt = $conn->prepare("
      AND o.order_status NOT IN ('pending', 'payment_review')
      AND o.seen_by_artist = 0
 ");
-$countStmt->bind_param('i', $artistId);
-$countStmt->execute();
-$newOrdersCount = $countStmt->get_result()->fetch_row()[0];
+ $countStmt->bind_param('i', $artistId);
+ $countStmt->execute();
+ $newOrdersCount = $countStmt->get_result()->fetch_row()[0];
  $unreadCommissionMsgs = (int)$conn->query("
     SELECT COUNT(*) FROM order_messages om
     JOIN commission_requests cr ON cr.order_id = om.order_id
@@ -104,7 +104,7 @@ $newOrdersCount = $countStmt->get_result()->fetch_row()[0];
       AND om.is_read_by_artist = 0
 ")->fetch_row()[0];
 
-$unreadOrderMsgs = (int)$conn->query("
+ $unreadOrderMsgs = (int)$conn->query("
     SELECT COUNT(DISTINCT om.id) FROM order_messages om
     JOIN orders o ON o.id = om.order_id
     JOIN order_items oi ON o.id = oi.order_id
@@ -115,7 +115,7 @@ $unreadOrderMsgs = (int)$conn->query("
       AND om.is_read_by_artist = 0
 ")->fetch_row()[0];
 
-$pendingQCount = (int)$conn->query("
+ $pendingQCount = (int)$conn->query("
     SELECT COUNT(*) FROM artwork_questions aq
     JOIN artworks a ON aq.artwork_id = a.id
     WHERE a.artist_id = $artistId AND aq.answer IS NULL
@@ -152,8 +152,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $description            = trim($_POST['description'] ?? '');
     $tags                   = trim($_POST['tags'] ?? '');
     $delivery_available = 1;
-$similar_work_available = isset($_POST['similar_work_available']) ? 1 : 0;
-$is_framed              = isset($_POST['is_framed']) ? 1 : 0;
+ $similar_work_available = isset($_POST['similar_work_available']) ? 1 : 0;
+ $is_framed              = isset($_POST['is_framed']) ? 1 : 0;
     $weight_kg              = (float)($_POST['weight_kg'] ?? 1.00);
 
     // Determine if the selected category is "Digital Art"
@@ -170,7 +170,7 @@ $is_framed              = isset($_POST['is_framed']) ? 1 : 0;
     // Digital Art listings must include the deliverable file
     $hasDigitalFile = isset($_FILES['digital_file']) && $_FILES['digital_file']['error'] === UPLOAD_ERR_OK;
     $digitalFileExt = $hasDigitalFile ? strtolower(pathinfo($_FILES['digital_file']['name'], PATHINFO_EXTENSION)) : '';
-    $allowedDigitalExt = ['zip', 'psd', 'ai', 'png', 'jpg', 'jpeg', 'pdf'];
+    $allowedDigitalExt = ['zip', 'psd', 'ai', 'png', 'jpg', 'jpeg', 'pdf', 'gif', 'mp4', 'mov', 'webm', 'mp3', 'wav', 'm4a'];
 
     if ($title === '' || (!$isShowcaseOnly && $price <= 0) || $categoryId === 0 || !$hasFiles) {
         $errorMsg = 'Please fill in all required fields and upload at least one image.';
@@ -179,16 +179,16 @@ $is_framed              = isset($_POST['is_framed']) ? 1 : 0;
     } elseif ($isDigitalCategory && !$hasDigitalFile) {
         $errorMsg = 'Please upload the digital artwork file buyers will receive after purchase.';
     } elseif ($isDigitalCategory && !in_array($digitalFileExt, $allowedDigitalExt)) {
-        $errorMsg = 'Invalid digital file type. Allowed: ZIP, PSD, AI, PNG, JPG, PDF.';
-    } elseif ($isDigitalCategory && $_FILES['digital_file']['size'] > 50 * 1024 * 1024) {
-        $errorMsg = 'Digital file must be under 50MB.';
+        $errorMsg = 'Invalid digital file type. Allowed: ZIP, PSD, AI, PNG, JPG, PDF, GIF, MP4, MOV, WebM, MP3, WAV, M4A.';
+    } elseif ($isDigitalCategory && $_FILES['digital_file']['size'] > 300 * 1024 * 1024) {
+        $errorMsg = 'Digital file must be under 300MB.';
     } else {
         
         // 1. Insert Artwork
         $conn->begin_transaction();
 
-$initialStatus = $isShowcaseOnly ? 'sold' : 'active';
-$stmt = $conn->prepare("
+ $initialStatus = $isShowcaseOnly ? 'sold' : 'active';
+ $stmt = $conn->prepare("
     INSERT INTO artworks 
     (artist_id, category_id, title, description, tags, medium, size, is_framed, weight_kg, price, city, delivery_available, similar_work_available, status, is_showcase_only)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -234,13 +234,16 @@ if (!$stmt) {
 
             $files = $_FILES['images'];
             $uploadedCount = 0;
-            $allowedExt = ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif'];
+            $imageExt = ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif', 'gif'];
+            $videoExt = ['mp4', 'mov', 'webm'];
+            $audioExt = ['mp3', 'wav', 'm4a'];
+            $allowedExt = $isDigitalCategory ? array_merge($imageExt, $videoExt, $audioExt) : $imageExt;
 
             // Open finfo handle once, outside the loop
             $finfo = finfo_open(FILEINFO_MIME_TYPE);
 
             // Prepare the image-insert statement once, outside the loop
-            $stmtImg = $conn->prepare("INSERT INTO artwork_images (artwork_id, image_path, is_cover, sort_order) VALUES (?, ?, ?, ?)");
+            $stmtImg = $conn->prepare("INSERT INTO artwork_images (artwork_id, image_path, media_type, is_cover, sort_order) VALUES (?, ?, ?, ?, ?)");
             if (!$stmtImg) {
                 error_log('Failed to prepare image insert statement: ' . $conn->error);
                 $conn->rollback();
@@ -256,11 +259,6 @@ if (!$stmt) {
                     $fileTmp  = $files['tmp_name'][$i];
                     $fileSize = $files['size'][$i];
                     
-                    // 10MB max per image
-                    if ($fileSize > 10 * 1024 * 1024) {
-                        continue; // Skip oversized files
-                    }
-
                     $ext = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
                     if (!in_array($ext, $allowedExt)) {
                         continue; // Skip invalid types
@@ -270,23 +268,33 @@ if (!$stmt) {
                         continue; // Skip HEIC if the server can't convert it
                     }
 
+                    // Bigger allowance for video/audio previews than for static images
+                    $isMediaFile = in_array($ext, $videoExt) || in_array($ext, $audioExt);
+                    $maxFileSize = $isMediaFile ? 60 * 1024 * 1024 : 10 * 1024 * 1024;
+                    if ($fileSize > $maxFileSize) {
+                        continue; // Skip oversized files
+                    }
+
                     // MIME type check — don't trust the extension alone.
                     // HEIC/HEIF is special-cased: many hosts report it as application/octet-stream
                     // even for genuinely valid files, so if the server has confirmed HEIC support
                     // and the extension matches, we trust the extension instead of the MIME sniff.
                     $mime  = finfo_file($finfo, $fileTmp);
                     $allowedMime = [
-                        'image/jpeg', 'image/png', 'image/webp',
-                        'image/heic', 'image/heif'
+                        'image/jpeg', 'image/png', 'image/webp', 'image/gif',
+                        'image/heic', 'image/heif',
+                        'video/mp4', 'video/quicktime', 'video/webm',
+                        'audio/mpeg', 'audio/wav', 'audio/x-wav', 'audio/mp4', 'audio/x-m4a'
                     ];
                     $isTrustedHeic = $heicSupported && in_array($ext, ['heic', 'heif']);
                     if (!$isTrustedHeic && !in_array($mime, $allowedMime)) {
-                        continue; // Skip files whose real content doesn't match an allowed image type
+                        continue; // Skip files whose real content doesn't match an allowed type
                     }
 
                     // Dimension check — protect against decompression-bomb style images
-                    // getimagesize() doesn't reliably read HEIC/HEIF, so only check formats it supports
-                    if (!in_array($ext, ['heic', 'heif'])) {
+                    // getimagesize() doesn't reliably read HEIC/HEIF/video/audio, so only check formats it supports
+                    $dimensionCheckable = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
+                    if (in_array($ext, $dimensionCheckable)) {
                         $dimensions = @getimagesize($fileTmp);
                         if ($dimensions === false) {
                             continue; // Not a readable image despite passing MIME check — skip it
@@ -298,7 +306,7 @@ if (!$stmt) {
                     }
 
                     // Generate unique filename + handle HEIC conversion
-$uniqueId = bin2hex(random_bytes(8));
+ $uniqueId = bin2hex(random_bytes(8));
 if (in_array($ext, ['heic', 'heif'])) {
     $newName = 'art_' . $artworkId . '_' . $uniqueId . '.jpg';
     $destPath = $uploadDir . $newName;
@@ -326,8 +334,9 @@ if ($converted) {
 
                         // First image is cover
                         $isCover = ($uploadedCount === 0) ? 1 : 0;
+                        $mediaType = in_array($ext, $videoExt) ? 'video' : (in_array($ext, $audioExt) ? 'audio' : 'image');
 
-                        $stmtImg->bind_param('isii', $artworkId, $dbPath, $isCover, $uploadedCount);
+                        $stmtImg->bind_param('issii', $artworkId, $dbPath, $mediaType, $isCover, $uploadedCount);
                         if ($stmtImg->execute()) {
                             $savedFilePaths[] = $destPath;
                             $uploadedCount++;
@@ -686,8 +695,8 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
             <!-- ── Images ─────────────────────────────── -->
             <div class="upload-area" id="dropZone">
                 <svg class="upload-icon" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                <div class="upload-title">Click to upload images</div>
-                <div class="upload-hint">
+                <div class="upload-title" id="uploadTitle">Click to upload images</div>
+                <div class="upload-hint" id="uploadHint">
                     Up to 5 images · Max 10MB each · First image will be the cover.
                     <?php if (!$heicSupported): ?>
                         <br><strong>Note:</strong> iPhone HEIC photos aren't supported right now — please upload JPG or PNG.
@@ -739,8 +748,8 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
             <div class="form-grid full" id="digitalFileGroup" style="display:none;">
                 <div class="field-group">
                     <label>Digital Artwork File <span>*</span></label>
-                    <input type="file" name="digital_file" id="digitalFileInput" class="field-input" accept=".zip,.psd,.ai,.png,.jpg,.jpeg,.pdf">
-                    <p style="font-size:11px;color:var(--muted);margin-top:6px;">This is the actual file the buyer will download after payment is confirmed. Not shown publicly. Max 50MB. Allowed: ZIP, PSD, AI, PNG, JPG, PDF.</p>
+                    <input type="file" name="digital_file" id="digitalFileInput" class="field-input" accept=".zip,.psd,.ai,.png,.jpg,.jpeg,.pdf,.gif,.mp4,.mov,.webm,.mp3,.wav,.m4a">
+                    <p style="font-size:11px;color:var(--muted);margin-top:6px;">This is the actual file the buyer will download after payment is confirmed — upload the clearest/highest-quality version. Not shown publicly. Max 300MB. Allowed: ZIP, PSD, AI, PNG, JPG, PDF, GIF, MP4, MOV, WebM, MP3, WAV, M4A.</p>
                 </div>
             </div>
 
@@ -894,6 +903,20 @@ function updateDigitalFileVisibility() {
     const isDigital = selected && selected.dataset.slug === 'digital-art';
     digitalFileGroup.style.display = isDigital ? 'block' : 'none';
     digitalFileInput.required = isDigital;
+
+    const baseImageAccept = 'image/jpeg,image/png,image/webp,image/gif<?= $heicSupported ? ',image/heic,image/heif' : '' ?>';
+    const digitalPreviewAccept = baseImageAccept + ',video/mp4,video/quicktime,video/webm,audio/mpeg,audio/wav,audio/mp4';
+    fileInput.accept = isDigital ? digitalPreviewAccept : baseImageAccept;
+
+    const titleEl = document.getElementById('uploadTitle');
+    const hintEl  = document.getElementById('uploadHint');
+    if (isDigital) {
+        titleEl.textContent = 'Click to upload preview image, video, audio, or GIF';
+        hintEl.innerHTML = 'Up to 5 files · Images/GIFs max 10MB, video/audio max 60MB each · First file will be the cover.';
+    } else {
+        titleEl.textContent = 'Click to upload images';
+        hintEl.innerHTML = 'Up to 5 images · Max 10MB each · First image will be the cover.<?php if (!$heicSupported): ?><br><strong>Note:</strong> iPhone HEIC photos aren\'t supported right now — please upload JPG or PNG.<?php endif; ?>';
+    }
 }
 categorySelect.addEventListener('change', updateDigitalFileVisibility);
 updateDigitalFileVisibility();
@@ -907,8 +930,13 @@ fileInput.addEventListener('change', function(e) {
         return;
     }
     
+    const selectedCat = categorySelect.options[categorySelect.selectedIndex];
+    const isDigitalCat = selectedCat && selectedCat.dataset.slug === 'digital-art';
+
     newFiles.forEach(file => {
-        if (file.type.startsWith('image/') || file.name.match(/\.(heic|heif)$/i)) {
+        const isImage = file.type.startsWith('image/') || file.name.match(/\.(heic|heif)$/i);
+        const isMedia = isDigitalCat && (file.type.startsWith('video/') || file.type.startsWith('audio/'));
+        if (isImage || isMedia) {
             currentFiles.push(file);
         }
     });
@@ -919,6 +947,7 @@ fileInput.addEventListener('change', function(e) {
 
 function compressImage(file, maxWidth = 1400, quality = 0.70) {
     return new Promise((resolve) => {
+        if (!file.type.startsWith('image/')) { resolve(file); return; }
         if (file.name.match(/\.(heic|heif)$/i)) { resolve(file); return; }
         if (file.size < 2 * 1024 * 1024) { resolve(file); return; } // skip compression for small files
         const reader = new FileReader();
@@ -973,7 +1002,6 @@ async function compressAllInBackground() {
 let previewUrls = []; // track object URLs so we can revoke them and avoid memory leaks
 
 function renderPreviews() {
-    // Revoke old object URLs before re-rendering
     previewUrls.forEach(url => URL.revokeObjectURL(url));
     previewUrls = [];
 
@@ -985,10 +1013,20 @@ function renderPreviews() {
         const div = document.createElement('div');
         div.className = 'preview-item';
         div.setAttribute('data-index', index);
+
+        let mediaHtml;
+        if (file.type.startsWith('video/')) {
+            mediaHtml = `<video src="${objectUrl}" muted playsinline style="width:100%;height:100%;object-fit:cover;"></video>`;
+        } else if (file.type.startsWith('audio/')) {
+            mediaHtml = `<div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:11px;text-align:center;padding:8px;">🎵<br>${file.name}</div>`;
+        } else {
+            mediaHtml = `<img src="${objectUrl}" alt="Preview ${index + 1}">`;
+        }
+
         div.innerHTML = `
-            <img src="${objectUrl}" alt="Preview ${index + 1}">
+            ${mediaHtml}
             ${index === 0 ? '<span class="preview-badge">Cover</span>' : ''}
-            <button type="button" class="remove-preview" data-index="${index}" title="Remove image">×</button>
+            <button type="button" class="remove-preview" data-index="${index}" title="Remove file">×</button>
         `;
         previewGrid.appendChild(div);
         div.querySelector('.remove-preview').addEventListener('click', function(e) {
@@ -996,129 +1034,8 @@ function renderPreviews() {
             removeFileAtIndex(parseInt(this.getAttribute('data-index')));
         });
     });
-    previewCounter.innerHTML = `${currentFiles.length} / 5 images selected`;
-}
-
-function removeFileAtIndex(index) {
-    currentFiles.splice(index, 1);
-    renderPreviews();
-    compressionPromise = compressAllInBackground();
-}
-
-// ── Form Submission ──────────────────────────────────────────────────────
-uploadForm.addEventListener('submit', async function(e) {
-    e.preventDefault();
-
-    if (currentFiles.length === 0) { alert('Please upload at least one image.'); return; }
-    if (isSubmitting) return;
-    isSubmitting = true;
-
-    const submitBtn = uploadForm.querySelector('button[type="submit"]');
-    const originalText = submitBtn.innerHTML;
-    submitBtn.disabled = true;
-    submitBtn.textContent = 'Preparing images…';
-    document.getElementById('uploadOverlay').classList.add('active');
-    document.getElementById('overlayProgressText').textContent = 'Preparing images…';
-
-    const formData = new FormData(uploadForm);
-    formData.delete('images[]');
-
-    // Wait for any in-flight background compression instead of redoing it
-    if (compressionPromise) {
-        await compressionPromise;
-    }
-    const filesToUpload = compressedFiles.length === currentFiles.length
-        ? compressedFiles
-        : await Promise.all(currentFiles.map(f => compressImage(f)));
-
-    filesToUpload.forEach(file => formData.append('images[]', file));
-
-    submitBtn.textContent = 'Uploading…';
-    document.getElementById('overlayProgressText').textContent = 'Please wait';
-
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', window.location.href, true);
-
-    xhr.upload.addEventListener('progress', function(e) {
-        if (e.lengthComputable) {
-            const pct = Math.round((e.loaded / e.total) * 100);
-            document.getElementById('overlayProgressText').textContent = `${pct}% complete`;
-        }
-    });
-
-    xhr.onload = function() {
-        document.getElementById('uploadOverlay').classList.remove('active');
-        console.log('Status:', xhr.status);
-        console.log('Response:', xhr.responseText);
-
-        if (xhr.responseURL && xhr.responseURL !== window.location.href) {
-            window.location.href = xhr.responseURL;
-        } else {
-            const doc = new DOMParser().parseFromString(xhr.responseText, 'text/html');
-            const errorDiv = doc.querySelector('.msg');
-            const existingMsg = document.querySelector('.msg');
-            if (existingMsg) existingMsg.remove();
-
-            if (errorDiv) {
-                uploadForm.parentNode.insertBefore(errorDiv, uploadForm);
-            } else {
-                alert('Upload failed. Please try again or contact support.');
-                console.log('No .msg element found. Full response logged above.');
-            }
-
-            submitBtn.disabled = false;
-            submitBtn.innerHTML = originalText;
-            isSubmitting = false;
-        }
-    };
-
-    xhr.onerror = function() {
-        document.getElementById('uploadOverlay').classList.remove('active');
-        console.error('Upload failed.');
-        alert('An error occurred during upload. Please try again.');
-        submitBtn.disabled = false;
-        submitBtn.innerHTML = originalText;
-        isSubmitting = false;
-    };
-
-    xhr.send(formData);
-});
-
-uploadForm.addEventListener('reset', function() {
-    previewUrls.forEach(url => URL.revokeObjectURL(url));
-    previewUrls = [];
-    currentFiles = [];
-    compressedFiles = [];
-    renderPreviews();
-});
-// ── Showcase-only checkbox: disable price when ticked ────────────────────
-const showcaseCheckbox = document.getElementById('showcaseCheckbox');
-const priceInput = document.getElementById('priceInput');
-const priceRequiredMark = document.getElementById('priceRequiredMark');
-if (showcaseCheckbox) {
-    showcaseCheckbox.addEventListener('change', function() {
-        if (this.checked) {
-            priceInput.removeAttribute('required');
-            priceInput.value = '';
-            priceInput.disabled = true;
-            priceRequiredMark.style.display = 'none';
-        } else {
-            priceInput.disabled = false;
-            priceInput.setAttribute('required', 'required');
-            priceRequiredMark.style.display = 'inline';
-        }
-    });
+    previewCounter.innerHTML = `${currentFiles.length} / 5 files selected`;
 }
 </script>
-
-<div class="upload-overlay" id="uploadOverlay">
-    <div class="dots-loader">
-        <span></span>
-        <span></span>
-    </div>
-    <div class="upload-overlay-text">Uploading your artwork…</div>
-    <div class="upload-overlay-sub" id="overlayProgressText">Please wait</div>
-</div>
-
 </body>
 </html>

@@ -86,7 +86,8 @@ if (!in_array($filterStatus, $allowedFilters)) {
 // ── Fetch Artworks ───────────────────────────────────
  $sql = "
     SELECT a.*, c.name as category_name, 
-           (SELECT image_path FROM artwork_images WHERE artwork_id = a.id ORDER BY is_cover DESC, sort_order ASC LIMIT 1) as cover_image
+           (SELECT image_path FROM artwork_images WHERE artwork_id = a.id ORDER BY is_cover DESC, sort_order ASC LIMIT 1) as cover_image,
+           (SELECT media_type FROM artwork_images WHERE artwork_id = a.id ORDER BY is_cover DESC, sort_order ASC LIMIT 1) as cover_media_type
     FROM artworks a
     JOIN categories c ON a.category_id = c.id
     WHERE a.artist_id = $artistId
@@ -289,6 +290,55 @@ tr:hover td { background: var(--sand); }
 .icon-btn:hover { border-color: var(--ink); color: var(--ink); background: var(--sand); }
 .icon-btn.danger { border: 1px solid var(--border); background: transparent; color: var(--ink); }
 .icon-btn.danger:hover { background: var(--sand); border-color: var(--ink); }
+/* ── Media Preview Modal ─────────────────────────────── */
+.thumb-clickable { cursor: pointer; transition: opacity .15s; }
+.thumb-clickable:hover { opacity: 0.8; }
+#mediaModal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(12,63,48,0.85);
+    z-index: 500;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+}
+#mediaModal.open { display: flex; }
+#mediaModalContent {
+    max-width: 90vw;
+    max-height: 85vh;
+    background: var(--bg);
+    border-radius: 12px;
+    padding: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+}
+#mediaModalContent img,
+#mediaModalContent video {
+    max-width: 100%;
+    max-height: 75vh;
+    border-radius: 8px;
+    display: block;
+}
+#mediaModalContent audio { width: 320px; max-width: 80vw; }
+#mediaModalClose {
+    position: absolute;
+    top: -18px;
+    right: -18px;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--ink);
+    color: var(--bg);
+    border: none;
+    font-size: 20px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
 
 /* ── Empty State ─────────────────────────────────────── */
 .empty-state { padding: 60px 20px; text-align: center; }
@@ -480,8 +530,17 @@ tr:hover td { background: var(--sand); }
                     <?php foreach ($artworks as $art): ?>
                         <tr>
                             <td>
-                                <?php if ($art['cover_image']): ?>
-                                    <img src="../../<?= htmlspecialchars($art['cover_image']) ?>" class="thumb" alt="">
+                                <?php if ($art['cover_image']):
+                                    $mediaUrl = '../../' . htmlspecialchars($art['cover_image']);
+                                    $mediaType = $art['cover_media_type'] ?: 'image';
+                                ?>
+                                    <?php if ($mediaType === 'video'): ?>
+                                        <video src="<?= $mediaUrl ?>" class="thumb thumb-clickable" muted playsinline onclick="openMediaPreview('<?= $mediaUrl ?>', 'video')"></video>
+                                    <?php elseif ($mediaType === 'audio'): ?>
+                                        <div class="thumb thumb-clickable" style="display:flex;align-items:center;justify-content:center;font-size:18px;" onclick="openMediaPreview('<?= $mediaUrl ?>', 'audio')">🎵</div>
+                                    <?php else: ?>
+                                        <img src="<?= $mediaUrl ?>" class="thumb thumb-clickable" alt="" onclick="openMediaPreview('<?= $mediaUrl ?>', 'image')">
+                                    <?php endif; ?>
                                 <?php else: ?>
                                     <div class="thumb"></div>
                                 <?php endif; ?>
@@ -511,6 +570,13 @@ tr:hover td { background: var(--sand); }
 
 </div>
 </main>
+<!-- MEDIA PREVIEW MODAL -->
+<div id="mediaModal" onclick="if(event.target===this) closeMediaPreview()">
+    <div id="mediaModalContent">
+        <button id="mediaModalClose" onclick="closeMediaPreview()">&times;</button>
+        <div id="mediaModalBody"></div>
+    </div>
+</div>
 
 <!-- HAMBURGER DRAWER HTML -->
 <div id="nav-overlay"></div>
@@ -548,6 +614,35 @@ if(hamBtn && drawer && overlay){
         drawer.classList.remove('open');
         overlay.classList.remove('open');
     });
+}
+function openMediaPreview(url, type) {
+    const body = document.getElementById('mediaModalBody');
+    body.innerHTML = '';
+
+    if (type === 'video') {
+        const v = document.createElement('video');
+        v.src = url;
+        v.controls = true;
+        v.autoplay = true;
+        body.appendChild(v);
+    } else if (type === 'audio') {
+        const a = document.createElement('audio');
+        a.src = url;
+        a.controls = true;
+        a.autoplay = true;
+        body.appendChild(a);
+    } else {
+        const img = document.createElement('img');
+        img.src = url;
+        body.appendChild(img);
+    }
+
+    document.getElementById('mediaModal').classList.add('open');
+}
+
+function closeMediaPreview() {
+    document.getElementById('mediaModal').classList.remove('open');
+    document.getElementById('mediaModalBody').innerHTML = ''; // stops video/audio playback
 }
 </script>
 

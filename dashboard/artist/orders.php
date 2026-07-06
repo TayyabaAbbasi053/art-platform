@@ -158,7 +158,8 @@ if ($statusFilter) {
         u.name AS buyer_name_real, u.email AS buyer_email_real, u.phone AS buyer_phone_real,
         oi.price AS order_price,
         a.title AS artwork_title, a.price AS artwork_price, a.delivery_available, a.id AS artwork_id,
-        (SELECT image_path FROM artwork_images WHERE artwork_id = a.id ORDER BY is_cover DESC, sort_order ASC LIMIT 1) AS artwork_image
+        (SELECT image_path FROM artwork_images WHERE artwork_id = a.id ORDER BY is_cover DESC, sort_order ASC LIMIT 1) AS artwork_image,
+        (SELECT media_type FROM artwork_images WHERE artwork_id = a.id ORDER BY is_cover DESC, sort_order ASC LIMIT 1) AS artwork_media_type
     FROM orders o
     JOIN order_items oi ON o.id = oi.order_id
     JOIN artworks a ON oi.item_id = a.id AND oi.item_type = 'artwork'
@@ -578,7 +579,12 @@ $unseenCount = (int) $unseenStmt->get_result()->fetch_row()[0];
           <tr>
             <td data-label="Order / Artwork">
               <div class="artwork-preview">
-                <?php if ($imageUrl): ?>
+                <?php $rowMediaType = $order['artwork_media_type'] ?? 'image'; ?>
+                <?php if ($imageUrl && $rowMediaType === 'video'): ?>
+                  <video src="<?= htmlspecialchars($imageUrl) ?>" muted playsinline preload="metadata" style="width:44px;height:44px;border-radius:8px;object-fit:cover;border:1px solid var(--border);"></video>
+                <?php elseif ($imageUrl && $rowMediaType === 'audio'): ?>
+                  <div class="placeholder-img" style="font-size:14px;">🎵</div>
+                <?php elseif ($imageUrl): ?>
                   <img src="<?= htmlspecialchars($imageUrl) ?>" alt="">
                 <?php else: ?>
                   <div class="placeholder-img">N/A</div>
@@ -711,6 +717,17 @@ $unseenCount = (int) $unseenStmt->get_result()->fetch_row()[0];
     }
 
     const imgUrl = order.artwork_image ? `../../${order.artwork_image.replace(/^\.?\/*/, '')}` : '';
+    const mediaType = order.artwork_media_type || 'image';
+    let artworkMediaHtml;
+    if (imgUrl && mediaType === 'video') {
+        artworkMediaHtml = `<video src="${esc(imgUrl)}" muted playsinline preload="metadata" style="width:120px;height:120px;object-fit:cover;border-radius:8px;border:1px solid var(--border);"></video>`;
+    } else if (imgUrl && mediaType === 'audio') {
+        artworkMediaHtml = `<div style="width:120px;height:120px;background:var(--border);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:32px;">🎵</div>`;
+    } else if (imgUrl) {
+        artworkMediaHtml = `<img src="${esc(imgUrl)}" alt="${esc(order.artwork_title)}">`;
+    } else {
+        artworkMediaHtml = `<div style="width:120px;height:120px;background:var(--border);border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--ink);font-size:12px;">No Image</div>`;
+    }
     const deliveryText = parseInt(order.delivery_available) === 1 ? 'Delivery Available' : 'Pickup Only';
     const deliveryClass = parseInt(order.delivery_available) === 1 ? 'delivery' : 'delivery pickup';
     
@@ -780,7 +797,7 @@ statusFormHtml = `
     const content = document.getElementById('detailContent');
     content.innerHTML = `
       <div class="artwork-preview-modal">
-        ${imgUrl ? `<img src="${esc(imgUrl)}" alt="${esc(order.artwork_title)}">` : `<div style="width:120px;height:120px;background:var(--border);border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--ink);font-size:12px;">No Image</div>`}
+        ${artworkMediaHtml}
         <div class="info">
           <div class="dl">Artwork</div>
           <div class="title">${esc(order.artwork_title)}</div>

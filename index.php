@@ -197,8 +197,8 @@ function getProfileUrl($p) {
 }
 
  $availableArtists = $conn->query("SELECT u.id, u.name, ap.city, ap.art_style FROM users u JOIN artist_profiles ap ON u.id=ap.user_id WHERE u.role='artist' AND u.status='active' AND ap.accepts_commissions=1 AND ap.profile_complete=1 ORDER BY u.name ASC")->fetch_all(MYSQLI_ASSOC);
-$featuredArtworks = $conn->query("SELECT a.id,a.title,a.price,a.city,a.status,a.reserved_by,u.name AS artist_name,u.id AS artist_id,c.name AS category_name,(SELECT image_path FROM artwork_images WHERE artwork_id=a.id ORDER BY is_cover DESC,sort_order ASC LIMIT 1) AS cover_image FROM artworks a JOIN users u ON a.artist_id=u.id JOIN categories c ON a.category_id=c.id JOIN artist_profiles ap ON ap.user_id=u.id WHERE a.status = 'active' AND a.is_featured=1 AND u.status='active' AND ap.profile_complete=1 ORDER BY a.updated_at DESC LIMIT 5")->fetch_all(MYSQLI_ASSOC);
-$latestArtworks   = $conn->query("SELECT a.id,a.title,a.price,a.city,a.status,a.reserved_by,u.name AS artist_name,u.id AS artist_id,c.name AS category_name,(SELECT image_path FROM artwork_images WHERE artwork_id=a.id ORDER BY is_cover DESC,sort_order ASC LIMIT 1) AS cover_image FROM artworks a JOIN users u ON a.artist_id=u.id JOIN categories c ON a.category_id=c.id JOIN artist_profiles ap ON ap.user_id=u.id WHERE a.status = 'active' AND u.status='active' AND ap.profile_complete=1 ORDER BY a.created_at DESC LIMIT 12")->fetch_all(MYSQLI_ASSOC);
+$featuredArtworks = $conn->query("SELECT a.id,a.title,a.price,a.city,a.status,a.reserved_by,u.name AS artist_name,u.id AS artist_id,c.name AS category_name,(SELECT image_path FROM artwork_images WHERE artwork_id=a.id ORDER BY is_cover DESC,sort_order ASC LIMIT 1) AS cover_image,(SELECT media_type FROM artwork_images WHERE artwork_id=a.id ORDER BY is_cover DESC,sort_order ASC LIMIT 1) AS cover_media_type FROM artworks a JOIN users u ON a.artist_id=u.id JOIN categories c ON a.category_id=c.id JOIN artist_profiles ap ON ap.user_id=u.id WHERE a.status = 'active' AND a.is_featured=1 AND u.status='active' AND ap.profile_complete=1 ORDER BY a.updated_at DESC LIMIT 5")->fetch_all(MYSQLI_ASSOC);
+$latestArtworks   = $conn->query("SELECT a.id,a.title,a.price,a.city,a.status,a.reserved_by,u.name AS artist_name,u.id AS artist_id,c.name AS category_name,(SELECT image_path FROM artwork_images WHERE artwork_id=a.id ORDER BY is_cover DESC,sort_order ASC LIMIT 1) AS cover_image,(SELECT media_type FROM artwork_images WHERE artwork_id=a.id ORDER BY is_cover DESC,sort_order ASC LIMIT 1) AS cover_media_type FROM artworks a JOIN users u ON a.artist_id=u.id JOIN categories c ON a.category_id=c.id JOIN artist_profiles ap ON ap.user_id=u.id WHERE a.status = 'active' AND u.status='active' AND ap.profile_complete=1 ORDER BY a.created_at DESC LIMIT 12")->fetch_all(MYSQLI_ASSOC);
 $featuredArtists  = $conn->query("SELECT u.id,u.name,u.profile_picture,ap.city,ap.art_style,ap.accepts_commissions FROM users u JOIN artist_profiles ap ON u.id=ap.user_id WHERE u.role='artist' AND u.status='active' AND ap.is_featured=1 AND ap.profile_complete=1 ORDER BY u.created_at DESC LIMIT 4")->fetch_all(MYSQLI_ASSOC);
  $categories       = $conn->query("SELECT id,name FROM categories ORDER BY name ASC")->fetch_all(MYSQLI_ASSOC);
  $heroArt = $featuredArtworks[0] ?? $latestArtworks[0] ?? null;
@@ -629,7 +629,15 @@ h1.htitle em{font-style:italic;color:var(--ink);}
       <?php foreach ($featuredArtworks as $art): $img = getImgUrl($art['cover_image']); ?>
       <div class="aw-card">
         <a href="artwork-detail.php?id=<?= $art['id'] ?>" class="aw-img" style="display:block;">
-          <?php if ($img): ?><img src="<?= htmlspecialchars($img) ?>" alt="" loading="lazy"><?php else: ?><div class="aw-ph"><svg width="28" height="28" fill="none" stroke="currentColor" stroke-width="1" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div><?php endif; ?>
+          <?php if ($img && $art['cover_media_type'] === 'video'): ?>
+            <video src="<?= htmlspecialchars($img) ?>" muted playsinline></video>
+          <?php elseif ($img && $art['cover_media_type'] === 'audio'): ?>
+            <div class="aw-ph" style="font-size:28px;">🎵</div>
+          <?php elseif ($img): ?>
+            <img src="<?= htmlspecialchars($img) ?>" alt="" loading="lazy">
+          <?php else: ?>
+            <div class="aw-ph"><svg width="28" height="28" fill="none" stroke="currentColor" stroke-width="1" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div>
+          <?php endif; ?>
           <?php if ($art['status']==='sold'): ?><span class="aw-sold-tag">Sold</span><?php endif; ?>
         </a>
         <div class="aw-body">
@@ -728,7 +736,15 @@ h1.htitle em{font-style:italic;color:var(--ink);}
     <?php foreach ($latestArtworks as $art): $img = getImgUrl($art['cover_image']); ?>
     <div class="aw-card">
       <a href="artwork-detail.php?id=<?= $art['id'] ?>" class="aw-img" style="display:block;">
-        <?php if ($img): ?><img src="<?= htmlspecialchars($img) ?>" alt="" loading="lazy"><?php else: ?><div class="aw-ph"><svg width="28" height="28" fill="none" stroke="currentColor" stroke-width="1" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div><?php endif; ?>
+        <?php if ($img && $art['cover_media_type'] === 'video'): ?>
+          <video src="<?= htmlspecialchars($img) ?>" muted playsinline></video>
+        <?php elseif ($img && $art['cover_media_type'] === 'audio'): ?>
+          <div class="aw-ph" style="font-size:28px;">🎵</div>
+        <?php elseif ($img): ?>
+          <img src="<?= htmlspecialchars($img) ?>" alt="" loading="lazy">
+        <?php else: ?>
+          <div class="aw-ph"><svg width="28" height="28" fill="none" stroke="currentColor" stroke-width="1" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div>
+        <?php endif; ?>
         <?php if ($art['status']==='sold'): ?><span class="aw-sold-tag">Sold</span><?php endif; ?>
       </a>
       <div class="aw-body">
