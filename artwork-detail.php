@@ -368,6 +368,7 @@ h1{font-family:'Playfair Display',serif;font-size:clamp(24px,2.5vw,32px);font-we
     <a href="index.php" class="nlogo"><img src="logo.png" alt="Art Bazaar" style="height:36px;width:auto;display:block;"></a>
     <div class="nlinks">
       <a href="artworks.php">Explore Art</a>
+      <a href="digital-art.php">Digital Art</a>
       <a href="artists.php">Artists</a>
       <a href="blog.php">Blog</a>
       <a href="commission.php">Custom Artwork</a>
@@ -604,6 +605,7 @@ h1{font-family:'Playfair Display',serif;font-size:clamp(24px,2.5vw,32px);font-we
   </div>
   <div class="drawer-links">
     <a href="artworks.php">Explore Art</a>
+    <a href="digital-art.php">Digital Art</a>
     <a href="artists.php">Artists</a>
     <a href="blog.php">Blog</a>
     <a href="commission.php">Custom Artwork</a>

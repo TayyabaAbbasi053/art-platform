@@ -244,6 +244,7 @@ img{max-width:100%;display:block;}
     <a href="index.php" class="nlogo"><b>Art Bazaar</b><small>Marketplace</small></a>
     <div class="nlinks">
       <a href="artworks.php">Explore Art</a>
+      <a href="digital-art.php">Digital Art</a>
       <a href="artists.php">Artists</a>
       <a href="commission.php">Custom Artwork</a>
       <a href="sell.php">Sell Your Art</a>

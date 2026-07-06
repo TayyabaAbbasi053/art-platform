@@ -11,6 +11,7 @@ $isLoggedIn = isset($_SESSION['user_id']);
  $minPrice   = !empty($_GET['min_price']) ? (int)$_GET['min_price'] : null;
  $maxPrice   = !empty($_GET['max_price']) ? (int)$_GET['max_price'] : null;
  $avail      = trim($_GET['availability'] ?? '');
+ $mediaType  = trim($_GET['media_type'] ?? '');
  $sort       = $_GET['sort'] ?? 'newest';
  $featured   = isset($_GET['featured']) ? 1 : 0;
  $page       = max(1, (int)($_GET['page'] ?? 1));
@@ -26,8 +27,7 @@ $isLoggedIn = isset($_SESSION['user_id']);
     "ap.art_style IS NOT NULL AND ap.art_style != ''",
     "u.profile_picture IS NOT NULL AND u.profile_picture != ''",
     "(ap.has_bank_account=1 OR ap.has_easypaisa=1 OR ap.has_jazzcash=1 OR ap.has_nayapay=1 OR ap.has_sadapay=1)",
-    "c.name NOT LIKE '%digital%'",
-    "(a.medium IS NULL OR a.medium NOT LIKE '%digital%')"
+    "(c.name LIKE '%digital%' OR a.medium LIKE '%digital%')"
 ];
  $params = [];
  $types = '';
@@ -72,6 +72,12 @@ if ($avail === 'available') {
 }
 if ($featured) {
     $where[] = "a.is_featured = 1";
+}
+
+if ($mediaType && in_array($mediaType, ['image','video','audio'])) {
+    $where[] = "EXISTS (SELECT 1 FROM artwork_images ai WHERE ai.artwork_id = a.id AND ai.media_type = ?)";
+    $params[] = $mediaType;
+    $types .= 's';
 }
 
  $orderMap = [
@@ -140,7 +146,7 @@ function getImgUrl($p) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Browse Artworks — Art Bazaar</title>
+<title>Browse Digital Artwork — Art Bazaar</title>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;1,400&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
@@ -246,29 +252,6 @@ img{display:block;max-width:100%;}
 .sort-row label{font-size:11.5px;color:var(--muted);}
 .sort-sel{border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:12.5px;font-family:'DM Sans',sans-serif;color:var(--ink);background:var(--card);outline:none;cursor:pointer;}
 
-/* CATEGORY DROPDOWN */
-.cat-dropdown-wrap{margin-bottom:22px;}
-.cat-dropdown{
-  font-size:12.5px;
-  padding:9px 14px;
-  border-radius:8px;
-  border:1px solid var(--border);
-  background:var(--card);
-  color:var(--ink);
-  font-family:'DM Sans',sans-serif;
-  cursor:pointer;
-  outline:none;
-  min-width:200px;
-  appearance:none;
-  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%230C3F30' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
-  background-repeat:no-repeat;
-  background-position:right 12px center;
-  padding-right:34px;
-}
-.cat-dropdown:hover{border-color:var(--muted);}
-@media(max-width:768px){
-  .cat-dropdown{width:100%;}
-}
 
 /* ARTWORKS GRID */
 .aw-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;}
@@ -419,8 +402,8 @@ img{display:block;max-width:100%;}
   <div class="nw">
     <a href="index.php" class="nlogo"><img src="logo.png" alt="Art Bazaar" style="height:36px;width:auto;display:block;"></a>
     <div class="nlinks">
-      <a href="artworks.php" class="active">Explore Art</a>
-      <a href="digital-art.php">Digital Art</a>
+      <a href="artworks.php">Explore Art</a>
+      <a href="digital-art.php" class="active">Digital Art</a>
       <a href="artists.php">Artists</a>
       <a href="blog.php">Blog</a>
       <a href="commission.php">Custom Artwork</a>
@@ -459,46 +442,42 @@ img{display:block;max-width:100%;}
   <img src="arthero.jpeg" alt="Artworks" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;display:block;">
   <div style="position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(12,63,48,0.65);"></div>
   <div class="page-hero-inner" style="position:relative;z-index:1;padding:52px 28px;">
-    <div class="ph-tag">Original Art · Pakistan</div>
-    <h1 class="ph-title">Browse <em>Original Artworks</em></h1>
-    <p class="ph-desc">Handpicked pieces from verified Pakistani artists — paintings, calligraphy, digital art and more.</p>
+    <div class="ph-tag">Digital Art · Pakistan</div>
+    <h1 class="ph-title">Browse <em>Digital Artwork</em></h1>
+    <p class="ph-desc">Discover unique digital art pieces — from illustrations to concept art — by verified Pakistani artists..</p>
   </div>
 </div>
 
 <!-- CONTENT -->
 <div class="content">
 
-  <!-- Category dropdown -->
-  <div class="cat-dropdown-wrap">
-    <select class="cat-dropdown" onchange="if(this.value){window.location.href=this.value;}">
-      <option value="artworks.php<?= $search ? '?q=' . urlencode($search) : '' ?>" <?= !$catFilter ? 'selected' : '' ?>>All Categories</option>
-      <?php foreach ($categories as $cat): ?>
-      <option value="artworks.php?category=<?= $cat['id'] ?><?= $search ? '&q=' . urlencode($search) : '' ?>" <?= $catFilter == $cat['id'] ? 'selected' : '' ?>><?= htmlspecialchars($cat['name']) ?></option>
-      <?php endforeach; ?>
-    </select>
+  
+<!-- Media type filter buttons -->
+  <?php
+    $mediaBase = $_GET;
+    unset($mediaBase['media_type'], $mediaBase['page']);
+  ?>
+  <div style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap;">
+    <a href="digital-art.php?<?= http_build_query($mediaBase) ?>" style="padding:8px 16px;border-radius:20px;border:2px solid var(--border);font-size:12.5px;font-weight:500;font-family:'DM Sans',sans-serif;background:<?= !$mediaType ? 'var(--ink)' : 'var(--card)' ?>;color:<?= !$mediaType ? 'var(--bg)' : 'var(--ink)' ?>;">
+      All
+    </a>
+    <a href="digital-art.php?<?= http_build_query(array_merge($mediaBase, ['media_type' => 'image'])) ?>" style="padding:8px 16px;border-radius:20px;border:2px solid var(--border);font-size:12.5px;font-weight:500;font-family:'DM Sans',sans-serif;background:<?= $mediaType === 'image' ? 'var(--ink)' : 'var(--card)' ?>;color:<?= $mediaType === 'image' ? 'var(--bg)' : 'var(--ink)' ?>;">
+      🖼️ Images
+    </a>
+    <a href="digital-art.php?<?= http_build_query(array_merge($mediaBase, ['media_type' => 'video'])) ?>" style="padding:8px 16px;border-radius:20px;border:2px solid var(--border);font-size:12.5px;font-weight:500;font-family:'DM Sans',sans-serif;background:<?= $mediaType === 'video' ? 'var(--ink)' : 'var(--card)' ?>;color:<?= $mediaType === 'video' ? 'var(--bg)' : 'var(--ink)' ?>;">
+      🎬 Videos
+    </a>
+    <a href="digital-art.php?<?= http_build_query(array_merge($mediaBase, ['media_type' => 'audio'])) ?>" style="padding:8px 16px;border-radius:20px;border:2px solid var(--border);font-size:12.5px;font-weight:500;font-family:'DM Sans',sans-serif;background:<?= $mediaType === 'audio' ? 'var(--ink)' : 'var(--card)' ?>;color:<?= $mediaType === 'audio' ? 'var(--bg)' : 'var(--ink)' ?>;">
+      🎵 Audios
+    </a>
   </div>
-
-  <!-- Search bar -->
-  <form method="GET" action="artworks.php" style="margin-bottom:20px;display:flex;gap:0;">
-    <?php foreach ($_GET as $k => $v): if ($k !== 'q'): ?>
-    <input type="hidden" name="<?= htmlspecialchars($k) ?>" value="<?= htmlspecialchars($v) ?>">
-    <?php endif; endforeach; ?>
-    <input type="text" name="q" value="<?= htmlspecialchars($search) ?>" placeholder="Search artworks by name..." style="flex:1;border:2px solid var(--border);border-right:none;border-radius:8px 0 0 8px;padding:11px 16px;font-size:13px;font-family:'DM Sans',sans-serif;color:var(--ink);background:var(--card);outline:none;">
-    <button type="submit" style="background:var(--ink);color:var(--bg);border:2px solid var(--border);border-left:none;border-radius:0 8px 8px 0;padding:11px 18px;font-size:13px;font-family:'DM Sans',sans-serif;cursor:pointer;display:flex;align-items:center;gap:6px;font-weight:500;">
-      <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-      Search
-    </button>
-    <?php if ($search): ?>
-    <a href="artworks.php<?= $catFilter ? '?category='.$catFilter : '' ?>" style="margin-left:8px;display:flex;align-items:center;font-size:12px;color:var(--muted);text-decoration:none;white-space:nowrap;">✕ Clear</a>
-    <?php endif; ?>
-  </form>
 
   <!-- Grid -->
   <?php if (empty($artworks)): ?>
   <div class="empty">
     <svg width="56" height="56" fill="none" stroke="currentColor" stroke-width="1" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
     <h3>No artworks found</h3>
-    <p>Try adjusting your filters or <a href="artworks.php">browse all artworks</a>.</p>
+    <p>Try adjusting your filters or <a href="digital-art.php">browse all digital artwork</a>.</p>
   </div>
   <?php else: ?>
   <div class="aw-grid">
