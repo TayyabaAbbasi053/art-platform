@@ -2,7 +2,7 @@
 session_start();
 require_once __DIR__ . '/config/db.php';
 
-if (isset($_SESSION['user_id'])) {
+if (isset($_SESSION['user_id']) && $_SERVER['REQUEST_METHOD'] !== 'POST') {
     $redirect = $_GET['redirect'] ?? '';
     if (!empty($redirect) && strpos($redirect, '/') === 0 &&
         strpos($redirect, 'http://') === false &&

@@ -123,6 +123,8 @@ if (isset($_SESSION['heic_support_checked']) && (time() - $_SESSION['heic_suppor
 
 // ── Handle form submission ───────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $__dbg = __DIR__ . '/upload_debug.log';
+    file_put_contents($__dbg, date('c') . " START user={$_SESSION['user_id']} files=" . json_encode(array_map(fn($n,$s)=>"$n ({$s}b)", $_FILES['images']['name'] ?? [], $_FILES['images']['size'] ?? [])) . "\n", FILE_APPEND);
 
     // CSRF check
     if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
@@ -185,6 +187,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         
         // 1. Insert Artwork
+        file_put_contents($__dbg, date('c') . " VALIDATION_PASSED — starting DB insert\n", FILE_APPEND);
         $conn->begin_transaction();
 
  $initialStatus = $isShowcaseOnly ? 'sold' : 'active';
@@ -227,6 +230,7 @@ if (!$stmt) {
             }
 
             // 2. Handle Images
+            file_put_contents($__dbg, date('c') . " ARTWORK_INSERTED id={$artworkId} — starting image loop\n", FILE_APPEND);
             $uploadDir = __DIR__ . '/../../uploads/artworks/';
             if (!is_dir($uploadDir)) {
                 mkdir($uploadDir, 0755, true);
@@ -310,8 +314,10 @@ if (!$stmt) {
 if (in_array($ext, ['heic', 'heif'])) {
     $newName = 'art_' . $artworkId . '_' . $uniqueId . '.jpg';
     $destPath = $uploadDir . $newName;
+    file_put_contents($__dbg, date('c') . " CONVERTING_HEIC file={$fileName} size={$fileSize}b\n", FILE_APPEND);
     $cmd = "timeout 15 convert " . escapeshellarg($fileTmp) . " " . escapeshellarg($destPath) . " 2>&1";
     exec($cmd, $cmdOutput, $cmdStatus);
+    file_put_contents($__dbg, date('c') . " HEIC_DONE status={$cmdStatus}\n", FILE_APPEND);
     $dbPath = 'uploads/artworks/' . $newName;
     $converted = ($cmdStatus === 0) && file_exists($destPath) && filesize($destPath) > 0;
     if (!$converted) {
@@ -352,6 +358,7 @@ if ($converted) {
 
             if ($uploadedCount > 0) {
                 $conn->commit();
+                file_put_contents($__dbg, date('c') . " SUCCESS uploaded={$uploadedCount} — redirecting\n", FILE_APPEND);
                 header("Location: my-artworks.php?msg=uploaded");
                 exit;
             } else {
@@ -887,8 +894,6 @@ const previewCounter = document.getElementById('previewCounter');
 const uploadForm = document.getElementById('uploadForm');
 
 let currentFiles = [];
-let compressedFiles = [];
-let compressionPromise = null;
 let isSubmitting = false;
 
 dropZone.addEventListener('click', () => fileInput.click());
@@ -942,61 +947,11 @@ fileInput.addEventListener('change', function(e) {
     });
     
     renderPreviews();
-    compressionPromise = compressAllInBackground(); // ← compress immediately in background, track the promise
 });
 
-function compressImage(file, maxWidth = 1400, quality = 0.70) {
-    return new Promise((resolve) => {
-        if (!file.type.startsWith('image/')) { resolve(file); return; }
-        if (file.name.match(/\.(heic|heif)$/i)) { resolve(file); return; }
-        if (file.size < 2 * 1024 * 1024) { resolve(file); return; } // skip compression for small files
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const img = new Image();
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                let width = img.width, height = img.height;
-                if (width > maxWidth) { height = Math.round((height * maxWidth) / width); width = maxWidth; }
-                canvas.width = width; canvas.height = height;
-                const ctx = canvas.getContext('2d');
-                if (!ctx) {
-                    console.error('Canvas context unavailable:', file.name);
-                    resolve(file);
-                    return;
-                }
-                ctx.drawImage(img, 0, 0, width, height);
-
-                // Preserve transparency for PNGs — don't force-convert to JPG (which has no alpha channel)
-                const isPng = file.type === 'image/png' || /\.png$/i.test(file.name);
-                const outputType = isPng ? 'image/png' : 'image/jpeg';
-                const outputExt = isPng ? '.png' : '.jpg';
-                const outputQuality = isPng ? undefined : quality; // PNG toBlob ignores quality anyway
-
-                canvas.toBlob((blob) => {
-                    if (!blob) {
-                        console.error('Compression failed:', file.name);
-                        resolve(file); // Upload original file instead
-                        return;
-                    }
-                    resolve(new File([blob], file.name.replace(/\.(png|webp)$/i, outputExt), { type: outputType, lastModified: Date.now() }));
-                }, outputType, outputQuality);
-            };
-            img.onerror = () => {
-                console.error('Image decode failed:', file.name);
-                resolve(file);
-            };
-            img.src = e.target.result;
-        };
-        reader.onerror = () => {
-            console.error('File read failed:', file.name);
-            resolve(file);
-        };
-        reader.readAsDataURL(file);
-    });
-}
-
-async function compressAllInBackground() {
-    compressedFiles = await Promise.all(currentFiles.map(f => compressImage(f)));
+function removeFileAtIndex(index) {
+    currentFiles.splice(index, 1);
+    renderPreviews();
 }
 
 let previewUrls = []; // track object URLs so we can revoke them and avoid memory leaks
