@@ -284,7 +284,7 @@ $hasSadapay     = isset($_POST['has_sadapay'])       ? 1 : 0;
                      has_nayapay=VALUES(has_nayapay), nayapay_name=VALUES(nayapay_name), nayapay_number=VALUES(nayapay_number),
                      has_sadapay=VALUES(has_sadapay), sadapay_name=VALUES(sadapay_name), sadapay_number=VALUES(sadapay_number)");
 
-                $profile->bind_param('isssssississississssss',
+                $profile->bind_param('isssssisssississississ',
                     $userId, $bio_reg, $art_style_reg, $instagram_reg, $city, $address,
                     $hasBankAccount, $bankName, $bankTitle, $bankNumber,
                     $hasEasypaisa, $epName, $epNum,
@@ -348,7 +348,7 @@ $hasSadapay     = isset($_POST['has_sadapay'])       ? 1 : 0;
                          has_nayapay=VALUES(has_nayapay), nayapay_name=VALUES(nayapay_name), nayapay_number=VALUES(nayapay_number),
                          has_sadapay=VALUES(has_sadapay), sadapay_name=VALUES(sadapay_name), sadapay_number=VALUES(sadapay_number)");
 
-                    $profile->bind_param('isssssississississssss',
+                    $profile->bind_param('isssssisssississississ',
                         $userId, $bio_reg, $art_style_reg, $instagram_reg, $city, $address,
                         $hasBankAccount, $bankName, $bankTitle, $bankNumber,
                         $hasEasypaisa, $epName, $epNum,
