@@ -2,18 +2,6 @@
 session_start();
 require_once __DIR__ . '/config/db.php';
 
-function containsContactInfo(string $text): bool {
-    $patterns = [
-        '/\b[\w.+-]+@[\w-]+\.[a-z]{2,}\b/i',
-        '/(\+92|0)?[-\s]?[0-9]{3}[-\s]?[0-9]{7,8}/',
-        '/\b(instagram|insta|ig|whatsapp|wa|facebook|fb|twitter|tiktok|snapchat)\s*[:\-@]?\s*\w+/i',
-        '/@[a-zA-Z0-9._]{2,30}/',
-        '/\b(iban|account\s*no|bank|easypaisa|jazzcash|sadapay|nayapay)\b/i',
-        '/\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b/',
-    ];
-    foreach ($patterns as $p) { if (preg_match($p, $text)) return true; }
-    return false;
-}
 
  $isLoggedIn = isset($_SESSION['user_id']);
  $inquirySuccess = false;
@@ -72,6 +60,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'conta
  $commissionError = false;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'commission_request') {
+    if (!$isLoggedIn) {
+        $commissionError = "Please login to request a custom artwork commission.";
+        goto commission_end; // skip processing entirely
+    }
     $buyerName  = trim($_POST['buyer_name'] ?? '');
     $buyerEmail = trim($_POST['buyer_email'] ?? '');
     $buyerPhone = trim($_POST['buyer_phone'] ?? '');
@@ -168,6 +160,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'commi
             $commissionError = "Failed to submit. Please try again.";
         }
     }
+    commission_end:;
 }
 
 function getImgUrl($p) {
@@ -199,7 +192,7 @@ function getProfileUrl($p) {
  $availableArtists = $conn->query("SELECT u.id, u.name, ap.city, ap.art_style FROM users u JOIN artist_profiles ap ON u.id=ap.user_id WHERE u.role='artist' AND u.status='active' AND ap.accepts_commissions=1 AND ap.profile_complete=1 ORDER BY u.name ASC")->fetch_all(MYSQLI_ASSOC);
 $featuredArtworks = $conn->query("SELECT a.id,a.title,a.price,a.city,a.status,a.reserved_by,u.name AS artist_name,u.id AS artist_id,c.name AS category_name,(SELECT image_path FROM artwork_images WHERE artwork_id=a.id ORDER BY is_cover DESC,sort_order ASC LIMIT 1) AS cover_image,(SELECT media_type FROM artwork_images WHERE artwork_id=a.id ORDER BY is_cover DESC,sort_order ASC LIMIT 1) AS cover_media_type FROM artworks a JOIN users u ON a.artist_id=u.id JOIN categories c ON a.category_id=c.id JOIN artist_profiles ap ON ap.user_id=u.id WHERE a.status = 'active' AND a.is_featured=1 AND u.status='active' AND ap.profile_complete=1 ORDER BY a.updated_at DESC LIMIT 5")->fetch_all(MYSQLI_ASSOC);
 $latestArtworks   = $conn->query("SELECT a.id,a.title,a.price,a.city,a.status,a.reserved_by,u.name AS artist_name,u.id AS artist_id,c.name AS category_name,(SELECT image_path FROM artwork_images WHERE artwork_id=a.id ORDER BY is_cover DESC,sort_order ASC LIMIT 1) AS cover_image,(SELECT media_type FROM artwork_images WHERE artwork_id=a.id ORDER BY is_cover DESC,sort_order ASC LIMIT 1) AS cover_media_type FROM artworks a JOIN users u ON a.artist_id=u.id JOIN categories c ON a.category_id=c.id JOIN artist_profiles ap ON ap.user_id=u.id WHERE a.status = 'active' AND u.status='active' AND ap.profile_complete=1 ORDER BY a.created_at DESC LIMIT 12")->fetch_all(MYSQLI_ASSOC);
-$featuredArtists  = $conn->query("SELECT u.id,u.name,u.profile_picture,ap.city,ap.art_style,ap.accepts_commissions FROM users u JOIN artist_profiles ap ON u.id=ap.user_id WHERE u.role='artist' AND u.status='active' AND ap.is_featured=1 AND ap.profile_complete=1 ORDER BY u.created_at DESC LIMIT 4")->fetch_all(MYSQLI_ASSOC);
+$featuredArtists  = $conn->query("SELECT u.id,u.name,u.profile_picture,ap.city,ap.art_style,ap.accepts_commissions FROM users u JOIN artist_profiles ap ON u.id=ap.user_id WHERE u.role='artist' AND u.status='active' AND ap.is_featured=1 ORDER BY u.created_at DESC LIMIT 4")->fetch_all(MYSQLI_ASSOC);
  $categories       = $conn->query("SELECT id,name FROM categories ORDER BY name ASC")->fetch_all(MYSQLI_ASSOC);
  $heroArt = $featuredArtworks[0] ?? $latestArtworks[0] ?? null;
  $latestBlogPosts = $conn->query("SELECT bp.id, bp.title, bp.slug, bp.content, bp.featured_image, bp.published_at, bp.created_at, u.name AS author_name FROM blog_posts bp JOIN users u ON u.id = bp.author_id WHERE bp.status = 'published' ORDER BY bp.published_at DESC LIMIT 4")->fetch_all(MYSQLI_ASSOC);
@@ -724,7 +717,7 @@ h1.htitle em{font-style:italic;color:var(--ink);}
     <p class="cs-desc">Request a custom artwork from our talented Pakistani artists. Portraits, calligraphy, illustrations — anything you can imagine.</p>
   </div>
   <div class="cs-r">
-    <button class="btn-gold" onclick="document.getElementById('cm').classList.add('open')">Request Custom Artwork <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></button>
+    <button class="btn-gold" onclick="openCM()">Request Custom Artwork <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></button>
   </div>
 </div></div>
 
@@ -966,6 +959,7 @@ h1.htitle em{font-style:italic;color:var(--ink);}
 </div>
 
 <script>
+const isLoggedIn = <?= $isLoggedIn ? 'true' : 'false'; ?>;
 // Hamburger drawer
 const hamBtn = document.querySelector('.ham-btn');
 const navDrawer = document.getElementById('nav-drawer');
@@ -987,6 +981,10 @@ document.addEventListener('click', function(e) {
 
 // Commission Modal Helper
 function openCM(id, name) {
+    if (!isLoggedIn) {
+        window.location.href = 'login.php?redirect=' + encodeURIComponent(window.location.href);
+        return;
+    }
     const modal = document.getElementById('cm');
     const select = document.getElementById('cm-artist-select');
     modal.classList.add('open');

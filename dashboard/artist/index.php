@@ -1,5 +1,7 @@
 <?php
 session_start();
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
 require_once __DIR__ . '/../../config/db.php';
 
 // Auth guard — artist only
@@ -30,7 +32,6 @@ $artistId = (int) $_SESSION['user_id'];  // ← whatever comes next in the file
 
  $statQueries = [
     'total_artworks'    => "SELECT COUNT(*) FROM artworks WHERE artist_id = $artistId",
-    'approved_artworks' => "SELECT COUNT(*) FROM artworks WHERE artist_id = $artistId AND status = 'approved'",
     'pending_artworks'  => "SELECT COUNT(*) FROM artworks WHERE artist_id = $artistId AND status = 'pending'",
     'rejected_artworks' => "SELECT COUNT(*) FROM artworks WHERE artist_id = $artistId AND status = 'rejected'",
     'sold_artworks'     => "SELECT COUNT(*) FROM artworks WHERE artist_id = $artistId AND status = 'sold'",
@@ -410,7 +411,6 @@ tr:hover td { background: var(--sand); color: var(--ink); }
     font-weight: 600; padding: 3px 9px; border-radius: 20px;
 }
 .pill.pending     { background: var(--sand); color: var(--ink); }
-.pill.approved    { background: var(--sand); color: var(--ink); }
 .pill.rejected    { background: var(--sand); color: var(--ink); }
 .pill.sold        { background: var(--sand); color: var(--ink); }
 .pill.hidden      { background: #F4F4F4; color: #888; }
@@ -655,17 +655,8 @@ tr:hover td { background: var(--sand); color: var(--ink); }
             <div class="label">Total Artworks</div>
             <div class="value"><?= $stats['total_artworks'] ?></div>
             <div class="sub">
-                <span><?= $stats['approved_artworks'] ?></span> approved
                 &middot; <span><?= $stats['sold_artworks'] ?></span> sold
             </div>
-        </div>
-        <div class="stat-card pending">
-            <div class="corner-icon">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-            </div>
-            <div class="label">Pending Review</div>
-            <div class="value"><?= $stats['pending_artworks'] ?></div>
-            <div class="sub">Waiting for admin approval</div>
         </div>
         <div class="stat-card sold">
             <div class="corner-icon">
