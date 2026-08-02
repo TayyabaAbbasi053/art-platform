@@ -19,7 +19,9 @@ $isLoggedIn = isset($_SESSION['user_id']);
  $offset     = ($page - 1) * $perPage;
 
 // ── Build query ──────────────────────────────────────────
- $where = [
+ $digitalCategoryId = $conn->query("SELECT id FROM categories WHERE name LIKE '%digital%' LIMIT 1")->fetch_row()[0] ?? 0;
+
+$where = [
     "a.status = 'active'",
     "u.status = 'active'",
     "ap.bio IS NOT NULL AND ap.bio != ''",
@@ -27,7 +29,7 @@ $isLoggedIn = isset($_SESSION['user_id']);
     "ap.art_style IS NOT NULL AND ap.art_style != ''",
     "u.profile_picture IS NOT NULL AND u.profile_picture != ''",
     "(ap.has_bank_account=1 OR ap.has_easypaisa=1 OR ap.has_jazzcash=1 OR ap.has_nayapay=1 OR ap.has_sadapay=1)",
-    "(c.name LIKE '%digital%' OR a.medium LIKE '%digital%')"
+    "a.category_id = " . (int)$digitalCategoryId
 ];
  $params = [];
  $types = '';
@@ -413,7 +415,7 @@ img{display:block;max-width:100%;}
     </div>
     <div class="nsearch">
       <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-      <input type="text" placeholder="Search artworks, artists..." value="<?= htmlspecialchars($search) ?>" onkeydown="if(event.key==='Enter'){window.location='artworks.php?q='+encodeURIComponent(this.value);}">
+      <input type="text" placeholder="Search digital artworks..." value="<?= htmlspecialchars($search) ?>" onkeydown="if(event.key==='Enter'){window.location='digital-art.php?q='+encodeURIComponent(this.value);}">
     </div>
     <div class="nend">
       <?php if ($isLoggedIn): ?>
@@ -451,7 +453,16 @@ img{display:block;max-width:100%;}
 <!-- CONTENT -->
 <div class="content">
 
-  
+  <form method="GET" action="digital-art.php" style="margin-bottom:20px;display:flex;gap:8px;max-width:420px;">
+  <?php foreach ($_GET as $k => $v): if ($k === 'q' || $k === 'page') continue; ?>
+    <input type="hidden" name="<?= htmlspecialchars($k) ?>" value="<?= htmlspecialchars($v) ?>">
+  <?php endforeach; ?>
+  <input type="text" name="q" placeholder="Search digital art, artists, tags..." value="<?= htmlspecialchars($search) ?>"
+    style="flex:1;padding:10px 14px;border:2px solid var(--border);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;background:var(--card);color:var(--ink);outline:none;">
+  <button type="submit" style="padding:10px 20px;background:var(--ink);color:var(--bg);border:none;border-radius:8px;font-size:13px;font-weight:500;font-family:'DM Sans',sans-serif;cursor:pointer;">
+    Search
+  </button>
+</form>
 <!-- Media type filter buttons -->
   <?php
     $mediaBase = $_GET;
