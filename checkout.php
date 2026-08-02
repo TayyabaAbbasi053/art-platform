@@ -112,7 +112,8 @@ if ($commissionOrderIdAjax > 0) {
     $fee = $baseAjax + $surchargeAjax;
     $breakdown[] = 'PKR ' . $baseAjax . ($surchargeAjax > 0 ? ' + PKR ' . $surchargeAjax . ' (weight)' : '') . ' = PKR ' . $fee;
 } else {
-    $fee = calculateShippingServerSide($conn, $buyerCity, $items);
+    $ajaxIsDigital = isset($_POST['is_digital']) && $_POST['is_digital'] === '1';
+    $fee = $ajaxIsDigital ? 0 : calculateShippingServerSide($conn, $buyerCity, $items);
 }
 
     // Build breakdown for display
@@ -330,7 +331,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
     $finalSurcharge = (int)(max(0, ceil($finalWeightKg - 1)) * 100);
     $finalShippingFee = $finalBase + $finalSurcharge;
 } else {
-    $finalShippingFee = calculateShippingServerSide($conn, $city, $cartItems);
+    $finalShippingFee = $isDigitalItem ? 0 : calculateShippingServerSide($conn, $city, $cartItems);
 }
 $finalTotal = $subtotal + $finalShippingFee;
 
@@ -1051,7 +1052,8 @@ document.addEventListener('DOMContentLoaded', () => {
             formData.append('artwork_id', <?= (int)($cartItems[0]['id'] ?? 0) ?>);
         }
         formData.append('buyer_city', city);
-        formData.append('commission_order_id', '<?php echo $commissionOrderId; ?>');
+formData.append('commission_order_id', '<?php echo $commissionOrderId; ?>');
+formData.append('is_digital', isDigital ? '1' : '0');
 
         fetch('checkout.php', {
             method: 'POST',
