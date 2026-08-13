@@ -14,14 +14,17 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
  $stats = [];
 
 // Stats now query the unified 'orders' table
+// NOTE: Artworks no longer go through an approval workflow — status is
+// one of 'active' / 'sold' / 'hidden'. The old 'pending' / 'approved'
+// artwork statuses were removed, so those stats have been dropped below.
  $queries = [
     'total_artists'      => "SELECT COUNT(*) FROM users WHERE role='artist'",
     'active_artists'     => "SELECT COUNT(*) FROM users WHERE role='artist' AND status='active'",
     'pending_artists'    => "SELECT COUNT(*) FROM users WHERE role='artist' AND status='pending'",
     'total_artworks'     => "SELECT COUNT(*) FROM artworks",
-    'pending_artworks'   => "SELECT COUNT(*) FROM artworks WHERE status='pending'",
-    'approved_artworks'  => "SELECT COUNT(*) FROM artworks WHERE status='approved'",
+    'active_artworks'    => "SELECT COUNT(*) FROM artworks WHERE status='active'",
     'sold_artworks'      => "SELECT COUNT(*) FROM artworks WHERE status='sold'",
+    'hidden_artworks'    => "SELECT COUNT(*) FROM artworks WHERE status='hidden'",
     'featured_artworks'  => "SELECT COUNT(*) FROM artworks WHERE is_featured=1",
     
     // Updated: Queries orders for artwork purchases (formerly buyer_inquiries)
@@ -41,7 +44,7 @@ foreach ($queries as $key => $sql) {
     $stats[$key] = $r ? (int)$r->fetch_row()[0] : 0;
 }
 
-// ── Recent artworks (last 6 pending) ──────────────────────
+// ── Recent artworks (last 6) ──────────────────────
  $recentArtworks = [];
  $ra = $conn->query("
     SELECT a.id, a.title, a.price, a.status, a.created_at,
@@ -542,13 +545,9 @@ tr:hover td {
     background: var(--sand);
     color: var(--ink);
 }
-.pill.approved {
+.pill.active {
     background: var(--ink);
     color: var(--bg);
-}
-.pill.rejected {
-    background: var(--sand);
-    color: var(--ink);
 }
 .pill.sold {
     background: var(--ink);
@@ -583,8 +582,7 @@ tr:hover td {
 /* ── Quick actions ───────────────────────────────────── */
 .quick-grid {
     display: grid;
-    /* Updated to 5 columns to fit the new 'Reports' card */
-    grid-template-columns: repeat(5, 1fr); 
+    grid-template-columns: repeat(4, 1fr);
     gap: 14px;
     margin-bottom: 28px;
 }
@@ -708,8 +706,8 @@ tr:hover td {
     <a href="artworks.php" class="nav-item">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9l4-4 4 4 4-4 4 4"/><circle cx="8.5" cy="14.5" r="1.5"/></svg>
         Artworks
-        <?php if ($stats['pending_artworks'] > 0): ?>
-            <span class="badge"><?= $stats['pending_artworks'] ?></span>
+        <?php if ($stats['hidden_artworks'] > 0): ?>
+            <span class="badge"><?= $stats['hidden_artworks'] ?></span>
         <?php endif; ?>
     </a>
     <a href="artists.php" class="nav-item">
@@ -774,25 +772,15 @@ tr:hover td {
 <main class="main">
 <div class="content">
 
-    <!-- Alert strip: show if there are pending artworks or artists -->
-    <?php if ($stats['pending_artworks'] > 0 || $stats['pending_artists'] > 0): ?>
+    <!-- Alert strip: artworks have no approval step anymore, so this now only
+         ever flags pending artist accounts. -->
+    <?php if ($stats['pending_artists'] > 0): ?>
     <div class="alert-strip">
         <div class="alert-text">
-            <?php if ($stats['pending_artworks'] > 0 && $stats['pending_artists'] > 0): ?>
-                You have <strong><?= $stats['pending_artworks'] ?> artwork<?= $stats['pending_artworks'] > 1 ? 's' : '' ?></strong> awaiting approval and <strong><?= $stats['pending_artists'] ?> artist<?= $stats['pending_artists'] > 1 ? 's' : '' ?></strong> pending review.
-            <?php elseif ($stats['pending_artworks'] > 0): ?>
-                You have <strong><?= $stats['pending_artworks'] ?> artwork<?= $stats['pending_artworks'] > 1 ? 's' : '' ?></strong> waiting for your approval.
-            <?php else: ?>
-                You have <strong><?= $stats['pending_artists'] ?> new artist<?= $stats['pending_artists'] > 1 ? 's' : '' ?></strong> waiting for account approval.
-            <?php endif; ?>
+            You have <strong><?= $stats['pending_artists'] ?> new artist<?= $stats['pending_artists'] > 1 ? 's' : '' ?></strong> waiting for account approval.
         </div>
         <div class="alert-actions">
-            <?php if ($stats['pending_artworks'] > 0): ?>
-                <a href="artworks.php?status=pending" class="alert-btn primary">Review Artworks</a>
-            <?php endif; ?>
-            <?php if ($stats['pending_artists'] > 0): ?>
-                <a href="artists.php?status=pending" class="alert-btn ghost">Review Artists</a>
-            <?php endif; ?>
+            <a href="artists.php?status=pending" class="alert-btn primary">Review Artists</a>
         </div>
     </div>
     <?php endif; ?>
@@ -816,7 +804,7 @@ tr:hover td {
             </div>
             <div class="label">Artworks</div>
             <div class="value"><?= $stats['total_artworks'] ?></div>
-            <div class="sub"><span><?= $stats['approved_artworks'] ?></span> approved &middot; <span><?= $stats['pending_artworks'] ?></span> pending &middot; <span style="color:var(--ink)"><?= $stats['sold_artworks'] ?></span> sold</div>
+            <div class="sub"><span><?= $stats['active_artworks'] ?></span> active &middot; <span><?= $stats['hidden_artworks'] ?></span> hidden &middot; <span style="color:var(--ink)"><?= $stats['sold_artworks'] ?></span> sold</div>
         </div>
         <div class="stat-card inquiries">
             <div class="corner-icon">
@@ -841,13 +829,13 @@ tr:hover td {
         <span class="section-title">Quick Actions</span>
     </div>
     <div class="quick-grid">
-        <a href="artworks.php?status=pending" class="quick-card review-artworks">
+        <a href="artworks.php" class="quick-card manage-artworks">
             <div class="q-icon">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="1.8"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9l4-4 4 4 4-4 4 4"/><circle cx="8.5" cy="14.5" r="1.5"/></svg>
             </div>
             <div>
-                <div class="q-label">Review Artworks <?php if($stats['pending_artworks']>0): ?><span class="pending-badge"><?= $stats['pending_artworks'] ?></span><?php endif; ?></div>
-                <div class="q-desc">Approve or reject submissions</div>
+                <div class="q-label">Manage Artworks</div>
+                <div class="q-desc">View, feature, or hide listings</div>
             </div>
         </a>
         <a href="artists.php?status=pending" class="quick-card manage-artists">
@@ -875,21 +863,6 @@ tr:hover td {
             <div>
                 <div class="q-label">New Commissions <?php if($stats['new_commissions']>0): ?><span class="pending-badge"><?= $stats['new_commissions'] ?></span><?php endif; ?></div>
                 <div class="q-desc">Custom artwork requests</div>
-            </div>
-        </a>
-        <a href="reports.php" class="quick-card">
-            <div class="q-icon">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="1.8">
-                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
-                    <polyline points="14 2 14 8 20 8"/>
-                    <line x1="16" y1="13" x2="8" y2="13"/>
-                    <line x1="16" y1="17" x2="8" y2="17"/>
-                    <polyline points="10 9 9 9 8 9"/>
-                </svg>
-            </div>
-            <div>
-                <div class="q-label">Artist Reports</div>
-                <div class="q-desc">Sales & commissions by period</div>
             </div>
         </a>
     </div>

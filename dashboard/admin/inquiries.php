@@ -687,7 +687,7 @@ function buildQS($overrides = []) {
         /* ── Pills ───────────────────────────────────────────── */
         .pill { display: inline-block; font-size: 9px; letter-spacing: .5px; text-transform: uppercase; font-weight: 600; padding: 3px 9px; border-radius: 20px; white-space: nowrap; background: var(--sand); color: var(--ink); }
         .pill.pending { background: var(--sand); color: var(--ink); }
-.pill.cod-pending { background: #fff3cd; color: #856404; border: 1px solid #ffc107; font-weight: 700; }        
+.pill.cod-pending { background: #fff3cd; color: #856404; border: 1px solid #ffc107; font-weight: 700; }        
         /* ── Actions ─────────────────────────────────────────── */
         .td-actions { display: flex; flex-direction: row; gap: 6px; align-items: center; flex-wrap: nowrap; min-width: 160px; }
 .td-actions form { display: contents; }
@@ -1195,7 +1195,7 @@ if ($item['item_status'] === 'pending' && $item['payment_method'] === 'cod') {
             }
 
             // Status update dropdown
-            if (item.item_status !== 'delivered' && item.item_status !== 'cancelled') {
+            if (item.item_status !== 'cancelled') {
                 html += `
                     <form method="POST" style="margin-top:16px;background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:16px;">
                         <input type="hidden" name="action" value="update_status">
