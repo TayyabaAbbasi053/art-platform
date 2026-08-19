@@ -165,6 +165,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $catSlugRow = $catSlugRes->get_result()->fetch_assoc();
     $isDigitalCategory = ($catSlugRow && $catSlugRow['slug'] === 'digital-art');
 
+    // Digital art has no physical shipment — always force weight to 1kg
+    // server-side too, regardless of what the (hidden) form field posted.
+    if ($isDigitalCategory) {
+        $weight_kg = 1.00;
+    }
+
     // Validation: Check if the 'images' input actually has files
     $hasFiles = isset($_FILES['images']) && isset($_FILES['images']['name'][0]) && $_FILES['images']['name'][0] !== '';
     $imageCount = $hasFiles ? count($_FILES['images']['name']) : 0;
@@ -262,13 +268,29 @@ if (!$stmt) {
                     $fileName = $files['name'][$i];
                     $fileTmp  = $files['tmp_name'][$i];
                     $fileSize = $files['size'][$i];
-                    
+
+                    file_put_contents(
+                        $__dbg,
+                        date('c') . " FILE[$i] name={$fileName} size={$fileSize}\n",
+                        FILE_APPEND
+                    );
+
                     $ext = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
                     if (!in_array($ext, $allowedExt)) {
+                        file_put_contents(
+                            $__dbg,
+                            date('c') . " SKIP[$i] {$fileName} - Invalid extension: {$ext}\n",
+                            FILE_APPEND
+                        );
                         continue; // Skip invalid types
                     }
                     if (in_array($ext, ['heic', 'heif']) && !$heicSupported) {
                         error_log("HEIC upload skipped — server lacks ImageMagick/timeout support for file: {$fileName}");
+                        file_put_contents(
+                            $__dbg,
+                            date('c') . " SKIP[$i] {$fileName} - HEIC not supported on this server\n",
+                            FILE_APPEND
+                        );
                         continue; // Skip HEIC if the server can't convert it
                     }
 
@@ -276,6 +298,11 @@ if (!$stmt) {
                     $isMediaFile = in_array($ext, $videoExt) || in_array($ext, $audioExt);
                     $maxFileSize = $isMediaFile ? 60 * 1024 * 1024 : 10 * 1024 * 1024;
                     if ($fileSize > $maxFileSize) {
+                        file_put_contents(
+                            $__dbg,
+                            date('c') . " SKIP[$i] {$fileName} - Too large ({$fileSize} bytes, max {$maxFileSize})\n",
+                            FILE_APPEND
+                        );
                         continue; // Skip oversized files
                     }
 
@@ -284,6 +311,11 @@ if (!$stmt) {
                     // even for genuinely valid files, so if the server has confirmed HEIC support
                     // and the extension matches, we trust the extension instead of the MIME sniff.
                     $mime  = finfo_file($finfo, $fileTmp);
+                    file_put_contents(
+                        $__dbg,
+                        date('c') . " MIME[$i] {$fileName} = {$mime}\n",
+                        FILE_APPEND
+                    );
                     $allowedMime = [
                         'image/jpeg', 'image/png', 'image/webp', 'image/gif',
                         'image/heic', 'image/heif',
@@ -292,6 +324,11 @@ if (!$stmt) {
                     ];
                     $isTrustedHeic = $heicSupported && in_array($ext, ['heic', 'heif']);
                     if (!$isTrustedHeic && !in_array($mime, $allowedMime)) {
+                        file_put_contents(
+                            $__dbg,
+                            date('c') . " SKIP[$i] {$fileName} - Invalid MIME: {$mime}\n",
+                            FILE_APPEND
+                        );
                         continue; // Skip files whose real content doesn't match an allowed type
                     }
 
@@ -301,10 +338,20 @@ if (!$stmt) {
                     if (in_array($ext, $dimensionCheckable)) {
                         $dimensions = @getimagesize($fileTmp);
                         if ($dimensions === false) {
+                            file_put_contents(
+                                $__dbg,
+                                date('c') . " SKIP[$i] {$fileName} - getimagesize() failed (unreadable image)\n",
+                                FILE_APPEND
+                            );
                             continue; // Not a readable image despite passing MIME check — skip it
                         }
                         [$imgWidth, $imgHeight] = $dimensions;
                         if ($imgWidth > 8000 || $imgHeight > 8000) {
+                            file_put_contents(
+                                $__dbg,
+                                date('c') . " SKIP[$i] {$fileName} - Dimensions too large ({$imgWidth}x{$imgHeight})\n",
+                                FILE_APPEND
+                            );
                             continue; // Skip excessively large images
                         }
                     }
@@ -329,6 +376,13 @@ if (in_array($ext, ['heic', 'heif'])) {
     $newName = 'art_' . $artworkId . '_' . $uniqueId . '.' . $ext;
     $destPath = $uploadDir . $newName;
     $converted = move_uploaded_file($fileTmp, $destPath);
+
+    file_put_contents(
+        $__dbg,
+        date('c') . " MOVE[$i] {$fileName} = " . ($converted ? "SUCCESS" : "FAILED") . "\n",
+        FILE_APPEND
+    );
+
     $dbPath = 'uploads/artworks/' . $newName;
     if ($converted) {
         chmod($destPath, 0644);
@@ -344,9 +398,19 @@ if ($converted) {
 
                         $stmtImg->bind_param('issii', $artworkId, $dbPath, $mediaType, $isCover, $uploadedCount);
                         if ($stmtImg->execute()) {
+                            file_put_contents(
+                                $__dbg,
+                                date('c') . " DB[$i] INSERT OK {$dbPath}\n",
+                                FILE_APPEND
+                            );
                             $savedFilePaths[] = $destPath;
                             $uploadedCount++;
                         } else {
+                            file_put_contents(
+                                $__dbg,
+                                date('c') . " DB[$i] INSERT FAILED: " . $stmtImg->error . "\n",
+                                FILE_APPEND
+                            );
                             error_log('Image insert failed: ' . $stmtImg->error);
                             @unlink($destPath); // this specific insert failed — remove its file immediately
                         }
@@ -763,7 +827,8 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
             <div class="form-grid">
                 <div class="field-group">
                     <label>Size <span>*</span></label>
-                    <input type="text" name="size" class="field-input" placeholder="e.g. 24 x 36 inches" required>
+                    <input type="text" name="size" id="sizeInput" class="field-input" placeholder="e.g. 24 x 36 inches" required>
+                    <p style="font-size:11px;color:var(--muted);margin-top:6px;" id="sizeHint"></p>
                 </div>
                 <div class="field-group">
                     <label>Price (PKR) <span id="priceRequiredMark">*</span></label>
@@ -775,10 +840,10 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
                 </div>
             </div>
 
-            <div class="form-grid">
-                <div class="field-group">
+            <div class="form-grid" id="weightGroupRow">
+                <div class="field-group" id="weightGroup">
                     <label>Weight (kg) <span>*</span></label>
-                    <input type="number" name="weight_kg" class="field-input" placeholder="e.g. 1.5" min="0.1" step="0.1" value="1" required>
+                    <input type="number" name="weight_kg" id="weightInput" class="field-input" placeholder="e.g. 1.5" min="0.1" step="0.1" value="1" required>
                     <p style="font-size:11px;color:var(--muted);margin-top:6px;">Used to calculate shipping fee. Add +100 PKR per kg above 1 kg.</p>
                 </div>
                 <div class="field-group">
@@ -896,18 +961,57 @@ const uploadForm = document.getElementById('uploadForm');
 let currentFiles = [];
 let isSubmitting = false;
 
+// Keeps the real <input type="file"> in sync with our currentFiles array,
+// since previews are rendered from currentFiles but the browser only
+// submits whatever is sitting in fileInput.files.
+function syncFileInput() {
+    const dt = new DataTransfer();
+
+    currentFiles.forEach(file => {
+        dt.items.add(file);
+    });
+
+    fileInput.files = dt.files;
+}
+
 dropZone.addEventListener('click', () => fileInput.click());
 
 // ── Toggle Digital File field based on category ──────────────────────────
 const categorySelect = document.getElementById('categorySelect');
 const digitalFileGroup = document.getElementById('digitalFileGroup');
 const digitalFileInput = document.getElementById('digitalFileInput');
+const weightGroup = document.getElementById('weightGroup');
+const weightInput = document.getElementById('weightInput');
+const sizeInput = document.getElementById('sizeInput');
+const sizeHint = document.getElementById('sizeHint');
 
 function updateDigitalFileVisibility() {
     const selected = categorySelect.options[categorySelect.selectedIndex];
     const isDigital = selected && selected.dataset.slug === 'digital-art';
     digitalFileGroup.style.display = isDigital ? 'block' : 'none';
     digitalFileInput.required = isDigital;
+
+    // ── Weight: digital art has no physical shipment, so hide the field
+    // and lock the value at 1 (kg) instead of asking the artist for it. ──
+    if (isDigital) {
+        weightGroup.style.display = 'none';
+        weightInput.value = '1';
+        weightInput.required = false;
+    } else {
+        weightGroup.style.display = 'block';
+        weightInput.required = true;
+    }
+
+    // ── Size: guide the artist toward the right unit depending on
+    // whether this is a physical piece or a digital file, since "size"
+    // means something different for an image vs. an audio/video file. ──
+    if (isDigital) {
+        sizeInput.placeholder = 'e.g. 1920 x 1080 px  or  15 MB';
+        sizeHint.textContent = 'Images: enter dimensions in pixels (e.g. "1920 x 1080 px"). Audio/video files: enter the file size in MB (e.g. "15 MB").';
+    } else {
+        sizeInput.placeholder = 'e.g. 24 x 36 inches';
+        sizeHint.textContent = '';
+    }
 
     const baseImageAccept = 'image/jpeg,image/png,image/webp,image/gif<?= $heicSupported ? ',image/heic,image/heif' : '' ?>';
     const digitalPreviewAccept = baseImageAccept + ',video/mp4,video/quicktime,video/webm,audio/mpeg,audio/wav,audio/mp4';
@@ -945,12 +1049,14 @@ fileInput.addEventListener('change', function(e) {
             currentFiles.push(file);
         }
     });
-    
+
+    syncFileInput();
     renderPreviews();
 });
 
 function removeFileAtIndex(index) {
     currentFiles.splice(index, 1);
+    syncFileInput();
     renderPreviews();
 }
 
@@ -991,6 +1097,19 @@ function renderPreviews() {
     });
     previewCounter.innerHTML = `${currentFiles.length} / 5 files selected`;
 }
+
+// Safety net: re-sync right before submit in case anything got out of step,
+// and log exactly what's being sent so mismatches are easy to spot in devtools.
+uploadForm.addEventListener('submit', function () {
+    syncFileInput();
+
+    console.log(
+        "Submitting",
+        fileInput.files.length,
+        "files:",
+        [...fileInput.files].map(f => f.name)
+    );
+});
 </script>
 </body>
 </html>
