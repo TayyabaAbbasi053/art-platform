@@ -72,8 +72,8 @@ function calculateShippingServerSide($conn, $buyerCity, $cartItems): int {
         $artistCity = $row['artist_city'] ?? '';
         $weightKg   = (float)($row['weight_kg'] ?? 1.00);
 
-        // Base fee: same city = 350, different city = 500
-        $base = (!empty($artistCity) && strcasecmp(trim($buyerCity), trim($artistCity)) === 0) ? 300 : 500;
+        // Base fee: same city = 300, different city = 350
+        $base = (!empty($artistCity) && strcasecmp(trim($buyerCity), trim($artistCity)) === 0) ? 300 : 350;
 
         // Weight surcharge: +100 per kg above 1kg
         $weightSurcharge = (int)(max(0, ceil($weightKg - 1)) * 100);
@@ -107,7 +107,7 @@ if ($commissionOrderIdAjax > 0) {
         $apRes = $conn->query("SELECT city FROM artist_profiles WHERE user_id = $artistIdAjax LIMIT 1");
         if ($apRes) $artistCityAjax = $apRes->fetch_assoc()['city'] ?? '';
     }
-    $baseAjax = (!empty($artistCityAjax) && strcasecmp(trim($buyerCity), trim($artistCityAjax)) === 0) ? 300 : 500;
+    $baseAjax = (!empty($artistCityAjax) && strcasecmp(trim($buyerCity), trim($artistCityAjax)) === 0) ? 300 : 350;
     $surchargeAjax = (int)(max(0, ceil($weightKgAjax - 1)) * 100);
     $fee = $baseAjax + $surchargeAjax;
     $breakdown[] = 'PKR ' . $baseAjax . ($surchargeAjax > 0 ? ' + PKR ' . $surchargeAjax . ' (weight)' : '') . ' = PKR ' . $fee;
@@ -129,7 +129,7 @@ if ($commissionOrderIdAjax > 0) {
             while ($bRow = $bRes->fetch_assoc()) {
                 $artistCity  = $bRow['artist_city'] ?? '';
                 $weightKg    = (float)($bRow['weight_kg'] ?? 1.00);
-                $base = (!empty($artistCity) && strcasecmp(trim($buyerCity), trim($artistCity)) === 0) ? 300 : 500;
+                $base = (!empty($artistCity) && strcasecmp(trim($buyerCity), trim($artistCity)) === 0) ? 300 : 350;
                 $surcharge   = (int)(max(0, ceil($weightKg - 1)) * 100);
                 $breakdown[] = 'PKR ' . $base . ($surcharge > 0 ? ' + PKR ' . $surcharge . ' (weight)' : '') . ' = PKR ' . ($base + $surcharge);
             }
@@ -327,7 +327,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
         if ($res) $artistCity = $res->fetch_assoc()['city'] ?? '';
     }
     $finalWeightKg = (float)(($existingOrder['proposed_weight_kg'] ?? null) ?: 1.00);
-    $finalBase = (!empty($artistCity) && strcasecmp(trim($city), trim($artistCity)) === 0) ? 300 : 500;
+    $finalBase = (!empty($artistCity) && strcasecmp(trim($city), trim($artistCity)) === 0) ? 300 : 350;
     $finalSurcharge = (int)(max(0, ceil($finalWeightKg - 1)) * 100);
     $finalShippingFee = $finalBase + $finalSurcharge;
 } else {
