@@ -188,8 +188,9 @@ img{max-width:100%;display:block;}
 
 /* GALLERY */
 .gallery{position:relative;}
-.main-img{background:var(--sand);border-radius:14px;overflow:hidden;aspect-ratio:1;margin-bottom:12px;}
-.main-img img{width:100%;height:100%;object-fit:cover;}
+.main-img{background:var(--bg);border-radius:14px;overflow:hidden;aspect-ratio:1;margin-bottom:12px;display:flex;align-items:center;justify-content:center;}
+.main-img img{width:100%;height:100%;object-fit:contain;}
+.main-img video{width:100%;height:100%;object-fit:contain;}
 .thumb-grid{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap;}
 .thumb{width:80px;height:80px;border-radius:8px;overflow:hidden;cursor:pointer;border:2px solid transparent;background:var(--sand);}
 .thumb.active{border-color:var(--ink);}
@@ -418,7 +419,7 @@ h1{font-family:'Playfair Display',serif;font-size:clamp(24px,2.5vw,32px);font-we
       ?>
       <?php $coverType = $coverImage['media_type'] ?? 'image'; ?>
       <?php if ($mainImgUrl && $coverType === 'video'): ?>
-        <video src="<?= htmlspecialchars($mainImgUrl) ?>" id="mainImage" controls playsinline style="width:100%;height:100%;object-fit:cover;"></video>
+        <video src="<?= htmlspecialchars($mainImgUrl) ?>" id="mainImage" controls playsinline style="width:100%;height:100%;object-fit:contain;"></video>
       <?php elseif ($mainImgUrl && $coverType === 'audio'): ?>
         <div id="mainImage" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;">
           <audio src="<?= htmlspecialchars($mainImgUrl) ?>" controls style="width:85%;"></audio>
@@ -681,7 +682,7 @@ if (thumbs.length > 0 && mainImgContainer) {
         el.playsInline = true;
         el.style.width = '100%';
         el.style.height = '100%';
-        el.style.objectFit = 'cover';
+        el.style.objectFit = 'contain';
       } else if (type === 'audio') {
         const wrap = document.createElement('div');
         wrap.style.cssText = 'width:100%;height:100%;display:flex;align-items:center;justify-content:center;';
@@ -695,6 +696,7 @@ if (thumbs.length > 0 && mainImgContainer) {
         el = document.createElement('img');
         el.src = src;
         el.alt = 'Artwork';
+        el.style.objectFit = 'contain';
       }
       el.id = 'mainImage';
       mainImgContainer.appendChild(el);
