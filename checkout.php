@@ -48,6 +48,15 @@ if (!is_dir($uploadDir)) {
     mkdir($uploadDir, 0755, true);
 }
 
+// ── Helper: Robust digital-category detection ───────────────
+// Matches on slug OR name so this doesn't silently break if the
+// categories.slug column is empty/blank/differently cased in the DB.
+function isDigitalCategory(?string $slug, ?string $name): bool {
+    $slug = strtolower(trim((string)$slug));
+    $name = strtolower(trim((string)$name));
+    return $slug === 'digital-art' || $name === 'digital art';
+}
+
 // ── Helper: Dynamic Shipping Calculation (Server-Side) ─────
 function calculateShippingServerSide($conn, $buyerCity, $cartItems): int {
     if (empty($buyerCity) || empty($cartItems)) return 0;
@@ -89,35 +98,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_calculate_shippi
     header('Content-Type: application/json');
     $buyerCity = trim($_POST['buyer_city'] ?? '');
 
-    $items = [];
-$ajaxArtworkId = (int)($_POST['artwork_id'] ?? 0);
-if ($ajaxArtworkId > 0) {
-    $items[] = ['type' => 'artwork', 'id' => $ajaxArtworkId];
-}
-
     // Check if this is a commission checkout
-$commissionOrderIdAjax = isset($_POST['commission_order_id']) ? (int)$_POST['commission_order_id'] : 0;
-if ($commissionOrderIdAjax > 0) {
-    $crRes = $conn->query("SELECT cr.artist_id, o.proposed_weight_kg FROM commission_requests cr JOIN orders o ON o.id = cr.order_id WHERE cr.order_id = $commissionOrderIdAjax LIMIT 1");
-    $crRowAjax = $crRes ? $crRes->fetch_assoc() : null;
-    $artistIdAjax = $crRowAjax['artist_id'] ?? null;
-    $weightKgAjax = (float)(($crRowAjax['proposed_weight_kg'] ?? null) ?: 1.00);
-    $artistCityAjax = '';
-    if ($artistIdAjax) {
-        $apRes = $conn->query("SELECT city FROM artist_profiles WHERE user_id = $artistIdAjax LIMIT 1");
-        if ($apRes) $artistCityAjax = $apRes->fetch_assoc()['city'] ?? '';
+    $items = [];
+    $ajaxArtworkId = (int)($_POST['artwork_id'] ?? 0);
+    if ($ajaxArtworkId > 0) {
+        $items[] = ['type' => 'artwork', 'id' => $ajaxArtworkId];
     }
-    $baseAjax = (!empty($artistCityAjax) && strcasecmp(trim($buyerCity), trim($artistCityAjax)) === 0) ? 300 : 350;
-    $surchargeAjax = (int)(max(0, ceil($weightKgAjax - 1)) * 100);
-    $fee = $baseAjax + $surchargeAjax;
-    $breakdown[] = 'PKR ' . $baseAjax . ($surchargeAjax > 0 ? ' + PKR ' . $surchargeAjax . ' (weight)' : '') . ' = PKR ' . $fee;
-} else {
-    $ajaxIsDigital = isset($_POST['is_digital']) && $_POST['is_digital'] === '1';
-    $fee = $ajaxIsDigital ? 0 : calculateShippingServerSide($conn, $buyerCity, $items);
-}
 
-    // Build breakdown for display
     $breakdown = [];
+    $commissionOrderIdAjax = isset($_POST['commission_order_id']) ? (int)$_POST['commission_order_id'] : 0;
+    if ($commissionOrderIdAjax > 0) {
+        $crRes = $conn->query("
+            SELECT cr.artist_id, o.proposed_weight_kg, c.slug AS category_slug, c.name AS category_name
+            FROM commission_requests cr
+            JOIN orders o ON o.id = cr.order_id
+            LEFT JOIN categories c ON c.id = o.commission_category_id
+            WHERE cr.order_id = $commissionOrderIdAjax LIMIT 1
+        ");
+        $crRowAjax = $crRes ? $crRes->fetch_assoc() : null;
+        $ajaxCommissionIsDigital = isDigitalCategory($crRowAjax['category_slug'] ?? '', $crRowAjax['category_name'] ?? '');
+
+        if ($ajaxCommissionIsDigital) {
+            $fee = 0;
+        } else {
+            $artistIdAjax = $crRowAjax['artist_id'] ?? null;
+            $weightKgAjax = (float)(($crRowAjax['proposed_weight_kg'] ?? null) ?: 1.00);
+            $artistCityAjax = '';
+            if ($artistIdAjax) {
+                $apRes = $conn->query("SELECT city FROM artist_profiles WHERE user_id = $artistIdAjax LIMIT 1");
+                if ($apRes) $artistCityAjax = $apRes->fetch_assoc()['city'] ?? '';
+            }
+            $baseAjax = (!empty($artistCityAjax) && strcasecmp(trim($buyerCity), trim($artistCityAjax)) === 0) ? 300 : 350;
+            $surchargeAjax = (int)(max(0, ceil($weightKgAjax - 1)) * 100);
+            $fee = $baseAjax + $surchargeAjax;
+            $breakdown[] = 'PKR ' . $baseAjax . ($surchargeAjax > 0 ? ' + PKR ' . $surchargeAjax . ' (weight)' : '') . ' = PKR ' . $fee;
+        }
+    } else {
+        $ajaxIsDigital = isset($_POST['is_digital']) && $_POST['is_digital'] === '1';
+        $fee = $ajaxIsDigital ? 0 : calculateShippingServerSide($conn, $buyerCity, $items);
+    }
+
+    // Build breakdown for display (artwork items only — commission breakdown, if any, was set above)
     if (!empty($items)) {
         $ids = array_map(fn($i) => (int)$i['id'], array_filter($items, fn($i) => $i['type'] === 'artwork'));
         if (!empty($ids)) {
@@ -143,7 +164,7 @@ if ($commissionOrderIdAjax > 0) {
 // ── Flow: Commission ──────────────────────────────────────
 if ($isCommissionCheckout) {
     $stmt = $conn->prepare("
-        SELECT o.*, c.name AS category_name, ua.name AS commission_artist_name
+        SELECT o.*, c.name AS category_name, c.slug AS category_slug, ua.name AS commission_artist_name
         FROM orders o
         LEFT JOIN categories c ON o.commission_category_id = c.id
         LEFT JOIN commission_requests cr ON cr.order_id = o.id
@@ -166,11 +187,17 @@ if ($isCommissionCheckout) {
     }
 
     $commissionCategoryName = $existingOrder['category_name'];
+    $isDigitalItem = isDigitalCategory($existingOrder['category_slug'] ?? '', $existingOrder['category_name'] ?? '');
     $total = (float)($existingOrder['total'] ?? 0);
     $shippingFee = (float)($existingOrder['shipping_fee'] ?? 0); 
     $subtotal = (float)($existingOrder['subtotal'] ?? 0);
 
     if ($subtotal <= 0 && $total > 0) { $subtotal = $total; }
+
+    if ($isDigitalItem) {
+        $shippingFee = 0;
+        $total = $subtotal;
+    }
 
     $cartItems[] = [
         'type' => 'commission',
@@ -206,7 +233,8 @@ if ($isCommissionCheckout) {
                (SELECT ai.image_path FROM artwork_images ai WHERE ai.artwork_id = a.id AND ai.is_cover = 1 LIMIT 1) AS cover_image,
                (SELECT ai.media_type FROM artwork_images ai WHERE ai.artwork_id = a.id AND ai.is_cover = 1 LIMIT 1) AS cover_media_type,
                ua.name AS artist_name,
-               c.slug AS category_slug
+               c.slug AS category_slug,
+               c.name AS category_name
         FROM artworks a
         JOIN users ua ON a.artist_id = ua.id
         LEFT JOIN categories c ON a.category_id = c.id
@@ -228,7 +256,7 @@ if ($isCommissionCheckout) {
     }
 
     $price = $artworkRow['price'];
-    $isDigitalItem = (($artworkRow['category_slug'] ?? '') === 'digital-art');
+    $isDigitalItem = isDigitalCategory($artworkRow['category_slug'] ?? '', $artworkRow['category_name'] ?? '');
     $cartItems[] = [
         'type' => 'artwork',
         'id' => $artworkRow['id'],
@@ -320,16 +348,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
             try {
                 // Recalculate Shipping Server-Side based on submitted City
                 if ($isCommissionCheckout && $existingOrder) {
-    $artistId = $existingOrder['commission_artist_id'] ?? null;
-    $artistCity = '';
-    if ($artistId) {
-        $res = $conn->query("SELECT city FROM artist_profiles WHERE user_id = $artistId LIMIT 1");
-        if ($res) $artistCity = $res->fetch_assoc()['city'] ?? '';
+    if ($isDigitalItem) {
+        $finalShippingFee = 0;
+    } else {
+        $artistId = $existingOrder['commission_artist_id'] ?? null;
+        $artistCity = '';
+        if ($artistId) {
+            $res = $conn->query("SELECT city FROM artist_profiles WHERE user_id = $artistId LIMIT 1");
+            if ($res) $artistCity = $res->fetch_assoc()['city'] ?? '';
+        }
+        $finalWeightKg = (float)(($existingOrder['proposed_weight_kg'] ?? null) ?: 1.00);
+        $finalBase = (!empty($artistCity) && strcasecmp(trim($city), trim($artistCity)) === 0) ? 300 : 350;
+        $finalSurcharge = (int)(max(0, ceil($finalWeightKg - 1)) * 100);
+        $finalShippingFee = $finalBase + $finalSurcharge;
     }
-    $finalWeightKg = (float)(($existingOrder['proposed_weight_kg'] ?? null) ?: 1.00);
-    $finalBase = (!empty($artistCity) && strcasecmp(trim($city), trim($artistCity)) === 0) ? 300 : 350;
-    $finalSurcharge = (int)(max(0, ceil($finalWeightKg - 1)) * 100);
-    $finalShippingFee = $finalBase + $finalSurcharge;
 } else {
     $finalShippingFee = $isDigitalItem ? 0 : calculateShippingServerSide($conn, $city, $cartItems);
 }
