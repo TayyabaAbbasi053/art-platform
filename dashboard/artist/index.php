@@ -27,6 +27,53 @@ $artistId = (int) $_SESSION['user_id'];  // ← whatever comes next in the file
  $artistId   = (int) $_SESSION['user_id'];
  $artistName = $_SESSION['name'] ?? 'Artist';
 
+// ── Handle account deletion ─────────────────────────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_account'])) {
+    $conn->begin_transaction();
+    try {
+        // Delete images for all of this artist's artworks
+        $conn->query("DELETE ai FROM artwork_images ai INNER JOIN artworks a ON ai.artwork_id = a.id WHERE a.artist_id = $artistId");
+
+        // Delete the artworks themselves.
+        // Note: order_items / orders that reference these artworks are NOT deleted —
+        // buyers keep their purchase/order history. Those pages already fall back to
+        // a generic "Artwork" label when the joined artwork row is missing.
+        $conn->query("DELETE FROM artworks WHERE artist_id = $artistId");
+
+        // Delete ratings/reviews ABOUT this artist — meaningless once the artist is gone,
+        // and not something a buyer needs preserved as "their" order data.
+        $conn->query("DELETE FROM artist_ratings WHERE artist_id = $artistId");
+
+        // Unassign this artist from any commission requests rather than deleting the
+        // request itself, so the buyer's commission history / order stays intact.
+        $conn->query("UPDATE commission_requests SET artist_id = NULL WHERE artist_id = $artistId");
+
+        // Null out this artist's references in order history / messages rather than
+        // deleting those rows — the order_id, status changes, and message content/sender_name
+        // all belong to the BUYER's order record and must stay intact. We only clear the
+        // dangling link back to the now-deleted artist user row.
+        $conn->query("UPDATE order_status_history SET changed_by_id = NULL WHERE changed_by_id = $artistId AND changed_by_role = 'artist'");
+        $conn->query("UPDATE order_messages SET sender_id = NULL WHERE sender_id = $artistId AND sender_role = 'artist'");
+
+        // Delete the artist profile row
+        $conn->query("DELETE FROM artist_profiles WHERE user_id = $artistId");
+
+        // Finally, delete the user account itself
+        $conn->query("DELETE FROM users WHERE id = $artistId");
+
+        $conn->commit();
+    } catch (Exception $e) {
+        $conn->rollback();
+        error_log('[delete_account] Failed for artist_id=' . $artistId . ': ' . $e->getMessage());
+        header('Location: index.php?delete_error=1');
+        exit;
+    }
+
+    session_destroy();
+    header('Location: ../../login.php?deleted=1');
+    exit;
+}
+
 // ── Stats queries ──────────────────────────────────────────
  $stats = [];
 
@@ -364,6 +411,11 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
 .stat-card .corner-icon svg { stroke: var(--ink); }
 /* GLOW OVERRIDE */
 .stat-card .corner-icon::before { display: none; }
+.stat-card.danger { border-color: #C0392B; }
+.stat-card.danger:hover { box-shadow: 0 4px 20px rgba(192,57,43,.12); }
+.stat-card.danger .label, .stat-card.danger .value, .stat-card.danger .sub { color: #C0392B; }
+.stat-card.danger .corner-icon { background: #FBEAE8; }
+.stat-card.danger .corner-icon svg { stroke: #C0392B; }
 
 /* ── Quick actions ───────────────────────────────────── */
 .quick-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 28px; }
@@ -678,6 +730,14 @@ tr:hover td { background: var(--sand); color: var(--ink); }
                 <span><?= $stats['new_commissions'] ?></span> new
             </div>
         </div>
+        <div class="stat-card danger" onclick="openDeleteModal()" style="cursor:pointer;">
+            <div class="corner-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+            </div>
+            <div class="label">Delete Profile</div>
+            <div class="value" style="font-size:16px;font-family:'DM Sans',sans-serif;font-weight:600;">Permanently</div>
+            <div class="sub">Deletes account &amp; data</div>
+        </div>
     </div>
 
     <!-- ── Quick Actions ──────────────────────────── -->
@@ -845,6 +905,32 @@ tr:hover td { background: var(--sand); color: var(--ink); }
     </div>
 </div>
 
+<?php if (isset($_GET['delete_error'])): ?>
+<div style="position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#C0392B;color:#fff;padding:12px 20px;border-radius:8px;font-size:13px;z-index:400;box-shadow:0 4px 16px rgba(0,0,0,.2);">
+    Something went wrong deleting your account. Please try again or contact support.
+</div>
+<?php endif; ?>
+
+<!-- Delete Account Confirmation Modal -->
+<div id="delete-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:500;align-items:center;justify-content:center;">
+    <div style="background:var(--card);border-radius:14px;max-width:380px;width:90%;padding:28px;text-align:center;box-shadow:0 12px 40px rgba(0,0,0,.2);">
+        <div style="width:52px;height:52px;background:#FBEAE8;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#C0392B" stroke-width="1.8"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+        </div>
+        <h3 style="font-family:'Playfair Display',serif;font-size:19px;color:var(--ink);margin-bottom:8px;">Delete your profile?</h3>
+        <p style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:22px;">
+            This will permanently delete your account, artworks, and profile data. <strong>This action cannot be undone.</strong>
+        </p>
+        <div style="display:flex;gap:10px;justify-content:center;">
+            <button onclick="closeDeleteModal()" style="flex:1;padding:10px 16px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--ink);font-size:13px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;">No, keep it</button>
+            <form method="POST" style="flex:1;margin:0;">
+                <input type="hidden" name="delete_account" value="1">
+                <button type="submit" style="width:100%;padding:10px 16px;border-radius:8px;border:none;background:#C0392B;color:#fff;font-size:13px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;">Yes, delete</button>
+            </form>
+        </div>
+    </div>
+</div>
+
 <script>
 function openDrawer() {
     document.getElementById('nav-drawer').classList.add('open');
@@ -853,6 +939,12 @@ function openDrawer() {
 function closeDrawer() {
     document.getElementById('nav-drawer').classList.remove('open');
     document.getElementById('nav-overlay').classList.remove('open');
+}
+function openDeleteModal() {
+    document.getElementById('delete-overlay').style.display = 'flex';
+}
+function closeDeleteModal() {
+    document.getElementById('delete-overlay').style.display = 'none';
 }
 </script>
 

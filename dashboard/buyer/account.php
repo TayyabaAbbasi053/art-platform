@@ -12,6 +12,51 @@ if (!isset($_SESSION['user_id'])) {
  $buyerName = $_SESSION['name'] ?? 'Buyer';
  $buyerEmail = $_SESSION['email'] ?? '';
 
+// ── Handle account deletion ─────────────────────────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_account'])) {
+    $conn->begin_transaction();
+    try {
+        // Recalculate rating aggregates for any artists this buyer had rated,
+        // then remove this buyer's ratings/reviews (tied to their identity, not order records)
+        $affectedArtists = $conn->query("SELECT DISTINCT artist_id FROM artist_ratings WHERE buyer_id = $buyerId")->fetch_all(MYSQLI_ASSOC);
+        $conn->query("DELETE FROM artist_ratings WHERE buyer_id = $buyerId");
+        foreach ($affectedArtists as $aRow) {
+            $aId = (int)$aRow['artist_id'];
+            $agg = $conn->query("SELECT AVG(rating) AS avg_r, COUNT(*) AS cnt FROM artist_ratings WHERE artist_id = $aId")->fetch_assoc();
+            $avgR = $agg['avg_r'] ?? 0;
+            $cnt = (int)($agg['cnt'] ?? 0);
+            $conn->query("UPDATE artist_profiles SET avg_rating = " . ($avgR !== null ? (float)$avgR : 0) . ", total_ratings = $cnt WHERE user_id = $aId");
+        }
+
+        // Null out this buyer's link in order history / messages — the order itself,
+        // its status timeline, and message content/sender_name all stay fully intact.
+        // Orders, order_items, and commission_requests are NOT deleted — this is the
+        // platform's business/financial record, not just the buyer's personal data.
+        $conn->query("UPDATE order_status_history SET changed_by_id = NULL WHERE changed_by_id = $buyerId AND changed_by_role = 'buyer'");
+        $conn->query("UPDATE order_messages SET sender_id = NULL WHERE sender_id = $buyerId AND sender_role = 'buyer'");
+
+        // Clear the shopping cart (personal, not a record we need to keep)
+        $conn->query("DELETE FROM shopping_cart WHERE buyer_id = $buyerId");
+
+        // Finally, delete the user account itself.
+        // orders.buyer_id / commission_requests / order_items keep referencing this id —
+        // those pages already handle a missing buyer gracefully (fallback to guest_name
+        // or a generic label) since order data must be preserved for business records.
+        $conn->query("DELETE FROM users WHERE id = $buyerId");
+
+        $conn->commit();
+    } catch (Exception $e) {
+        $conn->rollback();
+        error_log('[delete_account] Failed for buyer_id=' . $buyerId . ': ' . $e->getMessage());
+        header('Location: account.php?delete_error=1');
+        exit;
+    }
+
+    session_destroy();
+    header('Location: ../../login.php?deleted=1');
+    exit;
+}
+
 // ── Handle commission price accept/reject ────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['commission_action'])) {
     $actionOrderId = (int)($_POST['order_id'] ?? 0);
@@ -328,9 +373,11 @@ img{max-width:100%;display:block;}
 .content{padding:28px 32px;}
 
 /* WELCOME SECTION */
-.welcome-card{background:var(--ink);border-radius:16px;padding:28px 32px;margin-bottom:28px;color:#fff;}
-.welcome-card h2{font-family:'Playfair Display',serif;font-size:28px;font-weight:400;margin-bottom:8px;}
-.welcome-card p{color:rgba(255,255,255,.6);font-size:13px;}
+.welcome-card{background:var(--ink);border-radius:16px;padding:28px 32px;margin-bottom:28px;color:#fff;display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;}
+.welcome-card-text h2{font-family:'Playfair Display',serif;font-size:28px;font-weight:400;margin-bottom:8px;}
+.welcome-card-text p{color:rgba(255,255,255,.6);font-size:13px;}
+.btn-delete-account{flex-shrink:0;display:inline-flex;align-items:center;gap:6px;background:transparent;border:1px solid rgba(255,255,255,.35);color:#fff;padding:8px 14px;border-radius:8px;font-size:12px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .15s;}
+.btn-delete-account:hover{background:#C0392B;border-color:#C0392B;}
 
 /* STATS GRID */
 .stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:28px;}
@@ -574,8 +621,14 @@ img{max-width:100%;display:block;}
 
   <!-- WELCOME CARD -->
   <div class="welcome-card">
-    <h2>Welcome back, <?= htmlspecialchars(explode(' ', $buyerName)[0]) ?> 👋</h2>
-    <p>Track your orders, manage commissions, and discover new art.</p>
+    <div class="welcome-card-text">
+      <h2>Welcome back, <?= htmlspecialchars(explode(' ', $buyerName)[0]) ?> 👋</h2>
+      <p>Track your orders, manage commissions, and discover new art.</p>
+    </div>
+    <button class="btn-delete-account" onclick="openDeleteModal()" type="button">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+      Delete Account
+    </button>
   </div>
 
   <!-- STATS GRID -->
@@ -1061,7 +1114,40 @@ if (window.location.search.includes('commission_submitted=1')) {
     if (el) el.scrollIntoView({behavior: 'smooth', block: 'start'});
   });
 <?php endif; ?>
+
+function openDeleteModal() {
+  document.getElementById('delete-overlay').style.display = 'flex';
+}
+function closeDeleteModal() {
+  document.getElementById('delete-overlay').style.display = 'none';
+}
 </script>
+
+<?php if (isset($_GET['delete_error'])): ?>
+<div style="position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#C0392B;color:#fff;padding:12px 20px;border-radius:8px;font-size:13px;z-index:400;box-shadow:0 4px 16px rgba(0,0,0,.2);">
+    Something went wrong deleting your account. Please try again or contact support.
+</div>
+<?php endif; ?>
+
+<!-- Delete Account Confirmation Modal -->
+<div id="delete-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:500;align-items:center;justify-content:center;">
+    <div style="background:var(--card);border-radius:14px;max-width:380px;width:90%;padding:28px;text-align:center;box-shadow:0 12px 40px rgba(0,0,0,.2);">
+        <div style="width:52px;height:52px;background:#FBEAE8;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#C0392B" stroke-width="1.8"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+        </div>
+        <h3 style="font-family:'Playfair Display',serif;font-size:19px;color:var(--ink);margin-bottom:8px;">Delete your account?</h3>
+        <p style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:22px;">
+            This will permanently delete your account and profile data. <strong>Your order and commission history will be kept</strong> for records, but this action cannot be undone.
+        </p>
+        <div style="display:flex;gap:10px;justify-content:center;">
+            <button onclick="closeDeleteModal()" style="flex:1;padding:10px 16px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--ink);font-size:13px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;">No, keep it</button>
+            <form method="POST" style="flex:1;margin:0;">
+                <input type="hidden" name="delete_account" value="1">
+                <button type="submit" style="width:100%;padding:10px 16px;border-radius:8px;border:none;background:#C0392B;color:#fff;font-size:13px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;">Yes, delete</button>
+            </form>
+        </div>
+    </div>
+</div>
 
 </body>
 </html>
