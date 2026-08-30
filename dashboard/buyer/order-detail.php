@@ -92,6 +92,7 @@ if ($isCommission) {
     $msgQuery->bind_param('i', $orderId);
     $msgQuery->execute();
     $messages = $msgQuery->get_result()->fetch_all(MYSQLI_ASSOC);
+    $chatLastMsgId = !empty($messages) ? (int) $messages[count($messages) - 1]['id'] : 0;
     // Mark messages as read by buyer when they open this order
 $conn->query("UPDATE order_messages SET is_read_by_buyer = 1 WHERE order_id = $orderId AND sender_role != 'buyer' AND is_read_by_buyer = 0");
 }
@@ -99,11 +100,21 @@ $conn->query("UPDATE order_messages SET is_read_by_buyer = 1 WHERE order_id = $o
 // ── Contact info filter function ─────────────────────────
 function containsContactInfo(string $text): bool {
     $patterns = [
+        // Email addresses
         '/\b[\w.+-]+@[\w-]+\.[a-z]{2,}\b/i',
-        '/(\+92[-\s]?[0-9]{3}[-\s]?[0-9]{7}|(?<!\d)0[0-9]{2,3}[-\s]?[0-9]{6,8})/',
-        '/\b(instagram|insta|ig|whatsapp|wa|facebook|fb|twitter|tiktok|snapchat)\s*[:\-@]?\s*\w+/i',
-        '/@[a-zA-Z0-9._]{2,30}/',
-        '/\b(iban|account\s*no|bank|easypaisa|jazzcash|sadapay|nayapay)\b/i',
+        // Pakistani phone numbers (mobile: 03XX-XXXXXXX, or +92 3XX XXXXXXX) — no longer matches generic 8-9 digit numbers
+        '/(?<!\d)(\+92[-\s]?3[0-9]{2}[-\s]?[0-9]{7}|03[0-9]{2}[-\s]?[0-9]{7})(?!\d)/',
+        // Social platform mention WITH an explicit handle separator (:, -, @) — no longer fires on plain words like "insta"/"wa" used in normal sentences
+        '/\b(instagram|insta|whatsapp|facebook|twitter|tiktok|snapchat)\b\s*[:\-@]\s*[a-zA-Z0-9._]{3,30}/i',
+        // @handle mentions — must start with a letter, so things like "@5pm" or "@2x" no longer match
+        '/@[a-zA-Z][a-zA-Z0-9._]{2,29}\b/',
+        // Bank/payment details — dropped bare "bank"/"account" (too common in normal chat), kept specific phrases/services
+        '/\b(iban|bank\s*(?:account|details|transfer)|easypaisa|jazzcash|sadapay|nayapay)\b/i',
+        // Card-style number groups (requires separators, so it won't match random 16-digit runs like order/tracking IDs written without spaces)
+        '/\b\d{4}[-\s]\d{4}[-\s]\d{4}[-\s]\d{4}\b/',
+        // Actual links
+        '/\bhttps?:\/\/\S+/i',
+        '/\b[a-z0-9-]+\.(com|net|org|io|co|pk)\b/i',
     ];
     foreach ($patterns as $p) {
         if (preg_match($p, $text)) return true;
@@ -157,13 +168,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             ");
             $stmt->bind_param('iissss', $orderId, $buyerId, $buyerName, $message, $attachmentPath, $messageType);
             $stmt->execute();
-            $chatSuccess = true;
-
-            // Refresh messages
-            $msgQuery = $conn->prepare("SELECT * FROM order_messages WHERE order_id = ? ORDER BY created_at ASC");
-            $msgQuery->bind_param('i', $orderId);
-            $msgQuery->execute();
-            $messages = $msgQuery->get_result()->fetch_all(MYSQLI_ASSOC);
+            // Redirect (Post/Redirect/Get) so a page reload after this fallback submit
+            // re-sends a plain GET instead of resubmitting this POST and duplicating the message.
+            header('Location: order-detail.php?id=' . $orderId . '&sent=1');
+            exit;
         }
     }
 }
@@ -800,7 +808,7 @@ img{max-width:100%;display:block;}
         <?php foreach ($messages as $msg): 
           $roleClass = $msg['sender_role'] === 'buyer' ? 'buyer' : ($msg['sender_role'] === 'artist' ? 'artist' : 'admin');
         ?>
-          <div class="message <?= $roleClass ?>">
+          <div class="message <?= $roleClass ?>" data-msg-id="<?= (int) $msg['id'] ?>">
             <?php if (($msg['message_type'] ?? 'text') === 'image' && !empty($msg['attachment_path'])): ?>
               <img src="../../<?= htmlspecialchars($msg['attachment_path']) ?>" alt="Attachment" style="max-width:220px;border-radius:8px;display:block;margin-bottom:<?= $msg['message'] ? '6px' : '0' ?>;">
               <?php if (empty($order['commission_final_approved'])): ?>
@@ -826,7 +834,7 @@ img{max-width:100%;display:block;}
       <span style="font-size:11px;color:var(--muted);flex:1;">Image attached</span>
       <button type="button" id="chatAttachRemoveBtn" style="background:none;border:none;color:var(--ink);font-size:16px;cursor:pointer;line-height:1;">×</button>
     </div>
-    <form method="POST" enctype="multipart/form-data" class="chat-input-area" onsubmit="return validateMessage(this)">
+    <form method="POST" enctype="multipart/form-data" class="chat-input-area" id="chatForm">
       <input type="hidden" name="action" value="send_message">
       <label style="cursor:pointer;display:flex;align-items:center;padding:0 4px;" title="Attach image">
         📎<input type="file" name="attachment" id="chatAttachInput" accept="image/jpeg,image/png,image/webp" style="display:none;">
@@ -834,7 +842,7 @@ img{max-width:100%;display:block;}
       <input type="text" name="message" placeholder="Discuss commission details (No phone/email/social handles)" autocomplete="off">
       <button type="submit">Send</button>
     </form>
-    <div class="chat-warning">
+    <div class="chat-warning" id="chatWarning">
       ⚠️ Contact information (phone, email, Instagram, bank details) is automatically blocked for security.
     </div>
   </div>
@@ -866,11 +874,141 @@ img{max-width:100%;display:block;}
         span.style.color = (idx < value) ? 'var(--ink)' : '#ccc';
     });
 }
-// Auto-scroll chat to bottom
-const chatContainer = document.getElementById('chatMessages');
-if (chatContainer) {
-  chatContainer.scrollTop = chatContainer.scrollHeight;
+
+<?php if ($isCommission): ?>
+// ── Commission chat: AJAX send + polling (no page reload, no scroll jump) ──
+const CHAT_ORDER_ID       = <?= (int) $orderId ?>;
+const CHAT_FINAL_APPROVED = <?= !empty($order['commission_final_approved']) ? 'true' : 'false' ?>;
+let   chatLastId          = <?= (int) $chatLastMsgId ?>;
+const CHAT_AJAX_URL       = 'order-chat-ajax.php';
+
+function quickContactCheck(t){const p=[/[\w.+-]+@[\w-]+\.[a-z]{2,}/i,/(?<!\d)(\+92[\s-]?3[0-9]{2}[\s-]?[0-9]{7}|03[0-9]{2}[\s-]?[0-9]{7})(?!\d)/,/\b(instagram|insta|whatsapp|facebook|twitter|tiktok|snapchat)\b\s*[:\-@]\s*[a-zA-Z0-9._]{3,30}/i,/@[a-zA-Z][a-zA-Z0-9._]{2,29}\b/,/\b(iban|bank\s*(?:account|details|transfer)|easypaisa|jazzcash|sadapay|nayapay)\b/i,/https?:\/\/\S+/i,/\b[a-z0-9-]+\.(com|net|org|io|co|pk)\b/i];return p.some(r=>r.test(t));}
+
+const chatMessagesEl = document.getElementById('chatMessages');
+const chatForm = document.getElementById('chatForm');
+const chatWarning = document.getElementById('chatWarning');
+const chatInput = chatForm ? chatForm.querySelector('input[name="message"]') : null;
+const renderedMsgIds = new Set();
+
+function isNearBottom(el){ return el.scrollHeight - el.scrollTop - el.clientHeight < 80; }
+function scrollChatToBottom(){ if (chatMessagesEl) chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight; }
+
+function escapeHtml(s){
+    const d = document.createElement('div');
+    d.textContent = s ?? '';
+    return d.innerHTML;
 }
+
+function renderMessage(msg){
+    if (!chatMessagesEl) return;
+    if (typeof msg.id === 'number' && renderedMsgIds.has(msg.id)) return; // avoid duplicates from send/poll race
+
+    const emptyState = chatMessagesEl.querySelector('div[style*="text-align:center"]');
+    if (emptyState) emptyState.remove();
+
+    const roleClass = msg.sender_role === 'buyer' ? 'buyer' : (msg.sender_role === 'artist' ? 'artist' : 'admin');
+    const wrap = document.createElement('div');
+    wrap.className = 'message ' + roleClass;
+    if (typeof msg.id === 'number') wrap.setAttribute('data-msg-id', String(msg.id));
+
+    let html = '';
+    if (msg.message_type === 'image' && msg.attachment_path) {
+        html += `<img src="../../${escapeHtml(msg.attachment_path)}" alt="Attachment" style="max-width:220px;border-radius:8px;display:block;margin-bottom:${msg.message ? '6px' : '0'};">`;
+        if (!CHAT_FINAL_APPROVED) {
+            html += `<form method="POST" action="order-detail.php?id=${CHAT_ORDER_ID}" style="margin-top:6px;" onsubmit="return confirm('Approve this version as final? The artist will then prepare your final deliverable.')">
+                <input type="hidden" name="action" value="approve_final">
+                <input type="hidden" name="approved_message_id" value="${msg.id}">
+                <button type="submit" style="font-size:11px;padding:5px 10px;border-radius:6px;background:#2E7D32;color:#fff;border:none;cursor:pointer;">✓ Approve This Version</button>
+            </form>`;
+        }
+    }
+    if (msg.message) {
+        html += `<div class="message-bubble">${escapeHtml(msg.message).replace(/\n/g, '<br>')}</div>`;
+    }
+    html += `<div class="message-meta"><span>${escapeHtml(msg.sender_name)}</span><span>•</span><span>${escapeHtml(msg.created_at)}</span></div>`;
+    wrap.innerHTML = html;
+    chatMessagesEl.appendChild(wrap);
+
+    if (typeof msg.id === 'number') {
+        renderedMsgIds.add(msg.id);
+        if (msg.id > chatLastId) chatLastId = msg.id;
+    }
+}
+
+function showChatError(text){
+    if (!chatWarning) { alert(text); return; }
+    const original = chatWarning.textContent;
+    chatWarning.textContent = '⚠️ ' + text;
+    chatWarning.style.color = '#c0392b';
+    setTimeout(() => { chatWarning.textContent = original; chatWarning.style.color = ''; }, 4000);
+}
+
+if (chatForm) {
+    chatForm.addEventListener('submit', async function(e){
+        e.preventDefault();
+        const msgText = chatInput ? chatInput.value.trim() : '';
+        const fileInput = document.getElementById('chatAttachInput');
+        const hasFile = fileInput && fileInput.files && fileInput.files.length > 0;
+
+        if (!msgText && !hasFile) { showChatError('Please enter a message or attach an image.'); return; }
+        if (msgText && quickContactCheck(msgText)) {
+            showChatError('Your message was blocked. Contact information cannot be shared here.');
+            if (chatInput) chatInput.value = '';
+            return;
+        }
+
+        const fd = new FormData(chatForm);
+        fd.set('action', 'send');
+        fd.set('order_id', CHAT_ORDER_ID);
+
+        const submitBtn = chatForm.querySelector('button[type="submit"]');
+        if (submitBtn) submitBtn.disabled = true;
+
+        try {
+            const res = await fetch(CHAT_AJAX_URL, { method: 'POST', body: fd });
+            const data = await res.json();
+
+            if (data.error) {
+                showChatError(data.error);
+            } else if (data.success) {
+                renderMessage(data.message);
+                scrollChatToBottom();
+                if (chatInput) chatInput.value = '';
+                if (fileInput) fileInput.value = '';
+                const preview = document.getElementById('chatAttachPreview');
+                if (preview) preview.style.display = 'none';
+            }
+        } catch (err) {
+            showChatError('Could not send message. Check your connection.');
+        } finally {
+            if (submitBtn) submitBtn.disabled = false;
+            if (chatInput) chatInput.focus();
+        }
+    });
+}
+
+async function pollChatMessages(){
+    if (!chatMessagesEl) return;
+    try {
+        const url = `${CHAT_AJAX_URL}?action=poll&order_id=${CHAT_ORDER_ID}&after_id=${chatLastId}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        if (data.messages && data.messages.length) {
+            const wasNearBottom = isNearBottom(chatMessagesEl);
+            data.messages.forEach(renderMessage);
+            if (wasNearBottom) scrollChatToBottom();
+        }
+    } catch (err) { /* silent — retried on next interval */ }
+}
+
+scrollChatToBottom();
+document.querySelectorAll('#chatMessages [data-msg-id]').forEach(el => {
+    const id = parseInt(el.getAttribute('data-msg-id'), 10);
+    if (!isNaN(id)) renderedMsgIds.add(id);
+});
+const chatPollInterval = setInterval(pollChatMessages, 4000);
+document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'visible') pollChatMessages(); });
+<?php endif; ?>
 
 // ── Chat image attachment preview ──────────────────────
 const chatAttachInput = document.getElementById('chatAttachInput');
@@ -911,34 +1049,6 @@ if(hamBtn && drawer && overlay){
         drawer.classList.remove('open');
         overlay.classList.remove('open');
     });
-}
-
-function validateMessage(form) {
-  const input = form.querySelector('input[name="message"]');
-  const message = input.value.trim();
-  
-  const patterns = [
-    /[\w.+-]+@[\w-]+\.[a-z]{2,}/i,
-    /(\+92[\s-]?[0-9]{3}[\s-]?[0-9]{7}|(?<!\d)0[0-9]{2,3}[\s-]?[0-9]{6,8})/,
-    /\b(instagram|insta|whatsapp|facebook|twitter|tiktok|snapchat|ig|fb|wa)\b(\s*[:\-@]\s*|\s+(?:is|id|number|no|me|on|at)\s+)\w+/i,
-    /@[a-zA-Z0-9._]{2,30}/,
-    /(iban|account\s*no|bank|easypaisa|jazzcash|sadapay|nayapay)/i,
-  ];
-  
-  for (let pattern of patterns) {
-    if (pattern.test(message)) {
-      alert('Your message was blocked. Contact information cannot be shared here.');
-      input.value = '';
-      return false;
-    }
-  }
-  
-  if (!message) {
-    alert('Please enter a message.');
-    return false;
-  }
-  
-  return true;
 }
 </script>
 

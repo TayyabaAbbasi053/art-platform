@@ -62,10 +62,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['commission_action']))
 function containsContactInfo(string $text): bool {
     $patterns = [
         '/\b[\w.+-]+@[\w-]+\.[a-z]{2,}\b/i',
-        '/(\+92[-\s]?[0-9]{3}[-\s]?[0-9]{7}|(?<!\d)0[0-9]{2,3}[-\s]?[0-9]{6,8})/',
-        '/\b(instagram|insta|ig|whatsapp|wa|facebook|fb|twitter|tiktok|snapchat)\s*[:\-@]?\s*\w+/i',
-        '/@[a-zA-Z0-9._]{2,30}/',
-        '/\b(iban|account\s*no|bank|easypaisa|jazzcash|sadapay|nayapay)\b/i',
+        '/(?<!\d)(\+92[-\s]?3[0-9]{2}[-\s]?[0-9]{7}|03[0-9]{2}[-\s]?[0-9]{7})(?!\d)/',
+        '/\b(instagram|insta|whatsapp|facebook|twitter|tiktok|snapchat)\b\s*[:\-@]\s*[a-zA-Z0-9._]{3,30}/i',
+        '/@[a-zA-Z][a-zA-Z0-9._]{2,29}\b/',
+        '/\b(iban|bank\s*(?:account|details|transfer)|easypaisa|jazzcash|sadapay|nayapay)\b/i',
+        '/\b\d{4}[-\s]\d{4}[-\s]\d{4}[-\s]\d{4}\b/',
+        '/\bhttps?:\/\/\S+/i',
+        '/\b[a-z0-9-]+\.(com|net|org|io|co|pk)\b/i',
     ];
     foreach ($patterns as $p) {
         if (preg_match($p, $text)) return true;
@@ -190,6 +193,7 @@ foreach ($commissionOrders as $comm) {
     $msgStmt->bind_param('i', $comm['id']);
     $msgStmt->execute();
     $commissionMessages[$comm['id']] = $msgStmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $commissionLastMsgId[$comm['id']] = !empty($commissionMessages[$comm['id']]) ? (int) $commissionMessages[$comm['id']][count($commissionMessages[$comm['id']]) - 1]['id'] : 0;
     $conn->query("UPDATE order_messages SET is_read_by_buyer = 1 WHERE order_id = " . (int)$comm['id'] . " AND sender_role != 'buyer' AND is_read_by_buyer = 0");
 }
 
@@ -708,24 +712,22 @@ img{max-width:100%;display:block;}
               </button>
               <div id="comm-chat-<?= $comm['id'] ?>" style="display:none; margin-top:12px;">
                 <div class="comm-chat-title">Commission Discussion</div>
-                <div class="comm-chat-messages" id="comm-msgs-<?= $comm['id'] ?>">
+                <div class="comm-chat-messages" id="comm-msgs-<?= $comm['id'] ?>" data-last-id="<?= (int) ($commissionLastMsgId[$comm['id']] ?? 0) ?>">
                   <?php if (empty($msgs)): ?>
                     <div style="text-align:center;padding:16px;color:var(--muted);font-size:12px;opacity:0.7;">No messages yet.</div>
                   <?php else: ?>
                     <?php foreach ($msgs as $msg): 
                       $rc = $msg['sender_role'] === 'buyer' ? 'buyer' : ($msg['sender_role'] === 'artist' ? 'artist' : 'admin');
                     ?>
-                    <div class="comm-message <?= $rc ?>">
+                    <div class="comm-message <?= $rc ?>" data-msg-id="<?= (int) $msg['id'] ?>">
                       <div class="comm-message-bubble"><?= nl2br(htmlspecialchars($msg['message'])) ?></div>
                       <div class="comm-message-meta"><?= htmlspecialchars($msg['sender_name']) ?> · <?= date('M j, g:i A', strtotime($msg['created_at'])) ?></div>
                     </div>
                     <?php endforeach; ?>
                   <?php endif; ?>
                 </div>
-                <?php if ($chatError && $chatOrderId === $comm['id']): ?>
-                  <div class="comm-chat-error"><?= htmlspecialchars($chatError) ?></div>
-                <?php endif; ?>
-                <form method="POST" class="comm-chat-input" onsubmit="return validateCommMsg(this)">
+                <div class="comm-chat-error" id="comm-chat-err-<?= $comm['id'] ?>" style="<?= ($chatError && $chatOrderId === $comm['id']) ? '' : 'display:none;' ?>"><?= htmlspecialchars($chatError && $chatOrderId === $comm['id'] ? $chatError : '') ?></div>
+                <form method="POST" class="comm-chat-input js-comm-chat-form" data-order-id="<?= $comm['id'] ?>">
                   <input type="hidden" name="action" value="send_commission_message">
                   <input type="hidden" name="order_id" value="<?= $comm['id'] ?>">
                   <input type="text" name="message" placeholder="Type a message... (no phone/email/socials)" autocomplete="off" required>
@@ -886,36 +888,147 @@ function toggleEdit() {
   }
 }
 
+const COMM_CHAT_AJAX_URL = 'order-chat-ajax.php';
+const commChatState = {}; // orderId -> { lastId, renderedIds: Set, pollTimer }
+
+function quickContactCheck(t){const p=[/[\w.+-]+@[\w-]+\.[a-z]{2,}/i,/(?<!\d)(\+92[\s-]?3[0-9]{2}[\s-]?[0-9]{7}|03[0-9]{2}[\s-]?[0-9]{7})(?!\d)/,/\b(instagram|insta|whatsapp|facebook|twitter|tiktok|snapchat)\b\s*[:\-@]\s*[a-zA-Z0-9._]{3,30}/i,/@[a-zA-Z][a-zA-Z0-9._]{2,29}\b/,/\b(iban|bank\s*(?:account|details|transfer)|easypaisa|jazzcash|sadapay|nayapay)\b/i,/https?:\/\/\S+/i,/\b[a-z0-9-]+\.(com|net|org|io|co|pk)\b/i];return p.some(r=>r.test(t));}
+
+function escapeHtml(s){
+    const d = document.createElement('div');
+    d.textContent = s ?? '';
+    return d.innerHTML;
+}
+
+function initCommChatState(orderId){
+    if (commChatState[orderId]) return commChatState[orderId];
+    const msgsEl = document.getElementById('comm-msgs-' + orderId);
+    const state = {
+        lastId: msgsEl ? parseInt(msgsEl.getAttribute('data-last-id'), 10) || 0 : 0,
+        renderedIds: new Set(),
+        pollTimer: null,
+    };
+    if (msgsEl) {
+        msgsEl.querySelectorAll('[data-msg-id]').forEach(el => {
+            const id = parseInt(el.getAttribute('data-msg-id'), 10);
+            if (!isNaN(id)) state.renderedIds.add(id);
+        });
+    }
+    commChatState[orderId] = state;
+    return state;
+}
+
+function renderCommMessage(orderId, msg){
+    const msgsEl = document.getElementById('comm-msgs-' + orderId);
+    if (!msgsEl) return;
+    const state = initCommChatState(orderId);
+    if (typeof msg.id === 'number' && state.renderedIds.has(msg.id)) return; // avoid duplicates from send/poll race
+
+    const emptyState = msgsEl.querySelector('div[style*="text-align:center"]');
+    if (emptyState) emptyState.remove();
+
+    const rc = msg.sender_role === 'buyer' ? 'buyer' : (msg.sender_role === 'artist' ? 'artist' : 'admin');
+    const wrap = document.createElement('div');
+    wrap.className = 'comm-message ' + rc;
+    if (typeof msg.id === 'number') wrap.setAttribute('data-msg-id', String(msg.id));
+    wrap.innerHTML = `<div class="comm-message-bubble">${escapeHtml(msg.message).replace(/\n/g, '<br>')}</div><div class="comm-message-meta">${escapeHtml(msg.sender_name)} · ${escapeHtml(msg.created_at)}</div>`;
+    msgsEl.appendChild(wrap);
+
+    if (typeof msg.id === 'number') {
+        state.renderedIds.add(msg.id);
+        if (msg.id > state.lastId) state.lastId = msg.id;
+    }
+}
+
+function showCommChatError(orderId, text){
+    const el = document.getElementById('comm-chat-err-' + orderId);
+    if (!el) { alert(text); return; }
+    el.textContent = text;
+    el.style.display = 'block';
+    setTimeout(() => { el.style.display = 'none'; }, 4000);
+}
+
+async function pollCommChat(orderId){
+    const msgsEl = document.getElementById('comm-msgs-' + orderId);
+    if (!msgsEl) return;
+    const state = initCommChatState(orderId);
+    try {
+        const url = `${COMM_CHAT_AJAX_URL}?action=poll&order_id=${orderId}&after_id=${state.lastId}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        if (data.messages && data.messages.length) {
+            const wasNearBottom = msgsEl.scrollHeight - msgsEl.scrollTop - msgsEl.clientHeight < 80;
+            data.messages.forEach(m => renderCommMessage(orderId, m));
+            if (wasNearBottom) msgsEl.scrollTop = msgsEl.scrollHeight;
+        }
+    } catch (err) { /* silent — retried on next interval */ }
+}
+
+function startCommChatPolling(orderId){
+    const state = initCommChatState(orderId);
+    if (state.pollTimer) return;
+    state.pollTimer = setInterval(() => pollCommChat(orderId), 4000);
+}
+function stopCommChatPolling(orderId){
+    const state = commChatState[orderId];
+    if (state && state.pollTimer) { clearInterval(state.pollTimer); state.pollTimer = null; }
+}
+
 function toggleCommChat(id) {
   const el = document.getElementById('comm-chat-' + id);
   if (!el) return;
   const isOpen = el.style.display !== 'none';
   el.style.display = isOpen ? 'none' : 'block';
   if (!isOpen) {
+    initCommChatState(id);
     const msgs = document.getElementById('comm-msgs-' + id);
     if (msgs) msgs.scrollTop = msgs.scrollHeight;
+    pollCommChat(id);
+    startCommChatPolling(id);
+  } else {
+    stopCommChatPolling(id);
   }
 }
 
-function validateCommMsg(form) {
-  const input = form.querySelector('input[name="message"]');
-  const msg = input.value.trim();
-  const patterns = [
-    /[\w.+-]+@[\w-]+\.[a-z]{2,}/i,
-    /(\+92[\s-]?[0-9]{3}[\s-]?[0-9]{7}|(?<!\d)0[0-9]{2,3}[\s-]?[0-9]{6,8})/,
-    /\b(instagram|insta|whatsapp|facebook|twitter|tiktok|snapchat|ig|fb|wa)\b(\s*[:\-@]\s*|\s+(?:is|id|number|no|me|on|at)\s+)\w+/i,
-    /@[a-zA-Z0-9._]{2,30}/,
-    /(iban|account\s*no|bank|easypaisa|jazzcash|sadapay|nayapay)/i,
-  ];
-  for (let p of patterns) {
-    if (p.test(msg)) {
-      alert('Contact information cannot be shared here.');
-      input.value = '';
-      return false;
-    }
-  }
-  return true;
-}
+document.querySelectorAll('form.js-comm-chat-form').forEach(form => {
+    const orderId = form.getAttribute('data-order-id');
+    initCommChatState(orderId);
+
+    form.addEventListener('submit', async function(e){
+        e.preventDefault();
+        const input = form.querySelector('input[name="message"]');
+        const msgText = input ? input.value.trim() : '';
+        if (!msgText) return;
+        if (quickContactCheck(msgText)) {
+            showCommChatError(orderId, 'Contact information cannot be shared here.');
+            if (input) input.value = '';
+            return;
+        }
+
+        const fd = new FormData(form);
+        fd.set('action', 'send');
+
+        const submitBtn = form.querySelector('button[type="submit"]');
+        if (submitBtn) submitBtn.disabled = true;
+
+        try {
+            const res = await fetch(COMM_CHAT_AJAX_URL, { method: 'POST', body: fd });
+            const data = await res.json();
+            if (data.error) {
+                showCommChatError(orderId, data.error);
+            } else if (data.success) {
+                renderCommMessage(orderId, data.message);
+                const msgsEl = document.getElementById('comm-msgs-' + orderId);
+                if (msgsEl) msgsEl.scrollTop = msgsEl.scrollHeight;
+                if (input) input.value = '';
+            }
+        } catch (err) {
+            showCommChatError(orderId, 'Could not send message. Check your connection.');
+        } finally {
+            if (submitBtn) submitBtn.disabled = false;
+            if (input) input.focus();
+        }
+    });
+});
 
 // Auto-dismiss banners after 8 seconds
 document.querySelectorAll('.notif-banner').forEach(banner => {
