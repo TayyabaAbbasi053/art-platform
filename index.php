@@ -558,8 +558,10 @@ h1.htitle em{font-style:italic;color:var(--ink);}
     <h1 class="htitle">Discover and buy<br>original artwork from<br><em>Pakistani artists.</em></h1>
     <p class="hdesc">A platform dedicated to supporting Pakistani talent. Explore paintings, sketches, calligraphy, digital art and request custom commissions.</p>
     <div class="hbtns">
-      <a href="artworks.php" class="btn-fill">Explore Artworks <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg></a>
-      <a href="sell.php" class="btn-line">Sell Your Art <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg></a>
+      <a href="artworks.php" class="btn-fill">Physical Art <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg></a>
+      <a href="digital-art.php" class="btn-line">Digital Art <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg></a>
+      <a href="commission.php" class="btn-line">Custom Art <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg></a>
+      <a href="artists.php" class="btn-line">Explore Artists <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg></a>
     </div>
     <div class="htrust">
       <div class="trust-i"><svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>Original Artworks</div>
@@ -696,6 +698,19 @@ h1.htitle em{font-style:italic;color:var(--ink);}
 
 <div class="wrap"><hr class="divhr"></div>
 
+<div class="wrap" style="padding:28px 28px;"><div class="comm-strip">
+  <div class="cs-l">
+    <div class="cs-tag">Custom Commissions</div>
+    <h2 class="cs-title">Want something<br>made just for you?</h2>
+    <p class="cs-desc">Request a custom artwork from our talented Pakistani artists. Portraits, calligraphy, illustrations — anything you can imagine.</p>
+  </div>
+  <div class="cs-r">
+    <button class="btn-gold" onclick="openCM()">Request Custom Artwork <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></button>
+  </div>
+</div></div>
+
+<div class="wrap"><hr class="divhr"></div>
+
 <!-- LATEST INSIGHTS -->
 <div class="wrap"><div class="sec">
   <div class="sec-hd"><h2 class="sec-title">Latest Insights</h2><a href="blog.php" class="sec-lnk">View all posts</a></div>
@@ -762,17 +777,6 @@ h1.htitle em{font-style:italic;color:var(--ink);}
       <div class="how-t">Receive</div>
       <div class="how-d">Get your artwork safely delivered to your door anywhere in Pakistan.</div>
     </div>
-  </div>
-</div></div>
-
-<div class="wrap" style="padding:28px 28px;"><div class="comm-strip">
-  <div class="cs-l">
-    <div class="cs-tag">Custom Commissions</div>
-    <h2 class="cs-title">Want something<br>made just for you?</h2>
-    <p class="cs-desc">Request a custom artwork from our talented Pakistani artists. Portraits, calligraphy, illustrations — anything you can imagine.</p>
-  </div>
-  <div class="cs-r">
-    <button class="btn-gold" onclick="openCM()">Request Custom Artwork <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></button>
   </div>
 </div></div>
 
