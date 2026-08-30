@@ -239,7 +239,7 @@ img{max-width:100%;display:block;}
     <div class="step">
       <div class="step-num">1</div>
       <h4>Create an artist account</h4>
-      <p>Sign up as an artist — it's free. Fill out your profile with your bio, city, art style, and profile picture.</p>
+      <p>Sign up as an artist. Fill out your profile with your bio, city, art style, and profile picture.</p>
     </div>
     <div class="step">
       <div class="step-num">2</div>
@@ -259,7 +259,7 @@ img{max-width:100%;display:block;}
     <div class="faq-grid">
       <div class="faq-item">
         <h4>How much does it cost to join?</h4>
-        <p>Joining Art Bazaar is completely free. There are no upfront fees or subscription costs.</p>
+        <p>Joining and listing your work on Art Bazaar has no upfront fees. There's a flat PKR 50/month platform maintenance fee to keep your account active.</p>
       </div>
       <div class="faq-item">
         <h4>How do I get paid?</h4>
