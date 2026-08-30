@@ -244,8 +244,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'rate_
 }
 
 // ── Handle order cancellation request ────────────────────
-$canCancelOrder = ($order['payment_method'] === 'cod')
-    && in_array($order['order_status'], ['pending', 'shipped'], true);
+$prePaymentStatuses = $isCommission
+    ? ['pending', 'assigned', 'price_proposed']
+    : ['pending'];
+
+$canCancelOrder = in_array($order['order_status'], $prePaymentStatuses, true);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cancel_order']) && $canCancelOrder) {
     $statusFrom = $order['order_status'];
