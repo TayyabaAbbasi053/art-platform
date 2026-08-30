@@ -76,7 +76,7 @@ img{max-width:100%;display:block;}
 .mission-card p{color:var(--body);line-height:1.7;max-width:700px;margin:0 auto;}
 
 /* VALUES GRID */
-.values-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:28px;margin-bottom:48px;}
+.values-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:28px;margin-bottom:48px;}
 .value-card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:28px 24px;text-align:center;transition:transform .15s;}
 .value-card:hover{transform:translateY(-4px);}
 .value-icon{width:56px;height:56px;background:var(--sand);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;color:var(--ink);}
@@ -233,12 +233,7 @@ img{max-width:100%;display:block;}
       <div class="value-card">
         <div class="value-icon"><svg width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div>
         <h4>Fair for artists</h4>
-        <p>No hidden fees, no predatory commissions. Artists keep the majority of their earnings.</p>
-      </div>
-      <div class="value-card">
-        <div class="value-icon"><svg width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div>
-        <h4>Authenticity first</h4>
-        <p>Every artwork is verified by our team before it appears on the platform.</p>
+        <p>No predatory commissions — just a small PKR 50/month platform maintenance fee. Artists keep the majority of their earnings.</p>
       </div>
       <div class="value-card">
         <div class="value-icon"><svg width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg></div>
@@ -293,7 +288,7 @@ if ($r) $cityCount = (int)$r->fetch_assoc()['cnt'];
   <div class="two-col" style="margin-bottom:0;">
     <div class="col-content">
       <h3>What makes us different</h3>
-      <p>Art Bazaar doesn't take a commission on sales. We're a marketplace that connects artists directly with buyers — artists set their own prices and keep what they earn.</p>
+      <p>Art Bazaar doesn't take a commission on sales. We're a marketplace that connects artists directly with buyers — artists set their own prices and keep what they earn, aside from a flat PKR 50/month platform maintenance fee.</p>
       <p>Artists are independent sellers, responsible for the originality, description, pricing, packaging, and fulfillment of their own work. Art Bazaar doesn't own or automatically endorse every artwork listed on the platform, but we do review listings and can hide, reject, suspend, or remove content or accounts when needed to keep the marketplace trustworthy.</p>
     </div>
     <div class="col-img">
