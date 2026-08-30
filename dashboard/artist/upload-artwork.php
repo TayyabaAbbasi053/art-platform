@@ -121,6 +121,55 @@ if (isset($_SESSION['heic_support_checked']) && (time() - $_SESSION['heic_suppor
     WHERE a.artist_id = $artistId AND aq.answer IS NULL
 ")->fetch_row()[0];
 
+// ── Server-side image resize safety net ──────────────
+// Re-saves an on-disk image in place if it's larger than our target, using
+// GD. This is a backstop for whatever the browser's compression missed —
+// normal path is that the browser already sent a small file, so this is a
+// no-op most of the time and only does real work for oversized/JS-disabled
+// uploads.
+function resizeImageIfNeeded(string $path, int $maxDimension = 2000, int $jpegQuality = 85): void {
+    $info = @getimagesize($path);
+    if ($info === false) return;
+    [$width, $height, $type] = $info;
+
+    // Already small enough — leave it alone.
+    if ($width <= $maxDimension && $height <= $maxDimension) return;
+
+    $source = match ($type) {
+        IMAGETYPE_JPEG => @imagecreatefromjpeg($path),
+        IMAGETYPE_PNG  => @imagecreatefrompng($path),
+        IMAGETYPE_WEBP => function_exists('imagecreatefromwebp') ? @imagecreatefromwebp($path) : false,
+        default => false,
+    };
+    if (!$source) return;
+
+    $scale = $maxDimension / max($width, $height);
+    $newWidth = max(1, (int) round($width * $scale));
+    $newHeight = max(1, (int) round($height * $scale));
+
+    $resized = imagecreatetruecolor($newWidth, $newHeight);
+
+    // Write back out in the SAME format it came in as, so the file
+    // extension on disk still matches its actual content.
+    if ($type === IMAGETYPE_PNG || $type === IMAGETYPE_WEBP) {
+        imagealphablending($resized, false);
+        imagesavealpha($resized, true);
+        $transparent = imagecolorallocatealpha($resized, 0, 0, 0, 127);
+        imagefilledrectangle($resized, 0, 0, $newWidth, $newHeight, $transparent);
+    }
+    imagecopyresampled($resized, $source, 0, 0, 0, 0, $newWidth, $newHeight, $width, $height);
+
+    match ($type) {
+        IMAGETYPE_JPEG => imagejpeg($resized, $path, $jpegQuality),
+        IMAGETYPE_PNG  => imagepng($resized, $path, 6),
+        IMAGETYPE_WEBP => function_exists('imagewebp') ? imagewebp($resized, $path, $jpegQuality) : imagejpeg($resized, $path, $jpegQuality),
+        default => null,
+    };
+
+    imagedestroy($source);
+    imagedestroy($resized);
+}
+
 // ── Handle form submission ───────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $__dbg = __DIR__ . '/upload_debug.log';
@@ -132,14 +181,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         goto skip_processing;
     }
 
-    // Prevent double/multi-tab submission — token is single-use
-    if (
-        !isset($_POST['upload_token']) ||
-        !isset($_SESSION['upload_token']) ||
-        !hash_equals($_SESSION['upload_token'], $_POST['upload_token'])
-    ) {
-        header("Location: my-artworks.php?msg=uploaded");
-        exit;
+    // Prevent double/multi-tab submission — token is single-use.
+    // A mismatch can mean two different things: (a) a second tab/request
+    // resubmitting a form whose upload already succeeded moments ago — safe
+    // to silently no-op, or (b) an expired/missing/never-issued token, where
+    // nothing was ever saved. Only (a) should redirect as "uploaded"; (b)
+    // must surface a real error, or the user is told artwork was uploaded
+    // when it wasn't.
+    $tokenMismatch = !isset($_POST['upload_token'])
+        || !isset($_SESSION['upload_token'])
+        || !hash_equals($_SESSION['upload_token'], $_POST['upload_token']);
+
+    if ($tokenMismatch) {
+        $recentSuccess = isset($_SESSION['last_upload_success_at'])
+            && (time() - $_SESSION['last_upload_success_at']) < 60;
+
+        if ($recentSuccess) {
+            // Genuine duplicate resubmission of an already-successful upload.
+            header("Location: my-artworks.php?msg=uploaded");
+            exit;
+        }
+
+        $errorMsg = 'This upload session has expired. Please refresh the page and try again.';
+        goto skip_processing;
     }
     // Invalidate immediately so a second tab/request with the same token can't slip through
     unset($_SESSION['upload_token']);
@@ -389,6 +453,15 @@ if (in_array($ext, ['heic', 'heif'])) {
     }
 }
 
+// Server-side safety net: cap dimensions/filesize even if the browser
+// didn't compress (JS disabled, non-browser client, compression failed,
+// etc). Only for static raster images we can safely re-encode with GD —
+// GIF is skipped to preserve animation, video/audio pass through untouched.
+$mediaTypeForResize = in_array($ext, $videoExt) ? 'video' : (in_array($ext, $audioExt) ? 'audio' : 'image');
+if ($converted && $mediaTypeForResize === 'image' && $ext !== 'gif' && function_exists('gd_info')) {
+    resizeImageIfNeeded($destPath);
+}
+
 if ($converted) {
     $dbPath = 'uploads/artworks/' . $newName;
 
@@ -422,6 +495,7 @@ if ($converted) {
 
             if ($uploadedCount > 0) {
                 $conn->commit();
+                $_SESSION['last_upload_success_at'] = time();
                 file_put_contents($__dbg, date('c') . " SUCCESS uploaded={$uploadedCount} — redirecting\n", FILE_APPEND);
                 header("Location: my-artworks.php?msg=uploaded");
                 exit;
@@ -512,6 +586,31 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
 }
 .field-input:focus, .field-select:focus, .field-textarea:focus { border-color: var(--ink); }
 .field-textarea { min-height: 120px; resize: vertical; line-height: 1.6; }
+
+/* ── Upload Overlay ─────────────────────────────────── */
+.upload-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(12,63,48,0.88);
+    z-index: 1000; align-items: center; justify-content: center; flex-direction: column;
+}
+.upload-overlay.active { display: flex; }
+.upload-overlay .spinner {
+    width: 44px; height: 44px; border: 3px solid rgba(246,237,222,.25);
+    border-top-color: var(--bg); border-radius: 50%; animation: spin .8s linear infinite; margin-bottom: 18px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.upload-overlay .overlay-title { color: var(--bg); font-family: 'Playfair Display', serif; font-size: 18px; margin-bottom: 6px; }
+.upload-overlay .overlay-sub { color: var(--bg); font-size: 12.5px; opacity: .8; display: flex; align-items: center; gap: 3px; }
+.overlay-sub .dot { animation: dotPulse 1.4s infinite; opacity: .3; }
+.overlay-sub .dot:nth-child(2) { animation-delay: .2s; }
+.overlay-sub .dot:nth-child(3) { animation-delay: .4s; }
+@keyframes dotPulse { 0%,80%,100% { opacity: .3; } 40% { opacity: 1; } }
+
+/* ── Compression status on preview items ──────────────── */
+.preview-item.compressing::after {
+    content: ''; position: absolute; inset: 0; background: rgba(12,63,48,0.45);
+    border-radius: inherit;
+}
+.preview-item { position: relative; }
 
 /* ── Toggle Row ─────────────────────────────────────── */
 .toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-top: 1px solid var(--border); }
@@ -902,7 +1001,7 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
             <!-- ── Actions ───────────────────────────── -->
             <div class="form-actions">
                 <a href="my-artworks.php" class="btn btn-ghost">Cancel</a>
-                <button type="submit" class="btn btn-primary">
+                <button type="submit" class="btn btn-primary" id="submitBtn">
                     Publish Artwork
                 </button>
             </div>
@@ -912,6 +1011,13 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
 
 </div>
 </main>
+
+<!-- ══════════════ UPLOAD OVERLAY ══════════════ -->
+<div class="upload-overlay" id="uploadOverlay">
+    <div class="spinner"></div>
+    <div class="overlay-title" id="overlayTitle">Uploading artwork</div>
+    <div class="overlay-sub">Please wait<span class="dot">.</span><span class="dot">.</span><span class="dot">.</span></div>
+</div>
 
 <!-- NAV DRAWER (Mobile) -->
 <div id="nav-overlay" onclick="closeDrawer()"></div>
@@ -960,6 +1066,7 @@ const uploadForm = document.getElementById('uploadForm');
 
 let currentFiles = [];
 let isSubmitting = false;
+let pendingCompressions = []; // in-flight compression promises, so submit can wait for them
 
 // Keeps the real <input type="file"> in sync with our currentFiles array,
 // since previews are rendered from currentFiles but the browser only
@@ -1030,28 +1137,112 @@ function updateDigitalFileVisibility() {
 categorySelect.addEventListener('change', updateDigitalFileVisibility);
 updateDigitalFileVisibility();
 
-fileInput.addEventListener('change', function(e) {
+// ── Client-side image compression ────────────────────────────────────────
+// Downscales + re-encodes an image in the browser before it ever hits the
+// network, so a 8-10MB phone photo becomes ~1-2MB before upload starts.
+// This is the main fix for slow multi-image uploads: PHP currently does
+// NOT resize/recompress images (it only converts HEIC), so whatever size
+// leaves the browser is what gets uploaded and stored as-is.
+const COMPRESS_MAX_DIMENSION = 1600;
+const COMPRESS_QUALITY = 0.82;
+const COMPRESS_SKIP_UNDER_BYTES = 400 * 1024; // don't bother re-encoding already-small files
+
+function shouldCompress(file) {
+    // Skip HEIC/HEIF (most browsers can't decode it via canvas; the server
+    // already handles HEIC conversion), skip GIF (would kill animation),
+    // and skip files that are already small.
+    const isHeic = /\.(heic|heif)$/i.test(file.name);
+    const isGif = file.type === 'image/gif';
+    const isRasterImage = file.type === 'image/jpeg' || file.type === 'image/png' || file.type === 'image/webp';
+    if (isHeic || isGif || !isRasterImage) return false;
+    if (file.size <= COMPRESS_SKIP_UNDER_BYTES) return false;
+    return true;
+}
+
+async function compressImage(file) {
+    try {
+        const bitmap = await createImageBitmap(file);
+        let { width, height } = bitmap;
+
+        if (width > COMPRESS_MAX_DIMENSION || height > COMPRESS_MAX_DIMENSION) {
+            const scale = COMPRESS_MAX_DIMENSION / Math.max(width, height);
+            width = Math.round(width * scale);
+            height = Math.round(height * scale);
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        // Flatten transparency onto white so PNGs re-encoded as JPEG don't turn black
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(bitmap, 0, 0, width, height);
+        bitmap.close?.();
+
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', COMPRESS_QUALITY));
+        if (!blob || blob.size >= file.size) {
+            // Compression didn't actually help (rare, e.g. already-compressed small image) — keep original
+            return file;
+        }
+
+        const newName = file.name.replace(/\.[^.]+$/, '') + '.jpg';
+        return new File([blob], newName, { type: 'image/jpeg', lastModified: Date.now() });
+    } catch (err) {
+        console.warn('Image compression failed, using original file:', file.name, err);
+        return file; // fall back to the original file — server-side checks still apply
+    }
+}
+
+fileInput.addEventListener('change', async function(e) {
     const newFiles = Array.from(e.target.files);
-    
+
     if (currentFiles.length + newFiles.length > 5) {
         alert('You can only upload up to 5 images. Please remove some before adding more.');
         fileInput.value = '';
         return;
     }
-    
+
     const selectedCat = categorySelect.options[categorySelect.selectedIndex];
     const isDigitalCat = selectedCat && selectedCat.dataset.slug === 'digital-art';
 
-    newFiles.forEach(file => {
+    const accepted = newFiles.filter(file => {
         const isImage = file.type.startsWith('image/') || file.name.match(/\.(heic|heif)$/i);
         const isMedia = isDigitalCat && (file.type.startsWith('video/') || file.type.startsWith('audio/'));
-        if (isImage || isMedia) {
-            currentFiles.push(file);
-        }
+        return isImage || isMedia;
     });
 
+    if (accepted.length === 0) return;
+
+    // Push originals in immediately so the UI feels instant, then swap in
+    // compressed versions as they finish (compression is async and shouldn't
+    // block the preview from appearing).
+    const startIndex = currentFiles.length;
+    currentFiles.push(...accepted);
+    fileInput.value = '';
     syncFileInput();
     renderPreviews();
+
+    const compressionJob = Promise.all(accepted.map(async (file, offset) => {
+        const index = startIndex + offset;
+        if (!shouldCompress(file)) return;
+
+        const item = previewGrid.querySelector(`[data-index="${index}"]`);
+        item?.classList.add('compressing');
+
+        const compressed = await compressImage(file);
+
+        // The array may have been spliced (user removed a file) while this
+        // was compressing — bail out rather than writing to the wrong slot.
+        if (currentFiles[index] !== file) return;
+        currentFiles[index] = compressed;
+        syncFileInput();
+        renderPreviews();
+    }));
+
+    pendingCompressions.push(compressionJob);
+    await compressionJob;
+    pendingCompressions = pendingCompressions.filter(p => p !== compressionJob);
 });
 
 function removeFileAtIndex(index) {
@@ -1098,10 +1289,41 @@ function renderPreviews() {
     previewCounter.innerHTML = `${currentFiles.length} / 5 files selected`;
 }
 
-// Safety net: re-sync right before submit in case anything got out of step,
-// and log exactly what's being sent so mismatches are easy to spot in devtools.
-uploadForm.addEventListener('submit', function () {
+// Submit flow: block double-submits, wait for any in-flight compression
+// to finish so we never upload an uncompressed original by accident, then
+// show a loading overlay so the page never looks frozen while it uploads.
+const uploadOverlay = document.getElementById('uploadOverlay');
+const overlayTitle = document.getElementById('overlayTitle');
+const submitBtn = document.getElementById('submitBtn');
+
+uploadForm.addEventListener('submit', function (e) {
+    if (isSubmitting) {
+        e.preventDefault();
+        return;
+    }
+
+    // If images are still compressing, hold the native submit, wait, then
+    // submit programmatically (bypasses this listener, so no double-fire).
+    if (pendingCompressions.length > 0) {
+        e.preventDefault();
+        isSubmitting = true;
+        submitBtn.disabled = true;
+        overlayTitle.textContent = 'Preparing images';
+        uploadOverlay.classList.add('active');
+
+        Promise.all(pendingCompressions).then(() => {
+            syncFileInput();
+            overlayTitle.textContent = 'Uploading artwork';
+            console.log("Submitting", fileInput.files.length, "files:", [...fileInput.files].map(f => f.name));
+            uploadForm.submit();
+        });
+        return;
+    }
+
     syncFileInput();
+    isSubmitting = true;
+    submitBtn.disabled = true;
+    uploadOverlay.classList.add('active');
 
     console.log(
         "Submitting",
