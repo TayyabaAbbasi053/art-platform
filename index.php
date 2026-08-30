@@ -659,50 +659,6 @@ h1.htitle em{font-style:italic;color:var(--ink);}
 
 <div class="wrap"><hr class="divhr"></div>
 
-<!-- HOW IT WORKS -->
-<div class="wrap"><div class="sec">
-  <div class="sec-hd"><h2 class="sec-title">How it works</h2></div>
-  <div class="how-grid">
-    <div class="how-card">
-      <div class="how-n">1</div>
-      <div class="how-icon"><svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg></div>
-      <div class="how-t">Explore</div>
-      <div class="how-d">Browse thousands of original artworks from verified Pakistani artists.</div>
-    </div>
-    <div class="how-card">
-      <div class="how-n">2</div>
-      <div class="how-icon"><svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg></div>
-      <div class="how-t">Buy Instantly</div>
-      <div class="how-d">Click Buy Now and go straight to a secure checkout — no cart needed.</div>
-    </div>
-    <div class="how-card">
-      <div class="how-n">3</div>
-      <div class="how-icon"><svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg></div>
-      <div class="how-t">Place Your Order</div>
-      <div class="how-d">Review your order and complete the purchase with delivery details at checkout.</div>
-    </div>
-    <div class="how-card">
-      <div class="how-n">4</div>
-      <div class="how-icon"><svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg></div>
-      <div class="how-t">Receive</div>
-      <div class="how-d">Get your artwork safely delivered to your door anywhere in Pakistan.</div>
-    </div>
-  </div>
-</div></div>
-
-<div class="wrap" style="padding:28px 28px;"><div class="comm-strip">
-  <div class="cs-l">
-    <div class="cs-tag">Custom Commissions</div>
-    <h2 class="cs-title">Want something<br>made just for you?</h2>
-    <p class="cs-desc">Request a custom artwork from our talented Pakistani artists. Portraits, calligraphy, illustrations — anything you can imagine.</p>
-  </div>
-  <div class="cs-r">
-    <button class="btn-gold" onclick="openCM()">Request Custom Artwork <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></button>
-  </div>
-</div></div>
-
-<div class="wrap"><hr class="divhr"></div>
-
 <!-- LATEST ARTWORKS -->
 <div class="wrap"><div class="sec">
   <div class="sec-hd"><h2 class="sec-title">Latest Artworks</h2><a href="artworks.php" class="sec-lnk">View all</a></div>
@@ -777,6 +733,50 @@ h1.htitle em{font-style:italic;color:var(--ink);}
   </div>
   <?php endif; ?>
 </div></div>
+
+<!-- HOW IT WORKS -->
+<div class="wrap"><div class="sec">
+  <div class="sec-hd"><h2 class="sec-title">How it works</h2></div>
+  <div class="how-grid">
+    <div class="how-card">
+      <div class="how-n">1</div>
+      <div class="how-icon"><svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg></div>
+      <div class="how-t">Explore</div>
+      <div class="how-d">Browse thousands of original artworks from verified Pakistani artists.</div>
+    </div>
+    <div class="how-card">
+      <div class="how-n">2</div>
+      <div class="how-icon"><svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg></div>
+      <div class="how-t">Buy Instantly</div>
+      <div class="how-d">Click Buy Now and go straight to a secure checkout — no cart needed.</div>
+    </div>
+    <div class="how-card">
+      <div class="how-n">3</div>
+      <div class="how-icon"><svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg></div>
+      <div class="how-t">Place Your Order</div>
+      <div class="how-d">Review your order and complete the purchase with delivery details at checkout.</div>
+    </div>
+    <div class="how-card">
+      <div class="how-n">4</div>
+      <div class="how-icon"><svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg></div>
+      <div class="how-t">Receive</div>
+      <div class="how-d">Get your artwork safely delivered to your door anywhere in Pakistan.</div>
+    </div>
+  </div>
+</div></div>
+
+<div class="wrap" style="padding:28px 28px;"><div class="comm-strip">
+  <div class="cs-l">
+    <div class="cs-tag">Custom Commissions</div>
+    <h2 class="cs-title">Want something<br>made just for you?</h2>
+    <p class="cs-desc">Request a custom artwork from our talented Pakistani artists. Portraits, calligraphy, illustrations — anything you can imagine.</p>
+  </div>
+  <div class="cs-r">
+    <button class="btn-gold" onclick="openCM()">Request Custom Artwork <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></button>
+  </div>
+</div></div>
+
+<div class="wrap"><hr class="divhr"></div>
 
 <!-- FOOTER -->
 <footer class="footer">
