@@ -1,4 +1,3 @@
-
 <?php
 session_start();
 require_once __DIR__ . '/../../config/db.php';
@@ -15,7 +14,7 @@ if (!isset($_SESSION['user_id'])) {
 
 // ── Filter and pagination ────────────────────────────────
  $statusFilter = $_GET['status'] ?? '';
- $allowedStatuses = ['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'];
+ $allowedStatuses = ['pending', 'payment_confirmed', 'processing', 'shipped', 'delivered', 'cancelled'];
 if (!in_array($statusFilter, $allowedStatuses)) {
     $statusFilter = '';
 }
@@ -95,7 +94,7 @@ if (!empty($orders)) {
  $statusCounts = [
     'all' => $totalOrders,
     'pending' => 0,
-    'confirmed' => 0,
+    'payment_confirmed' => 0,
     'processing' => 0,
     'shipped' => 0,
     'delivered' => 0,
@@ -116,7 +115,7 @@ function getStatusBadgeClass($status) {
     // Maintained for logic flow, though CSS now handles styling uniformly via generic rules
     $classes = [
         'pending' => 'pending',
-        'confirmed' => 'confirmed',
+        'payment_confirmed' => 'confirmed',
         'processing' => 'processing',
         'shipped' => 'shipped',
         'delivered' => 'delivered',
@@ -128,7 +127,7 @@ function getStatusBadgeClass($status) {
 function getStatusLabel($status) {
     $labels = [
         'pending' => 'Pending',
-        'confirmed' => 'Confirmed',
+        'payment_confirmed' => 'Confirmed',
         'processing' => 'Processing',
         'shipped' => 'Shipped',
         'delivered' => 'Delivered',
@@ -345,7 +344,7 @@ tr:hover { box-shadow: 0 4px 12px rgba(12,63,48,.06); }
   <div class="tabs">
     <a href="?status=" class="tab <?= !$statusFilter ? 'active' : '' ?>">All <span class="count">(<?= $statusCounts['all'] ?>)</span></a>
     <a href="?status=pending" class="tab <?= $statusFilter === 'pending' ? 'active' : '' ?>">Pending <span class="count">(<?= $statusCounts['pending'] ?>)</span></a>
-    <a href="?status=confirmed" class="tab <?= $statusFilter === 'confirmed' ? 'active' : '' ?>">Confirmed <span class="count">(<?= $statusCounts['confirmed'] ?>)</span></a>
+    <a href="?status=payment_confirmed" class="tab <?= $statusFilter === 'payment_confirmed' ? 'active' : '' ?>">Confirmed <span class="count">(<?= $statusCounts['payment_confirmed'] ?>)</span></a>
     <a href="?status=processing" class="tab <?= $statusFilter === 'processing' ? 'active' : '' ?>">Processing <span class="count">(<?= $statusCounts['processing'] ?>)</span></a>
     <a href="?status=shipped" class="tab <?= $statusFilter === 'shipped' ? 'active' : '' ?>">Shipped <span class="count">(<?= $statusCounts['shipped'] ?>)</span></a>
     <a href="?status=delivered" class="tab <?= $statusFilter === 'delivered' ? 'active' : '' ?>">Delivered <span class="count">(<?= $statusCounts['delivered'] ?>)</span></a>
