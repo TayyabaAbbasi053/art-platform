@@ -62,7 +62,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
 
             // If cancelled, release all artworks in this order back to available
             if ($newStatus === 'cancelled') {
-                $conn->query("UPDATE artworks SET status = 'approved', reserved_by = NULL WHERE id IN (SELECT item_id FROM order_items WHERE order_id = $orderId AND item_type = 'artwork')");
+                $conn->query("UPDATE artworks SET status = 'active', reserved_by = NULL WHERE id IN (SELECT item_id FROM order_items WHERE order_id = $orderId AND item_type = 'artwork')");
             }
             
             // Log to history

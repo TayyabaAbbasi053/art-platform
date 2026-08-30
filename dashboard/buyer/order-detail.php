@@ -254,7 +254,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cancel_order']) && $c
     $conn->query("UPDATE orders SET order_status = 'cancelled' WHERE id = $orderId");
     
     // Release artworks back to available
-    $conn->query("UPDATE artworks SET status = 'approved', reserved_by = NULL WHERE id IN (SELECT item_id FROM order_items WHERE order_id = $orderId AND item_type = 'artwork')");
+    $conn->query("UPDATE artworks SET status = 'active', reserved_by = NULL WHERE id IN (SELECT item_id FROM order_items WHERE order_id = $orderId AND item_type = 'artwork')");
 
     // If this order was already booked with the courier, cancel the Smartlane consignment too
     $smartlaneNote = '';

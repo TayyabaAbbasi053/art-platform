@@ -439,7 +439,7 @@ img{max-width:100%;display:block;}
   <div class="nw">
     <a href="index.php" class="nlogo"><img src="logo.png" alt="Art Bazaar" style="height:36px;width:auto;display:block;"></a>
     <div class="nlinks">
-      <a href="artworks.php">Explore Art</a>
+      <a href="artworks.php">Physical Art</a>
       <a href="digital-art.php">Digital Art</a>
       <a href="artists.php" class="active">Artists</a>
       <a href="blog.php">Blog</a>
@@ -458,7 +458,7 @@ img{max-width:100%;display:block;}
         <a href="logout.php" class="btn-dark">Logout</a>
       <?php else: ?>
         <a href="login.php" class="btn-ghost">Login</a>
-        <a href="register.php" class="btn-dark">Join as Artist</a>
+         
       <?php endif; ?>
       <button class="ham-btn" aria-label="Open menu">
         <span></span><span></span><span></span>
@@ -707,7 +707,7 @@ img{max-width:100%;display:block;}
     <button class="drawer-close" aria-label="Close menu">✕</button>
   </div>
   <div class="drawer-links">
-    <a href="artworks.php">Explore Art</a>
+    <a href="artworks.php">Physical Art</a>
     <a href="digital-art.php">Digital Art</a>
     <a href="artists.php">Artists</a>
     <a href="blog.php">Blog</a>
@@ -722,7 +722,7 @@ img{max-width:100%;display:block;}
       <a href="logout.php" class="drawer-btn-dark">Logout</a>
     <?php else: ?>
       <a href="login.php" class="drawer-btn-ghost">Login</a>
-      <a href="register.php" class="drawer-btn-dark">Join as Artist</a>
+       
     <?php endif; ?>
   </div>
 </div>
