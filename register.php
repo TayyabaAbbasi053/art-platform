@@ -195,12 +195,22 @@ $hasJazzcash    = isset($_POST['has_jazzcash'])      ? 1 : 0;
 $hasNayapay     = isset($_POST['has_nayapay'])       ? 1 : 0;
 $hasSadapay     = isset($_POST['has_sadapay'])       ? 1 : 0;
 
+    // Check that the email's domain can actually receive mail (catches typos / fake domains
+    // that pass basic format validation, e.g. gmail.aascdasdasd)
+    $emailDomainValid = true;
+    if ($email && filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $domain = substr(strrchr($email, "@"), 1);
+        $emailDomainValid = $domain && (checkdnsrr($domain, 'MX') || checkdnsrr($domain, 'A'));
+    }
+
     if (!$role || !in_array($role, ['artist', 'buyer'])) {
     $error = 'Please select an account type (Artist or Buyer).';
 } elseif (!$name) {
     $error = 'Full name is required.';
 } elseif (!$email || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
     $error = 'Please enter a valid email address.';
+} elseif (!$emailDomainValid) {
+    $error = 'Please enter an email with a valid domain (e.g. gmail.com, yahoo.com).';
 } elseif (!$phone) {
     $error = 'Phone / WhatsApp number is required.';
 } elseif (!preg_match('/^(\+92\d{10}|0\d{10})$/', preg_replace('/[\s\-()]/', '', $phone))) {
