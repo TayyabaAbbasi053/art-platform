@@ -396,7 +396,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_
                    COALESCE(u.name, o.guest_name) AS buyer_name_resolved,
                    COALESCE(u.email, o.guest_email) AS buyer_email_resolved,
                    COALESCE(u.phone, o.guest_phone, o.shipping_phone) AS buyer_phone_resolved,
-                   a.title AS artwork_title,
+                   a.title AS artwork_title, a.delivery_type,
                    ap.smartlane_warehouse_code
             FROM orders o
             LEFT JOIN users u ON o.buyer_id = u.id
@@ -409,6 +409,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_
 
         if (!$orderRow) {
             $toast = 'Order not found.';
+        } elseif (($orderRow['delivery_type'] ?? 'physical') === 'digital') {
+            $toast = 'This is a digital item — there is nothing to courier.';
         } elseif (!in_array($orderRow['order_status'], ['payment_confirmed', 'cod'], true)) {
             $toast = 'This order must be in Payment Confirmed or COD status before sending to courier.';
         } elseif (empty($orderRow['smartlane_warehouse_code'])) {
@@ -558,7 +560,7 @@ while ($row = $res->fetch_assoc()) {
 foreach ($items as &$item) {
     $oid = (int)$item['id'];
     $artRes = $conn->query("
-        SELECT a.id, a.title, a.price, a.delivery_status, a.artist_id,
+        SELECT a.id, a.title, a.price, a.delivery_status, a.delivery_type, a.artist_id,
                u.name AS artist_name,
                ap.smartlane_warehouse_code,
                (SELECT image_path FROM artwork_images
@@ -579,6 +581,7 @@ foreach ($items as &$item) {
     $item['artwork_media_type'] = !empty($item['artworks']) ? ($item['artworks'][0]['media_type'] ?: 'image') : 'image';
     $item['artist_name']   = !empty($item['artworks']) ? $item['artworks'][0]['artist_name'] : '';
     $item['smartlane_warehouse_code'] = !empty($item['artworks']) ? $item['artworks'][0]['smartlane_warehouse_code'] : null;
+    $item['delivery_type'] = !empty($item['artworks']) ? ($item['artworks'][0]['delivery_type'] ?? 'physical') : 'physical';
 }
 unset($item);
 
@@ -1170,7 +1173,16 @@ if ($item['item_status'] === 'pending' && $item['payment_method'] === 'cod') {
                     </form>
                 `;
 
-                if (!item.smartlane_warehouse_code) {
+                if (item.delivery_type === 'digital') {
+                    html += `
+                        <div class="screenshot-box" style="background:#EEF2F8;border:1px solid #B3CDEF;margin-top:12px;">
+                            <div class="screenshot-info">
+                                <strong>📩 Digital item</strong>
+                                <div>Delivered via download — no courier needed.</div>
+                            </div>
+                        </div>
+                    `;
+                } else if (!item.smartlane_warehouse_code) {
                     html += `
                         <div class="screenshot-box" style="background:#FFF3E0;border:1px dashed #FFCC80;margin-top:12px;">
                             <div class="screenshot-info">
@@ -1190,7 +1202,7 @@ if ($item['item_status'] === 'pending' && $item['payment_method'] === 'cod') {
                 }
             }
 
-            if (item.item_status === 'processing') {
+            if (item.item_status === 'processing' && item.delivery_type !== 'digital') {
                 html += item.tracking_number
                     ? `<div class="screenshot-box" style="background:#EEF2F8;border:1px solid #B3CDEF;margin-top:12px;"><div class="screenshot-info"><strong>📦 Tracking: ${esc(item.tracking_number)}</strong><div>${item.courier ? esc(item.courier) : ''}</div></div></div>`
                     : `<div class="screenshot-box" style="margin-top:12px;"><div class="screenshot-info"><strong>Sent to courier</strong><div>Waiting for Smartlane to confirm booking and return a tracking number.</div></div></div>`;

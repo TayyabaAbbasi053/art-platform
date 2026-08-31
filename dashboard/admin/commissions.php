@@ -452,7 +452,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_
             SELECT o.id, o.order_number, o.order_status, o.total, o.proposed_weight_kg,
                    o.shipping_address, o.shipping_city, o.shipping_phone,
                    o.guest_name, o.guest_email, o.guest_phone,
-                   o.commission_description,
+                   o.commission_description, o.delivery_type,
                    u.name AS buyer_name_real, u.email AS buyer_email_real, u.phone AS buyer_phone_real,
                    ap.smartlane_warehouse_code
             FROM orders o
@@ -465,6 +465,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_
 
         if (!$orderRow) {
             $toast = 'Order not found.';
+        } elseif (($orderRow['delivery_type'] ?? 'physical') === 'digital') {
+            $toast = 'This is a digital commission — there is nothing to courier.';
         } elseif ($orderRow['order_status'] !== 'ready_to_ship') {
             $toast = 'This commission must be marked Ready to Ship by the artist before sending to courier.';
         } elseif (empty($orderRow['smartlane_warehouse_code'])) {
@@ -628,6 +630,7 @@ if ($params) {
         o.total AS agreed_price,
         o.tracking_number,
         o.courier,
+        o.delivery_type,
         o.shipping_address, o.shipping_city, o.shipping_phone,
         o.payment_method, o.payment_status,
         o.payment_screenshot,
@@ -1135,6 +1138,7 @@ function openDetail(id){
     if(!cr)return;
     
     const artworkTypeLabel=cr.artwork_type||'Custom';
+    const isDigital = cr.delivery_type === 'digital';
     
     const statusToDeliveryMap = {'pending':'pending','price_proposed':'pending','confirmed':'deposit_paid','processing':'in_progress','shipped':'shipped','delivered':'delivered','cancelled':'cancelled'};
     const currentDeliveryStatus = statusToDeliveryMap[cr.status] || 'pending';
@@ -1219,14 +1223,16 @@ ${cr.status==='processing'?`
 `:''}
 ${cr.status==='ready_to_ship'?`
     <div style="background:#F3E5F5;border:1px solid #CE93D8;border-radius:8px;padding:8px 14px;font-size:12px;color:#6A1B9A;font-weight:500;">📦 Artist marked this as ready to ship.</div>
-    ${!cr.smartlane_warehouse_code?`
+    ${isDigital?`
+        <div style="background:#EEF2F8;border:1px solid #B3CDEF;border-radius:8px;padding:8px 14px;font-size:12px;color:#3B7DD8;font-weight:500;">📩 Digital commission — delivered via file upload, no courier needed.</div>
+    `:!cr.smartlane_warehouse_code?`
         <div style="background:#FFF3E0;border:1px solid #FFCC80;border-radius:8px;padding:8px 14px;font-size:12px;color:#E65100;font-weight:500;">⚠ No Smartlane warehouse code set for this artist. Add it on the Artists page first.</div>
     `:`
         <form method="POST" style="display:inline;" onsubmit="return confirm('Send this order to Smartlane for courier booking?')"><input type="hidden" name="action" value="send_to_courier"><input type="hidden" name="id" value="${cr.id}"><button type="submit" class="forward-btn" style="background:var(--blue);">🚚 Send to Courier</button></form>
     `}
 `:''}
-${cr.status==='processing'&&cr.tracking_number?`<div style="background:#EEF2F8;border:1px solid #B3CDEF;border-radius:8px;padding:8px 14px;font-size:12px;color:#3B7DD8;font-weight:500;">📦 Tracking: ${esc(cr.tracking_number)}${cr.courier?' · '+esc(cr.courier):''}</div>`:''}
-${cr.status==='processing'&&!cr.tracking_number?`<div style="background:#F4F4F4;border:1px solid #DDD;border-radius:8px;padding:8px 14px;font-size:12px;color:#888;font-weight:500;">Sent to courier — waiting for Smartlane to confirm booking and return a tracking number.</div>`:''}
+${cr.status==='processing'&&!isDigital&&cr.tracking_number?`<div style="background:#EEF2F8;border:1px solid #B3CDEF;border-radius:8px;padding:8px 14px;font-size:12px;color:#3B7DD8;font-weight:500;">📦 Tracking: ${esc(cr.tracking_number)}${cr.courier?' · '+esc(cr.courier):''}</div>`:''}
+${cr.status==='processing'&&!isDigital&&!cr.tracking_number?`<div style="background:#F4F4F4;border:1px solid #DDD;border-radius:8px;padding:8px 14px;font-size:12px;color:#888;font-weight:500;">Sent to courier — waiting for Smartlane to confirm booking and return a tracking number.</div>`:''}
                 </div>
             </div>
         </div>
