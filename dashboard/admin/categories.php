@@ -312,6 +312,10 @@ tr:hover td { background: var(--sand); box-shadow: 0 4px 12px rgba(12,63,48,.06)
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
         Artists
     </a>
+    <a href="payments.php" class="nav-item">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
+        Payments
+    </a>
     <a href="blogs.php" class="nav-item">
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16a1 1 0 011 1v14a1 1 0 01-1 1H4a1 1 0 01-1-1V5a1 1 0 011-1z"/><path d="M7 8h10M7 12h6"/></svg>
     Blog Posts
@@ -426,6 +430,7 @@ tr:hover td { background: var(--sand); box-shadow: 0 4px 12px rgba(12,63,48,.06)
   <a href="index.php" class="d-link">Overview</a>
   <a href="artworks.php" class="d-link">Artworks</a>
   <a href="artists.php" class="d-link">Artists</a>
+  <a href="payments.php" class="d-link">Payments</a>
   <a href="categories.php" class="d-link">Categories</a>
   <a href="inquiries.php" class="d-link">Buyer Inquiries</a>
   <a href="commissions.php" class="d-link">Commissions</a>

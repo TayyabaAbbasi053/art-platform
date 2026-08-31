@@ -717,6 +717,10 @@ tr:hover td {
             <span class="badge amber"><?= $stats['pending_artists'] ?></span>
         <?php endif; ?>
     </a>
+    <a href="payments.php" class="nav-item">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
+        Payments
+    </a>
     <a href="blogs.php" class="nav-item">
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16a1 1 0 011 1v14a1 1 0 01-1 1H4a1 1 0 01-1-1V5a1 1 0 011-1z"/><path d="M7 8h10M7 12h6"/></svg>
     Blog Posts
@@ -985,6 +989,7 @@ tr:hover td {
         <a href="index.php">Dashboard</a>
         <a href="artworks.php">Artworks</a>
         <a href="artists.php">Artists</a>
+        <a href="payments.php">Payments</a>
         <a href="blogs.php">Blog Posts</a>
         <a href="categories.php">Categories</a>
         <a href="inquiries.php">Orders & Inquiries</a>

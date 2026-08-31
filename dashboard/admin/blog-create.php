@@ -269,6 +269,10 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
         Artists
     </a>
+    <a href="payments.php" class="nav-item">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
+        Payments
+    </a>
     <a href="categories.php" class="nav-item">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h10M4 18h7"/></svg>
         Categories
@@ -410,6 +414,7 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
         <a href="artworks.php">Artworks</a>
         <a href="blogs.php">Blog Posts</a>
         <a href="artists.php">Artists</a>
+        <a href="payments.php">Payments</a>
         <a href="categories.php">Categories</a>
         <a href="inquiries.php">Orders & Inquiries</a>
         <a href="commissions.php">Commissions</a>
