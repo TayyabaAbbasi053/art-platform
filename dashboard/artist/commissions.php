@@ -129,18 +129,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     
     // Verify this commission belongs to the artist
     $check = $conn->prepare("
-        SELECT o.id, o.order_status FROM orders o
+        SELECT o.id, o.order_status, o.delivery_type FROM orders o
         JOIN commission_requests cr ON cr.order_id = o.id
         WHERE o.id = ? AND cr.artist_id = ? AND o.order_type = 'commission'
     ");
     $check->bind_param('ii', $orderId, $artistId);
     $check->execute();
     $orderRow = $check->get_result()->fetch_assoc();
-    
+
+    // Digital commissions skip the courier flow entirely — delivery happens via file upload instead.
+    $isDigitalOrder = $orderRow && ($orderRow['delivery_type'] ?? '') === 'digital';
+
     if (!$orderRow) {
         $errorMsg = 'Invalid commission request.';
     } elseif (!in_array($newStatus, $allowedStatuses)) {
         $errorMsg = 'Invalid status selected.';
+    } elseif ($isDigitalOrder && in_array($newStatus, ['ready_to_ship', 'shipped'])) {
+        $errorMsg = 'Digital commissions are delivered by uploading the final file, not via courier.';
     } else {
         $oldStatus = $orderRow['order_status'];
         $stmt = $conn->prepare("UPDATE orders SET order_status = ?, updated_at = NOW() WHERE id = ?");
@@ -301,19 +306,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     LEFT JOIN users u ON o.buyer_id = u.id
     LEFT JOIN categories c ON o.commission_category_id = c.id
     WHERE cr.artist_id = ? AND o.order_type = 'commission' AND o.order_status NOT IN ('pending')
-    ORDER BY
-        CASE o.order_status
-    WHEN 'payment_confirmed' THEN 1
-    WHEN 'pending'           THEN 2
-    WHEN 'price_proposed'    THEN 3
-    WHEN 'assigned'          THEN 4
-    WHEN 'payment_review'    THEN 5
-    WHEN 'processing'        THEN 6
-    WHEN 'shipped'           THEN 7
-    WHEN 'delivered'         THEN 8
-    WHEN 'cancelled'         THEN 9
-END,
-        o.created_at DESC
+    ORDER BY o.created_at DESC
 ";
  $stmt = $conn->prepare($sql);
  $stmt->bind_param('i', $artistId);
@@ -876,6 +869,8 @@ $isAwaitingPaymentReview = $viewRequest['status'] === 'payment_review';
         <input type="hidden" name="new_status" value="processing">
         <button type="submit" class="status-btn" style="background:#2E7D32;">▶ Start Working (Mark as Processing)</button>
     </form>
+<?php elseif ($viewRequest['status'] === 'processing' && ($viewRequest['delivery_type'] ?? '') === 'digital'): ?>
+    <p style="font-size:12px;color:#1565C0;font-weight:500;">🎨 In progress. Upload the final file below once it's ready — the buyer will be notified automatically.</p>
 <?php elseif ($viewRequest['status'] === 'processing'): ?>
     <p style="font-size:12px;color:#1565C0;font-weight:500;">🎨 In progress. Mark it <strong>Ready to Ship</strong> once the artwork is finished and packed.</p>
     <form method="POST" class="status-select-group" style="margin-top:10px;" onsubmit="return confirm('Mark this commission as ready to ship? Admin will be notified to book the courier.')">
@@ -886,6 +881,8 @@ $isAwaitingPaymentReview = $viewRequest['status'] === 'payment_review';
     </form>
 <?php elseif ($viewRequest['status'] === 'ready_to_ship'): ?>
     <p style="font-size:12px;color:#6A1B9A;font-weight:500;">✓ Marked ready. Waiting for admin to book the courier.</p>
+<?php elseif (($viewRequest['delivery_type'] ?? '') === 'digital'): ?>
+    <?php /* Digital commissions: nothing further to manage once delivered/cancelled — no courier/shipping step applies. */ ?>
 <?php else: ?>
                 <form method="POST" class="status-select-group">
                     <input type="hidden" name="action" value="update_status"><input type="hidden" name="order_id" value="<?= $viewRequest['id'] ?>">
