@@ -24,7 +24,7 @@ if ($isCommission) {
     $stmt = $conn->prepare("
         SELECT commission_digital_file_path
         FROM orders
-        WHERE id = ? AND buyer_id = ? AND order_status = 'delivered' AND order_type = 'commission'
+        WHERE id = ? AND buyer_id = ? AND order_status = 'delivered' AND order_type = 'commission' AND delivery_type = 'digital'
         LIMIT 1
     ");
     $stmt->bind_param('ii', $orderId, $buyerId);

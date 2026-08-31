@@ -692,7 +692,7 @@ img{max-width:100%;display:block;}
   </div>
   <?php endif; ?>
 
-  <?php if ($isCommission && $order['order_status'] === 'delivered' && ($order['commission_category_slug'] ?? '') === 'digital-art' && !empty($order['commission_digital_file_path'])): ?>
+  <?php if ($isCommission && $order['order_status'] === 'delivered' && ($order['delivery_type'] ?? '') === 'digital' && !empty($order['commission_digital_file_path'])): ?>
   <div class="items-card" style="padding:20px;text-align:center;">
     <p style="font-size:13px;margin-bottom:12px;color:var(--ink);">Your commissioned digital artwork is ready.</p>
     <a href="download-artwork.php?order_id=<?= $orderId ?>&commission=1"

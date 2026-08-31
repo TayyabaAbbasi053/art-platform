@@ -61,6 +61,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $orderId = (int)($_POST['order_id'] ?? 0);
     $proposedPrice = $_POST['proposed_price'] ?? '';
     $proposedWeight = $_POST['proposed_weight_kg'] ?? '';
+    $proposedDelivery = $_POST['delivery_type'] ?? '';
 
     // Verify this commission belongs to the artist
     $check = $conn->prepare("
@@ -76,7 +77,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         $errorMsg = 'Invalid commission request.';
     } elseif ($proposedPrice === '' || $proposedPrice === null || !is_numeric($proposedPrice) || floatval($proposedPrice) <= 0) {
         $errorMsg = 'Please enter a valid price greater than 0.';
-    } elseif ($proposedWeight === '' || $proposedWeight === null || !is_numeric($proposedWeight) || floatval($proposedWeight) <= 0) {
+    } elseif ($proposedDelivery !== 'physical' && $proposedDelivery !== 'digital') {
+        $errorMsg = 'Please choose how this commission will be delivered (physical or digital).';
+    } elseif ($proposedDelivery === 'physical' && ($proposedWeight === '' || $proposedWeight === null || !is_numeric($proposedWeight) || floatval($proposedWeight) <= 0)) {
         $errorMsg = 'Please enter a valid expected weight greater than 0.';
     } elseif (!in_array($orderRow['order_status'], ['assigned', 'price_proposed'])) {
     $errorMsg = 'Price can only be suggested while the commission is assigned or awaiting buyer response.';
@@ -84,7 +87,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         $errorMsg = 'Price has already been accepted by the buyer. No further changes allowed.';
     } else {
         $priceVal = floatval($proposedPrice);
-        $weightVal = floatval($proposedWeight);
+        $weightVal = ($proposedDelivery === 'digital') ? 1.00 : floatval($proposedWeight);
         $newOrderStatus = 'price_proposed';
         $newPriceStatus = 'proposed';
 
@@ -96,10 +99,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 subtotal = ?,
                 total = ?,
                 proposed_weight_kg = ?,
+                delivery_type = ?,
                 updated_at = NOW() 
             WHERE id = ?
         ");
-        $stmt->bind_param('dssdddi', $priceVal, $newPriceStatus, $newOrderStatus, $priceVal, $priceVal, $weightVal, $orderId);
+        $stmt->bind_param('dssdddsi', $priceVal, $newPriceStatus, $newOrderStatus, $priceVal, $priceVal, $weightVal, $proposedDelivery, $orderId);
         $stmt->execute();
 
         // Log status change in history
@@ -222,10 +226,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $orderId = (int)($_POST['order_id'] ?? 0);
 
     $check = $conn->prepare("
-        SELECT o.id, o.commission_final_approved, c.slug AS category_slug
+        SELECT o.id, o.order_status, o.delivery_type
         FROM orders o
         JOIN commission_requests cr ON cr.order_id = o.id
-        LEFT JOIN categories c ON o.commission_category_id = c.id
         WHERE o.id = ? AND cr.artist_id = ? AND o.order_type = 'commission'
     ");
     $check->bind_param('ii', $orderId, $artistId);
@@ -237,10 +240,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
     if (!$orderRow) {
         $errorMsg = 'Invalid commission request.';
-    } elseif (!$orderRow['commission_final_approved']) {
-        $errorMsg = 'The buyer must approve the final artwork before you can upload the deliverable.';
-    } elseif (($orderRow['category_slug'] ?? '') !== 'digital-art') {
+    } elseif (($orderRow['delivery_type'] ?? '') !== 'digital') {
         $errorMsg = 'This upload is only for digital commissions.';
+    } elseif ($orderRow['order_status'] !== 'processing') {
+        $errorMsg = 'You can upload the final file once the commission is marked as Processing.';
     } elseif (!$hasFile) {
         $errorMsg = 'Please choose a file to upload.';
     } else {
@@ -286,7 +289,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
            o.commission_framed,
            o.commission_quantity,
            o.commission_delivery_city,
-           o.commission_final_approved, o.commission_digital_file_path,
+           o.commission_final_approved, o.commission_digital_file_path, o.delivery_type,
            o.admin_notes, o.total AS agreed_price,
            o.proposed_price, o.price_status, o.proposed_weight_kg,
            o.shipping_address, o.shipping_city, o.shipping_phone, 
@@ -813,7 +816,12 @@ $isAwaitingPaymentReview = $viewRequest['status'] === 'payment_review';
                     <input type="hidden" name="order_id" value="<?= $viewRequest['id'] ?>">
                     <span class="currency-label">PKR</span>
                     <input type="number" name="proposed_price" value="<?= !empty($viewRequest['proposed_price']) ? $viewRequest['proposed_price'] : '' ?>" placeholder="e.g. 12000" min="1" step="0.01" required>
-                    <input type="number" name="proposed_weight_kg" value="<?= !empty($viewRequest['proposed_weight_kg']) ? $viewRequest['proposed_weight_kg'] : '' ?>" placeholder="Weight (kg)" min="0.01" step="0.01" required style="width:140px;">
+                    <select name="delivery_type" id="delivery_type_select" required onchange="var w=document.getElementById('proposed_weight_kg'); var isDigital=(this.value==='digital'); w.required=!isDigital; w.style.display=isDigital?'none':'';">
+                        <option value="">Delivery type...</option>
+                        <option value="physical" <?= ($viewRequest['delivery_type'] ?? '') === 'physical' ? 'selected' : '' ?>>Physical</option>
+                        <option value="digital" <?= ($viewRequest['delivery_type'] ?? '') === 'digital' ? 'selected' : '' ?>>Digital</option>
+                    </select>
+                    <input type="number" id="proposed_weight_kg" name="proposed_weight_kg" value="<?= !empty($viewRequest['proposed_weight_kg']) ? $viewRequest['proposed_weight_kg'] : '' ?>" placeholder="Weight (kg)" min="0.01" step="0.01" <?= ($viewRequest['delivery_type'] ?? '') === 'digital' ? '' : 'required' ?> style="width:140px;<?= ($viewRequest['delivery_type'] ?? '') === 'digital' ? 'display:none;' : '' ?>">
                     <span class="currency-label">kg</span>
                     <button type="submit" class="suggest-price-btn">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
@@ -891,10 +899,10 @@ $isAwaitingPaymentReview = $viewRequest['status'] === 'payment_review';
                 <?php endif; ?>
             </div>
 
-            <?php if (!empty($viewRequest['commission_final_approved']) && ($viewRequest['category_slug'] ?? '') === 'digital-art' && empty($viewRequest['commission_digital_file_path'])): ?>
+            <?php if ($viewRequest['status'] === 'processing' && ($viewRequest['delivery_type'] ?? '') === 'digital' && empty($viewRequest['commission_digital_file_path'])): ?>
             <div class="status-update-box" style="border-color:#2E7D32;">
-                <h5>✅ Buyer Approved — Upload Final Artwork</h5>
-                <p style="font-size:12px;color:var(--muted);margin-bottom:10px;">The buyer has approved the design. Upload the final high-resolution file to deliver this commission.</p>
+                <h5>📤 Upload Final Artwork</h5>
+                <p style="font-size:12px;color:var(--muted);margin-bottom:10px;">Upload the final high-resolution file to deliver this digital commission to the buyer.</p>
                 <form method="POST" enctype="multipart/form-data" class="status-select-group">
                     <input type="hidden" name="action" value="upload_final_file">
                     <input type="hidden" name="order_id" value="<?= $viewRequest['id'] ?>">

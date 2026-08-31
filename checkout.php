@@ -48,15 +48,6 @@ if (!is_dir($uploadDir)) {
     mkdir($uploadDir, 0755, true);
 }
 
-// ── Helper: Robust digital-category detection ───────────────
-// Matches on slug OR name so this doesn't silently break if the
-// categories.slug column is empty/blank/differently cased in the DB.
-function isDigitalCategory(?string $slug, ?string $name): bool {
-    $slug = strtolower(trim((string)$slug));
-    $name = strtolower(trim((string)$name));
-    return $slug === 'digital-art' || $name === 'digital art';
-}
-
 // ── Helper: Dynamic Shipping Calculation (Server-Side) ─────
 function calculateShippingServerSide($conn, $buyerCity, $cartItems): int {
     if (empty($buyerCity) || empty($cartItems)) return 0;
@@ -109,14 +100,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_calculate_shippi
     $commissionOrderIdAjax = isset($_POST['commission_order_id']) ? (int)$_POST['commission_order_id'] : 0;
     if ($commissionOrderIdAjax > 0) {
         $crRes = $conn->query("
-            SELECT cr.artist_id, o.proposed_weight_kg, c.slug AS category_slug, c.name AS category_name
+            SELECT cr.artist_id, o.proposed_weight_kg, o.delivery_type
             FROM commission_requests cr
             JOIN orders o ON o.id = cr.order_id
-            LEFT JOIN categories c ON c.id = o.commission_category_id
             WHERE cr.order_id = $commissionOrderIdAjax LIMIT 1
         ");
         $crRowAjax = $crRes ? $crRes->fetch_assoc() : null;
-        $ajaxCommissionIsDigital = isDigitalCategory($crRowAjax['category_slug'] ?? '', $crRowAjax['category_name'] ?? '');
+        $ajaxCommissionIsDigital = ($crRowAjax['delivery_type'] ?? '') === 'digital';
 
         if ($ajaxCommissionIsDigital) {
             $fee = 0;
@@ -196,7 +186,7 @@ if ($isCommissionCheckout) {
     }
 
     $commissionCategoryName = $existingOrder['category_name'];
-    $isDigitalItem = isDigitalCategory($existingOrder['category_slug'] ?? '', $existingOrder['category_name'] ?? '');
+    $isDigitalItem = ($existingOrder['delivery_type'] ?? '') === 'digital';
     $total = (float)($existingOrder['total'] ?? 0);
     $shippingFee = (float)($existingOrder['shipping_fee'] ?? 0); 
     $subtotal = (float)($existingOrder['subtotal'] ?? 0);
