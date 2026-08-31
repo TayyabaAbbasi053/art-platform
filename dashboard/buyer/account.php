@@ -696,7 +696,7 @@ img{max-width:100%;display:block;}
             <?php if (!empty($comm['commission_reference_image'])): 
               $refImgUrl = '../../uploads/commissions/' . ltrim($comm['commission_reference_image'], '/');
             ?>
-            <img src="<?= htmlspecialchars($refImgUrl) ?>" alt="Reference" class="comm-ref-img">
+            <img src="<?= htmlspecialchars($refImgUrl) ?>" alt="Reference" class="comm-ref-img" loading="lazy" decoding="async">
             <?php endif; ?>
 
             <div class="comm-card-details">

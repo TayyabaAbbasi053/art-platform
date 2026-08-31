@@ -629,7 +629,7 @@ img{max-width:100%;display:block;}
       <?php if (!empty($order['commission_reference_image'])): 
         $refImgUrl = getImageUrl($order['commission_reference_image'], 'commission');
       ?>
-      <img src="<?= htmlspecialchars($refImgUrl) ?>" alt="Reference Image" class="cb-ref-img">
+      <img src="<?= htmlspecialchars($refImgUrl) ?>" alt="Reference Image" class="cb-ref-img" loading="lazy" decoding="async">
       <?php endif; ?>
 
       <?php if (!empty($order['commission_description'])): ?>
@@ -726,7 +726,7 @@ img{max-width:100%;display:block;}
       <?php elseif ($item['item_type'] === 'artwork' && $imgUrl && $mediaType === 'audio'): ?>
         <div class="item-img" style="display:flex;align-items:center;justify-content:center;font-size:22px;">🎵</div>
       <?php elseif ($item['item_type'] === 'artwork' && $imgUrl): ?>
-        <img class="item-img" src="<?= htmlspecialchars($imgUrl) ?>" alt="">
+        <img class="item-img" src="<?= htmlspecialchars($imgUrl) ?>" alt="" loading="lazy" decoding="async">
       <?php else: ?>
         <div class="item-img" style="display:flex;align-items:center;justify-content:center;">
           <svg width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.2" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
@@ -823,7 +823,7 @@ img{max-width:100%;display:block;}
         ?>
           <div class="message <?= $roleClass ?>" data-msg-id="<?= (int) $msg['id'] ?>">
             <?php if (($msg['message_type'] ?? 'text') === 'image' && !empty($msg['attachment_path'])): ?>
-              <img src="../../<?= htmlspecialchars($msg['attachment_path']) ?>" alt="Attachment" style="max-width:220px;border-radius:8px;display:block;margin-bottom:<?= $msg['message'] ? '6px' : '0' ?>;">
+              <img src="../../<?= htmlspecialchars($msg['attachment_path']) ?>" alt="Attachment" loading="lazy" decoding="async" style="max-width:220px;border-radius:8px;display:block;margin-bottom:<?= $msg['message'] ? '6px' : '0' ?>;">
               <?php if (empty($order['commission_final_approved'])): ?>
                 <form method="POST" style="margin-top:6px;">
                   <input type="hidden" name="action" value="approve_final">
@@ -926,7 +926,7 @@ function renderMessage(msg){
 
     let html = '';
     if (msg.message_type === 'image' && msg.attachment_path) {
-        html += `<img src="../../${escapeHtml(msg.attachment_path)}" alt="Attachment" style="max-width:220px;border-radius:8px;display:block;margin-bottom:${msg.message ? '6px' : '0'};">`;
+        html += `<img src="../../${escapeHtml(msg.attachment_path)}" alt="Attachment" loading="lazy" decoding="async" style="max-width:220px;border-radius:8px;display:block;margin-bottom:${msg.message ? '6px' : '0'};">`;
         if (!CHAT_FINAL_APPROVED) {
             html += `<form method="POST" action="order-detail.php?id=${CHAT_ORDER_ID}" style="margin-top:6px;" onsubmit="return confirm('Approve this version as final? The artist will then prepare your final deliverable.')">
                 <input type="hidden" name="action" value="approve_final">
