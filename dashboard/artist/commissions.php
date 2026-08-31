@@ -786,7 +786,7 @@ $isAwaitingPaymentReview = $viewRequest['status'] === 'payment_review';
             <div class="detail-full"><h5>Project Description</h5><p><?= nl2br(htmlspecialchars($viewRequest['description'] ?? '')) ?></p></div>
 
             <?php if ($viewRequest['reference_image']): ?>
-                <div class="detail-full"><h5>Reference Image</h5><img src="../../uploads/commissions/<?= htmlspecialchars($viewRequest['reference_image']) ?>" class="ref-image" alt=""></div>
+                <div class="detail-full"><h5>Reference Image</h5><img src="../../uploads/commissions/<?= htmlspecialchars($viewRequest['reference_image']) ?>" class="ref-image" alt="" loading="lazy" decoding="async"></div>
             <?php endif; ?>
 
             <?php if ($viewRequest['admin_notes']): ?>
@@ -921,7 +921,7 @@ $isAwaitingPaymentReview = $viewRequest['status'] === 'payment_review';
                     <?php foreach ($viewMessages as $msg): $roleClass = ($msg['sender_role'] === 'artist') ? 'artist' : (($msg['sender_role'] === 'admin') ? 'admin' : 'buyer'); ?>
                     <div class="message <?= $roleClass ?>" data-msg-id="<?= (int) $msg['id'] ?>">
                         <?php if (($msg['message_type'] ?? 'text') === 'image' && !empty($msg['attachment_path'])): ?>
-                            <img src="../../<?= htmlspecialchars($msg['attachment_path']) ?>" alt="Attachment" style="max-width:220px;border-radius:8px;display:block;margin-bottom:<?= $msg['message'] ? '6px' : '0' ?>;">
+                            <img src="../../<?= htmlspecialchars($msg['attachment_path']) ?>" alt="Attachment" loading="lazy" decoding="async" style="max-width:220px;border-radius:8px;display:block;margin-bottom:<?= $msg['message'] ? '6px' : '0' ?>;">
                         <?php endif; ?>
                         <?php if (!empty($msg['message'])): ?><div class="message-bubble"><?= htmlspecialchars($msg['message']) ?></div><?php endif; ?>
                         <div class="message-meta"><span><?= htmlspecialchars($msg['sender_name']) ?></span><span>•</span><span><?= date('M j, g:i A', strtotime($msg['created_at'])) ?></span></div>
@@ -983,7 +983,7 @@ function renderMessage(msg){
 
     let html = '';
     if (msg.message_type === 'image' && msg.attachment_path) {
-        html += `<img src="../../${escapeHtml(msg.attachment_path)}" alt="Attachment" style="max-width:220px;border-radius:8px;display:block;margin-bottom:${msg.message ? '6px' : '0'};">`;
+        html += `<img src="../../${escapeHtml(msg.attachment_path)}" alt="Attachment" loading="lazy" decoding="async" style="max-width:220px;border-radius:8px;display:block;margin-bottom:${msg.message ? '6px' : '0'};">`;
     }
     if (msg.message) {
         html += `<div class="message-bubble">${escapeHtml(msg.message)}</div>`;

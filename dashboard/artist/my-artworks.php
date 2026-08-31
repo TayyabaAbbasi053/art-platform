@@ -539,7 +539,7 @@ tr:hover td { background: var(--sand); }
                                     <?php elseif ($mediaType === 'audio'): ?>
                                         <div class="thumb thumb-clickable" style="display:flex;align-items:center;justify-content:center;font-size:18px;" onclick="openMediaPreview('<?= $mediaUrl ?>', 'audio')">🎵</div>
                                     <?php else: ?>
-                                        <img src="<?= $mediaUrl ?>" class="thumb thumb-clickable" alt="" onclick="openMediaPreview('<?= $mediaUrl ?>', 'image')">
+                                        <img src="<?= $mediaUrl ?>" class="thumb thumb-clickable" alt="" loading="lazy" decoding="async" onclick="openMediaPreview('<?= $mediaUrl ?>', 'image')">
                                     <?php endif; ?>
                                 <?php else: ?>
                                     <div class="thumb"></div>

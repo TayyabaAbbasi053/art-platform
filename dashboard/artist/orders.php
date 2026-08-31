@@ -585,7 +585,7 @@ $unseenCount = (int) $unseenStmt->get_result()->fetch_row()[0];
                 <?php elseif ($imageUrl && $rowMediaType === 'audio'): ?>
                   <div class="placeholder-img" style="font-size:14px;">🎵</div>
                 <?php elseif ($imageUrl): ?>
-                  <img src="<?= htmlspecialchars($imageUrl) ?>" alt="">
+                  <img src="<?= htmlspecialchars($imageUrl) ?>" alt="" loading="lazy" decoding="async">
                 <?php else: ?>
                   <div class="placeholder-img">N/A</div>
                 <?php endif; ?>
@@ -724,7 +724,7 @@ $unseenCount = (int) $unseenStmt->get_result()->fetch_row()[0];
     } else if (imgUrl && mediaType === 'audio') {
         artworkMediaHtml = `<div style="width:120px;height:120px;background:var(--border);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:32px;">🎵</div>`;
     } else if (imgUrl) {
-        artworkMediaHtml = `<img src="${esc(imgUrl)}" alt="${esc(order.artwork_title)}">`;
+        artworkMediaHtml = `<img src="${esc(imgUrl)}" alt="${esc(order.artwork_title)}" loading="lazy" decoding="async">`;
     } else {
         artworkMediaHtml = `<div style="width:120px;height:120px;background:var(--border);border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--ink);font-size:12px;">No Image</div>`;
     }
