@@ -703,7 +703,7 @@ $awData = json_encode([
                             <?php elseif (($aw['cover_media_type'] ?? '') === 'audio'): ?>
                                 <div class="td-img" style="display:flex;align-items:center;justify-content:center;font-size:16px;cursor:pointer;" onclick='openView(<?= htmlspecialchars($awData, ENT_QUOTES) ?>)'>🎵</div>
                             <?php else: ?>
-                                <img class="td-img" src="../../<?= htmlspecialchars($aw['cover_image']) ?>" alt=""
+                                <img class="td-img" src="../../<?= htmlspecialchars($aw['cover_image']) ?>" alt="" loading="lazy"
                                      style="cursor:zoom-in;" onclick='openView(<?= htmlspecialchars($awData, ENT_QUOTES) ?>)'>
                             <?php endif; ?>
                         <?php else: ?>

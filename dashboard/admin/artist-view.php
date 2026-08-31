@@ -503,7 +503,7 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
                 ?>
                 <div class="aw-card">
                     <?php if ($artworkImageUrl): ?>
-                        <img src="<?= htmlspecialchars($artworkImageUrl) ?>" alt="<?= htmlspecialchars($aw['title']) ?>">
+                        <img src="<?= htmlspecialchars($artworkImageUrl) ?>" alt="<?= htmlspecialchars($aw['title']) ?>" loading="lazy">
                     <?php else: ?>
                         <div style="width:100%;aspect-ratio:1;background:var(--sand);display:flex;align-items:center;justify-content:center;color:var(--ink);font-size:10px;opacity:0.5;">No image</div>
                     <?php endif; ?>

@@ -640,7 +640,7 @@ tr:hover td { background: var(--sand); box-shadow: 0 4px 12px rgba(12,63,48,.06)
                 <tr>
                     <td>
                         <?php if ($p['featured_image']): ?>
-                            <img class="td-img" src="../../<?= htmlspecialchars($p['featured_image']) ?>" alt="">
+                            <img class="td-img" src="../../<?= htmlspecialchars($p['featured_image']) ?>" alt="" loading="lazy">
                         <?php else: ?>
                             <div class="td-img" style="display:flex;align-items:center;justify-content:center;color:var(--ink);font-size:10px;">No img</div>
                         <?php endif; ?>

@@ -845,7 +845,7 @@ tr:hover td { background: var(--bg); box-shadow: 0 4px 12px rgba(12,63,48,.06); 
                 <tr>
                     <td data-label="">
                         <?php if ($a['profile_picture']): ?>
-                            <img class="td-avatar" src="../../<?= htmlspecialchars($a['profile_picture']) ?>" alt="">
+                            <img class="td-avatar" src="../../<?= htmlspecialchars($a['profile_picture']) ?>" alt="" loading="lazy">
                         <?php else: ?>
                             <div class="td-avatar-placeholder"><?= strtoupper(substr($a['name'], 0, 1)) ?></div>
                         <?php endif; ?>

@@ -905,7 +905,7 @@ foreach ($tabLabels as $s => $label): ?>
                                 <?php elseif ($imageUrl && ($item['artwork_media_type'] ?? 'image') === 'audio'): ?>
                                     <div class="td-artwork-img-placeholder" style="font-size:16px;">🎵</div>
                                 <?php elseif ($imageUrl): ?>
-                                    <img class="td-artwork-img" src="<?= htmlspecialchars($imageUrl) ?>" alt="">
+                                    <img class="td-artwork-img" src="<?= htmlspecialchars($imageUrl) ?>" alt="" loading="lazy">
                                 <?php else: ?>
                                     <div class="td-artwork-img-placeholder">No img</div>
                                 <?php endif; ?>
@@ -1069,7 +1069,7 @@ if ($item['item_status'] === 'pending' && $item['payment_method'] === 'cod') {
             } else if (item.payment_screenshot) {
                 html += `
                     <div class="screenshot-box">
-                        <img src="../../${item.payment_screenshot}" class="screenshot-thumb" alt="Payment SS" style="cursor:pointer;" onclick="window.open('../../${item.payment_screenshot}', '_blank')">
+                        <img src="../../${item.payment_screenshot}" class="screenshot-thumb" alt="Payment SS" loading="lazy" style="cursor:pointer;" onclick="window.open('../../${item.payment_screenshot}', '_blank')">
                         <div class="screenshot-info">
                             <strong>Payment Screenshot</strong>
                             <div>${item.payment_method ? esc(item.payment_method).replace(/_/g, ' ').toUpperCase() : ''}</div>
