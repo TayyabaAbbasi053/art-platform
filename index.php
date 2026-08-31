@@ -643,7 +643,7 @@ h1.htitle em{font-style:italic;color:var(--ink);}
       <?php foreach ($featuredArtists as $a): $pp = getProfileUrl($a['profile_picture']); ?>
       <div class="ar-card">
         <div class="ar-av">
-          <?php if ($pp): ?><img src="<?= htmlspecialchars($pp) ?>" alt=""><?php else: ?><div class="ar-av-ph"><?= strtoupper(substr($a['name'],0,1)) ?></div><?php endif; ?>
+          <?php if ($pp): ?><img src="<?= htmlspecialchars($pp) ?>" alt="" loading="lazy" decoding="async"><?php else: ?><div class="ar-av-ph"><?= strtoupper(substr($a['name'],0,1)) ?></div><?php endif; ?>
         </div>
         <div class="ar-name"><?= htmlspecialchars($a['name']) ?></div>
         <div class="ar-style"><?= htmlspecialchars($a['art_style'] ?? 'Artist') ?></div>

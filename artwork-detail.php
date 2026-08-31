@@ -581,7 +581,7 @@ h1{font-family:'Playfair Display',serif;font-size:clamp(24px,2.5vw,32px);font-we
         <?php elseif ($simImg && $simType === 'audio'): ?>
           <div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:22px;">🎵</div>
         <?php elseif ($simImg): ?>
-          <img src="<?= htmlspecialchars($simImg) ?>" alt="<?= htmlspecialchars($sim['title']) ?>">
+          <img src="<?= htmlspecialchars($simImg) ?>" alt="<?= htmlspecialchars($sim['title']) ?>" loading="lazy" decoding="async">
         <?php else: ?>
           <div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:10px;">No image</div>
         <?php endif; ?>

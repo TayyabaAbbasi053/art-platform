@@ -447,7 +447,7 @@ select.filter-input {
   <div class="artist-cover">
     <?php if ($a['is_featured']): ?><span class="feat-badge">★ Featured</span><?php endif; ?>
     <?php if ($avatar): ?>
-      <img class="artist-avatar" src="<?= htmlspecialchars($avatar) ?>" alt="<?= htmlspecialchars($a['name']) ?>">
+      <img class="artist-avatar" src="<?= htmlspecialchars($avatar) ?>" alt="<?= htmlspecialchars($a['name']) ?>" loading="lazy" decoding="async">
     <?php else: ?>
       <div class="artist-avatar-placeholder"><?= strtoupper(substr($a['name'],0,1)) ?></div>
     <?php endif; ?>

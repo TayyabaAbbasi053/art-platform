@@ -539,7 +539,7 @@ img{max-width:100%;display:block;}
                    data-style="<?= htmlspecialchars($a['art_style'] ?? '') ?>"
                    data-avatar="<?= htmlspecialchars($avatar ?? '') ?>">
                 <?php if ($avatar): ?>
-                  <img class="ap-item-avatar" src="<?= htmlspecialchars($avatar) ?>" alt="">
+                  <img class="ap-item-avatar" src="<?= htmlspecialchars($avatar) ?>" alt="" loading="lazy" decoding="async">
                 <?php else: ?>
                   <div class="ap-item-avatar-ph"><?= strtoupper(substr($a['name'],0,1)) ?></div>
                 <?php endif; ?>
@@ -715,7 +715,7 @@ if (apTrigger) {
       apValue.value = id;
 
       let avatarHtml = avatar
-        ? `<img class="ap-trigger-avatar" src="${avatar}" alt="">`
+        ? `<img class="ap-trigger-avatar" src="${avatar}" alt="" loading="lazy" decoding="async">`
         : `<div class="ap-trigger-avatar-ph">${name.charAt(0).toUpperCase()}</div>`;
 
       let subText = [city, style].filter(Boolean).join(' — ');
