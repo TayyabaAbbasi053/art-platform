@@ -55,7 +55,7 @@ if (!$order) {
            a.artist_id,
            a.delivery_status AS artwork_delivery_status,
            u.name AS artist_name,
-           c.slug AS category_slug
+           a.delivery_type
     FROM order_items oi
     LEFT JOIN artworks a ON oi.item_type = 'artwork' AND oi.item_id = a.id
     LEFT JOIN users u ON a.artist_id = u.id
@@ -755,7 +755,7 @@ img{max-width:100%;display:block;}
       <div class="item-price">
         <div class="price">PKR <?= number_format($item['price']) ?></div>
         <div class="qty">Qty: <?= $item['quantity'] ?></div>
-        <?php if ($order['order_status'] === 'delivered' && ($item['category_slug'] ?? '') === 'digital-art'): ?>
+        <?php if ($order['order_status'] === 'delivered' && ($item['delivery_type'] ?? '') === 'digital'): ?>
           <a href="download-artwork.php?order_id=<?= $orderId ?>&artwork_id=<?= (int)$item['item_id'] ?>"
              style="display:inline-block;margin-top:8px;padding:8px 16px;background:var(--ink);color:var(--bg);border-radius:8px;font-size:12px;font-weight:500;text-decoration:none;">
             ⬇ Download Artwork

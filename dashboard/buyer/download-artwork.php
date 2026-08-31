@@ -39,12 +39,11 @@ if ($isCommission) {
         FROM orders o
         JOIN order_items oi ON oi.order_id = o.id
         JOIN artworks a ON a.id = oi.item_id AND oi.item_type = 'artwork'
-        JOIN categories c ON a.category_id = c.id
         WHERE o.id = ?
           AND o.buyer_id = ?
           AND o.order_status = 'delivered'
           AND a.id = ?
-          AND c.slug = 'digital-art'
+          AND a.delivery_type = 'digital'
         LIMIT 1
     ");
     $stmt->bind_param('iii', $orderId, $buyerId, $artworkId);

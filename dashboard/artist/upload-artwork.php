@@ -222,16 +222,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
  $is_framed              = isset($_POST['is_framed']) ? 1 : 0;
     $weight_kg              = (float)($_POST['weight_kg'] ?? 1.00);
 
-    // Determine if the selected category is "Digital Art"
-    $catSlugRes = $conn->prepare("SELECT slug FROM categories WHERE id = ?");
-    $catSlugRes->bind_param('i', $categoryId);
-    $catSlugRes->execute();
-    $catSlugRow = $catSlugRes->get_result()->fetch_assoc();
-    $isDigitalCategory = ($catSlugRow && $catSlugRow['slug'] === 'digital-art');
+    // Determine delivery type for this listing.
+    // Every artwork asks the artist directly, regardless of category —
+    // no more inferring/forcing it from the category slug.
+    $postedDelivery = $_POST['delivery_type'] ?? '';
+    if ($postedDelivery !== 'physical' && $postedDelivery !== 'digital') {
+        $errorMsg = 'Please choose how buyers will receive this artwork (physical or digital).';
+        goto skip_processing;
+    }
+    $deliveryType = $postedDelivery;
+    $isDigitalItem = ($deliveryType === 'digital');
 
     // Digital art has no physical shipment — always force weight to 1kg
     // server-side too, regardless of what the (hidden) form field posted.
-    if ($isDigitalCategory) {
+    if ($isDigitalItem) {
         $weight_kg = 1.00;
     }
 
@@ -248,11 +252,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $errorMsg = 'Please fill in all required fields and upload at least one image.';
     } elseif ($imageCount > 5) {
         $errorMsg = 'You can only upload up to 5 images.';
-    } elseif ($isDigitalCategory && !$hasDigitalFile) {
+    } elseif ($isDigitalItem && !$hasDigitalFile) {
         $errorMsg = 'Please upload the digital artwork file buyers will receive after purchase.';
-    } elseif ($isDigitalCategory && !in_array($digitalFileExt, $allowedDigitalExt)) {
+    } elseif ($isDigitalItem && !in_array($digitalFileExt, $allowedDigitalExt)) {
         $errorMsg = 'Invalid digital file type. Allowed: ZIP, PSD, AI, PNG, JPG, PDF, GIF, MP4, MOV, WebM, MP3, WAV, M4A.';
-    } elseif ($isDigitalCategory && $_FILES['digital_file']['size'] > 300 * 1024 * 1024) {
+    } elseif ($isDigitalItem && $_FILES['digital_file']['size'] > 300 * 1024 * 1024) {
         $errorMsg = 'Digital file must be under 300MB.';
     } else {
         
@@ -263,8 +267,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
  $initialStatus = $isShowcaseOnly ? 'sold' : 'active';
  $stmt = $conn->prepare("
     INSERT INTO artworks 
-    (artist_id, category_id, title, description, tags, medium, size, is_framed, weight_kg, price, city, delivery_available, similar_work_available, status, is_showcase_only)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (artist_id, category_id, title, description, tags, medium, size, is_framed, weight_kg, price, city, delivery_available, similar_work_available, status, is_showcase_only, delivery_type)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ");
 
 if (!$stmt) {
@@ -272,13 +276,13 @@ if (!$stmt) {
     $conn->rollback();
     $errorMsg = 'Could not save artwork. Please try again.';
 } else {
-    $stmt->bind_param('iisssssiddsiisi', $artistId, $categoryId, $title, $description, $tags, $medium, $size, $is_framed, $weight_kg, $price, $city, $delivery_available, $similar_work_available, $initialStatus, $isShowcaseOnly);
+    $stmt->bind_param('iisssssiddsiisis', $artistId, $categoryId, $title, $description, $tags, $medium, $size, $is_framed, $weight_kg, $price, $city, $delivery_available, $similar_work_available, $initialStatus, $isShowcaseOnly, $deliveryType);
 
         if ($stmt->execute()) {
             $artworkId = $conn->insert_id;
 
             // 1b. Handle Digital File (only for Digital Art category)
-            if ($isDigitalCategory && $hasDigitalFile) {
+            if ($isDigitalItem && $hasDigitalFile) {
                 $digitalDir = __DIR__ . '/../../uploads/digital_files/';
                 if (!is_dir($digitalDir)) {
                     mkdir($digitalDir, 0755, true);
@@ -311,7 +315,7 @@ if (!$stmt) {
             $imageExt = ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif', 'gif'];
             $videoExt = ['mp4', 'mov', 'webm'];
             $audioExt = ['mp3', 'wav', 'm4a'];
-            $allowedExt = $isDigitalCategory ? array_merge($imageExt, $videoExt, $audioExt) : $imageExt;
+            $allowedExt = $isDigitalItem ? array_merge($imageExt, $videoExt, $audioExt) : $imageExt;
 
             // Open finfo handle once, outside the loop
             $finfo = finfo_open(FILEINFO_MIME_TYPE);
@@ -915,6 +919,21 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
                 </div>
             </div>
 
+            <div class="form-grid full" id="deliveryTypeGroup">
+                <div class="field-group">
+                    <label>How will buyers receive this? <span>*</span></label>
+                    <div style="display:flex;gap:16px;margin-top:4px;">
+                        <label style="display:flex;align-items:center;gap:6px;font-weight:400;font-size:13px;cursor:pointer;">
+                            <input type="radio" name="delivery_type" value="physical" checked> Physical (shipped)
+                        </label>
+                        <label style="display:flex;align-items:center;gap:6px;font-weight:400;font-size:13px;cursor:pointer;">
+                            <input type="radio" name="delivery_type" value="digital"> Digital (downloaded)
+                        </label>
+                    </div>
+                    <p style="font-size:11px;color:var(--muted);margin-top:6px;">Tell us whether buyers will receive a physical piece or a digital download.</p>
+                </div>
+            </div>
+
             <div class="form-grid full" id="digitalFileGroup" style="display:none;">
                 <div class="field-group">
                     <label>Digital Artwork File <span>*</span></label>
@@ -1087,14 +1106,22 @@ dropZone.addEventListener('click', () => fileInput.click());
 const categorySelect = document.getElementById('categorySelect');
 const digitalFileGroup = document.getElementById('digitalFileGroup');
 const digitalFileInput = document.getElementById('digitalFileInput');
+const deliveryTypeGroup = document.getElementById('deliveryTypeGroup');
+const deliveryTypeRadios = document.querySelectorAll('input[name="delivery_type"]');
 const weightGroup = document.getElementById('weightGroup');
 const weightInput = document.getElementById('weightInput');
 const sizeInput = document.getElementById('sizeInput');
 const sizeHint = document.getElementById('sizeHint');
 
+// Every artwork asks the artist directly, regardless of category — the
+// radio choice is the single source of truth for physical vs. digital.
+function isDigitalSelected() {
+    const checked = document.querySelector('input[name="delivery_type"]:checked');
+    return checked ? checked.value === 'digital' : false;
+}
+
 function updateDigitalFileVisibility() {
-    const selected = categorySelect.options[categorySelect.selectedIndex];
-    const isDigital = selected && selected.dataset.slug === 'digital-art';
+    const isDigital = isDigitalSelected();
     digitalFileGroup.style.display = isDigital ? 'block' : 'none';
     digitalFileInput.required = isDigital;
 
@@ -1135,6 +1162,7 @@ function updateDigitalFileVisibility() {
     }
 }
 categorySelect.addEventListener('change', updateDigitalFileVisibility);
+deliveryTypeRadios.forEach(r => r.addEventListener('change', updateDigitalFileVisibility));
 updateDigitalFileVisibility();
 
 // ── Client-side image compression ────────────────────────────────────────
@@ -1203,8 +1231,7 @@ fileInput.addEventListener('change', async function(e) {
         return;
     }
 
-    const selectedCat = categorySelect.options[categorySelect.selectedIndex];
-    const isDigitalCat = selectedCat && selectedCat.dataset.slug === 'digital-art';
+    const isDigitalCat = isDigitalSelected();
 
     const accepted = newFiles.filter(file => {
         const isImage = file.type.startsWith('image/') || file.name.match(/\.(heic|heif)$/i);

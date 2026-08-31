@@ -26,8 +26,7 @@ $isLoggedIn = isset($_SESSION['user_id']);
     "ap.art_style IS NOT NULL AND ap.art_style != ''",
     "u.profile_picture IS NOT NULL AND u.profile_picture != ''",
     "(ap.has_bank_account=1 OR ap.has_easypaisa=1 OR ap.has_jazzcash=1 OR ap.has_nayapay=1 OR ap.has_sadapay=1)",
-    "c.name NOT LIKE '%digital%'",
-    "(a.medium IS NULL OR a.medium NOT LIKE '%digital%')"
+    "a.delivery_type = 'physical'"
 ];
  $params = [];
  $types = '';

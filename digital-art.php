@@ -19,8 +19,6 @@ $isLoggedIn = isset($_SESSION['user_id']);
  $offset     = ($page - 1) * $perPage;
 
 // ── Build query ──────────────────────────────────────────
- $digitalCategoryId = $conn->query("SELECT id FROM categories WHERE name LIKE '%digital%' LIMIT 1")->fetch_row()[0] ?? 0;
-
 $where = [
     "a.status = 'active'",
     "u.status = 'active'",
@@ -29,7 +27,7 @@ $where = [
     "ap.art_style IS NOT NULL AND ap.art_style != ''",
     "u.profile_picture IS NOT NULL AND u.profile_picture != ''",
     "(ap.has_bank_account=1 OR ap.has_easypaisa=1 OR ap.has_jazzcash=1 OR ap.has_nayapay=1 OR ap.has_sadapay=1)",
-    "a.category_id = " . (int)$digitalCategoryId
+    "a.delivery_type = 'digital'"
 ];
  $params = [];
  $types = '';

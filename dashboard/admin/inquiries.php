@@ -156,17 +156,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'mark_
             $toast = 'This order is Cash on Delivery — there is no screenshot to verify.';
         } else {
             error_log('[mark_paid] entering non-COD branch, checking digital category');
-            // Check if this order's artwork is Digital Art — if so, it's delivered immediately
+            // Check if this order's artwork is digital delivery — if so, it's delivered immediately
+            // (matches on artworks.delivery_type, same as checkout.php's isDigitalItem check,
+            // so ANY artwork with delivery_type='digital' auto-delivers — not just ones filed
+            // under the 'digital-art' category.)
             $digitalRes = $conn->query("
-                SELECT c.slug AS category_slug
+                SELECT a.delivery_type
                 FROM order_items oi
                 JOIN artworks a ON oi.item_id = a.id AND oi.item_type = 'artwork'
-                JOIN categories c ON a.category_id = c.id
                 WHERE oi.order_id = $id
                 LIMIT 1
             ");
             $digitalRow = $digitalRes ? $digitalRes->fetch_assoc() : null;
-            $isDigitalOrder = $digitalRow && $digitalRow['category_slug'] === 'digital-art';
+            $isDigitalOrder = $digitalRow && ($digitalRow['delivery_type'] ?? 'physical') === 'digital';
 
             $adminId = (int)$_SESSION['user_id'];
 

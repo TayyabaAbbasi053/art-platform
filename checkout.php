@@ -134,7 +134,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_calculate_shippi
             $breakdown[] = 'PKR ' . $baseAjax . ($surchargeAjax > 0 ? ' + PKR ' . $surchargeAjax . ' (weight)' : '') . ' = PKR ' . $fee;
         }
     } else {
-        $ajaxIsDigital = isset($_POST['is_digital']) && $_POST['is_digital'] === '1';
+        // Look up the real delivery_type server-side rather than trusting
+        // the posted is_digital flag — this is just a live estimate, but
+        // no reason to let the client's guess drive it when we have the
+        // artwork id right here.
+        $ajaxIsDigital = false;
+        if ($ajaxArtworkId > 0) {
+            $awTypeRes = $conn->query("SELECT delivery_type FROM artworks WHERE id = " . $ajaxArtworkId . " LIMIT 1");
+            $awTypeRow = $awTypeRes ? $awTypeRes->fetch_assoc() : null;
+            $ajaxIsDigital = ($awTypeRow['delivery_type'] ?? 'physical') === 'digital';
+        }
         $fee = $ajaxIsDigital ? 0 : calculateShippingServerSide($conn, $buyerCity, $items);
     }
 
@@ -229,7 +238,7 @@ if ($isCommissionCheckout) {
     }
 
     $awQuery = $conn->prepare("
-        SELECT a.id, a.title, a.price, a.status, a.artist_id,
+        SELECT a.id, a.title, a.price, a.status, a.artist_id, a.delivery_type,
                (SELECT ai.image_path FROM artwork_images ai WHERE ai.artwork_id = a.id AND ai.is_cover = 1 LIMIT 1) AS cover_image,
                (SELECT ai.media_type FROM artwork_images ai WHERE ai.artwork_id = a.id AND ai.is_cover = 1 LIMIT 1) AS cover_media_type,
                ua.name AS artist_name,
@@ -256,7 +265,10 @@ if ($isCommissionCheckout) {
     }
 
     $price = $artworkRow['price'];
-    $isDigitalItem = isDigitalCategory($artworkRow['category_slug'] ?? '', $artworkRow['category_name'] ?? '');
+    // Per-artwork delivery_type is the source of truth here — a category
+    // like Illustration/Mixed Media (or any other) can be either physical
+    // or digital, so we can't infer it from category anymore.
+    $isDigitalItem = ($artworkRow['delivery_type'] ?? 'physical') === 'digital';
     $cartItems[] = [
         'type' => 'artwork',
         'id' => $artworkRow['id'],
