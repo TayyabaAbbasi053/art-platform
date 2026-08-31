@@ -277,6 +277,11 @@ if ($isCommissionCheckout) {
     $total = $subtotal;
 }
 
+// A direct digital artwork purchase has nothing to ship — no address, city,
+// or postal code needed. Commissions keep the full address form regardless
+// of delivery_type (left untouched, as requested).
+ $isDigitalCartCheckout = (!$isCommissionCheckout && $isDigitalItem);
+
 // ── Fetch saved addresses ───────────────────────────────────
  $addresses = [];
  $addrQuery = $conn->prepare("SELECT * FROM buyer_addresses WHERE buyer_id = ? ORDER BY is_default DESC, created_at DESC");
@@ -291,8 +296,8 @@ if ($isCommissionCheckout) {
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
     $fullName = trim($_POST['full_name'] ?? '');
-    $address = trim($_POST['address'] ?? '');
-    $city = trim($_POST['city'] ?? '');
+    $address = $isDigitalCartCheckout ? '' : trim($_POST['address'] ?? '');
+    $city = $isDigitalCartCheckout ? '' : trim($_POST['city'] ?? '');
     $phone = trim($_POST['phone'] ?? '');
     $paymentMethod = $_POST['payment_method'] ?? 'jazzcash';
     $saveAddress = isset($_POST['save_address']) ? 1 : 0;
@@ -304,8 +309,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
         : ['jazzcash', 'easypaisa', 'nayapay', 'cod'];
     $isCod = ($paymentMethod === 'cod');
 
-    // Validation: City is required for calculation
-    if (empty($city)) {
+    // Validation: City is required for calculation — not applicable to
+    // digital-only orders, which have no shipping to calculate.
+    if (!$isDigitalCartCheckout && empty($city)) {
         $orderError = 'Please enter your City to calculate shipping.';
     } else {
         
@@ -333,7 +339,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
             }
         }
         
-        if (!$fullName || !$address || !$phone) {
+        if (!$fullName || !$phone || (!$isDigitalCartCheckout && !$address)) {
             $orderError = 'Please fill in all required fields.';
         } elseif (!in_array($paymentMethod, $allowedMethods)) {
             if ($isCommissionCheckout) {
@@ -434,7 +440,7 @@ $stmt->bind_param('ssssssddi', $paymentMethod, $screenshotPath, $address, $city,
                     $stmtHistory->execute();
                 }
                 
-                if ($saveAddress) {
+                if ($saveAddress && !$isDigitalCartCheckout) {
                     $checkAddr = $conn->prepare("SELECT id FROM buyer_addresses WHERE buyer_id = ? AND address_line1 = ? AND city = ?");
                     $checkAddr->bind_param('iss', $buyerId, $address, $city);
                     $checkAddr->execute();
@@ -736,9 +742,9 @@ img{max-width:100%;display:block;}
       
         <!-- Shipping Information -->
         <div class="form-section">
-          <h3>Shipping Information</h3>
+          <h3><?= $isDigitalCartCheckout ? 'Contact Information' : 'Shipping Information' ?></h3>
           
-          <?php if (!empty($addresses)): ?>
+          <?php if (!$isDigitalCartCheckout && !empty($addresses)): ?>
           <div class="saved-addresses">
             <label style="display:block;font-size:11px;letter-spacing:.7px;text-transform:uppercase;color:var(--muted);margin-bottom:8px;">Select saved address</label>
             <?php foreach ($addresses as $addr): ?>
@@ -765,6 +771,7 @@ img{max-width:100%;display:block;}
             </div>
           </div>
           
+          <?php if (!$isDigitalCartCheckout): ?>
           <div class="form-group">
             <label>Street Address <span>*</span></label>
             <input type="text" name="address" id="address" placeholder="House / Building / Street" required>
@@ -789,6 +796,9 @@ img{max-width:100%;display:block;}
             <input type="checkbox" name="save_address" id="saveAddress" value="1">
             <label for="saveAddress">Save this address to my account</label>
           </div>
+          <?php else: ?>
+          <p style="font-size:11px;color:var(--muted);">This is a digital item — it'll be delivered digitally, so no shipping address is needed.</p>
+          <?php endif; ?>
         </div>
         
         <!-- Order Notes -->
@@ -913,8 +923,8 @@ img{max-width:100%;display:block;}
 <?php endif; ?>
           </div>
           
-          <button type="submit" name="place_order" class="place-order-btn" id="placeOrderBtn" <?= ($shippingFee === 0 && !$isCommissionCheckout) ? 'disabled' : '' ?>><?= $isCommissionCheckout ? 'Confirm & Pay' : 'Place Order' ?></button>
-          <?php if ($shippingFee === 0 && !$isCommissionCheckout): ?>
+          <button type="submit" name="place_order" class="place-order-btn" id="placeOrderBtn" <?= ($shippingFee === 0 && !$isCommissionCheckout && !$isDigitalCartCheckout) ? 'disabled' : '' ?>><?= $isCommissionCheckout ? 'Confirm & Pay' : 'Place Order' ?></button>
+          <?php if ($shippingFee === 0 && !$isCommissionCheckout && !$isDigitalCartCheckout): ?>
           <p style="font-size:10px;color:var(--ink);text-align:center;margin-top:8px;">Please enter your city to calculate shipping before placing the order.</p>
           <?php endif; ?>
           

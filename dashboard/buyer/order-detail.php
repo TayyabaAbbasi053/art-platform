@@ -70,6 +70,14 @@ while ($row = $itemResult->fetch_assoc()) {
     $items[] = $row;
 }
 
+// ── Is this a digital order with no shipping info to show? ───
+// Commission delivery_type lives on the order row itself; artwork orders
+// carry it per line item (checkout.php only ever creates single-item
+// artwork orders, so the first item is authoritative).
+ $isDigitalOrder = $isCommission
+    ? (($order['delivery_type'] ?? '') === 'digital')
+    : (!empty($items) && ($items[0]['delivery_type'] ?? '') === 'digital');
+
 // ── Fetch order status history ───────────────────────────
  $history = [];
  $histQuery = $conn->prepare("
@@ -600,10 +608,12 @@ img{max-width:100%;display:block;}
       <div class="info-label">Payment Status</div>
       <div class="info-value"><?= getPaymentStatusLabel($order['payment_status']) ?></div>
     </div>
+    <?php if (!$isDigitalOrder): ?>
     <div class="info-card">
       <div class="info-label">Shipping Address</div>
       <div class="info-value"><?= htmlspecialchars($order['shipping_address']) ?>, <?= htmlspecialchars($order['shipping_city']) ?></div>
     </div>
+    <?php endif; ?>
   </div>
 
   <?php if ($isCommission): ?>

@@ -582,6 +582,7 @@ foreach ($items as &$item) {
     $item['artist_name']   = !empty($item['artworks']) ? $item['artworks'][0]['artist_name'] : '';
     $item['smartlane_warehouse_code'] = !empty($item['artworks']) ? $item['artworks'][0]['smartlane_warehouse_code'] : null;
     $item['delivery_type'] = !empty($item['artworks']) ? ($item['artworks'][0]['delivery_type'] ?? 'physical') : 'physical';
+    $item['delivery_status'] = !empty($item['artworks']) ? ($item['artworks'][0]['delivery_status'] ?? 'not_applicable') : 'not_applicable';
 }
 unset($item);
 
@@ -1132,7 +1133,7 @@ if ($item['item_status'] === 'pending' && $item['payment_method'] === 'cod') {
             }
 
             // Shipping details
-            if (item.shipping_address) {
+            if (item.shipping_address && item.delivery_type !== 'digital') {
                 html += `
                     <div class="shipping-box">
                         <h5>📦 Shipping Details</h5>
