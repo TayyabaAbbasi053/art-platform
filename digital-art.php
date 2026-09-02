@@ -252,6 +252,30 @@ img{display:block;max-width:100%;}
 .sort-row label{font-size:11.5px;color:var(--muted);}
 .sort-sel{border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:12.5px;font-family:'DM Sans',sans-serif;color:var(--ink);background:var(--card);outline:none;cursor:pointer;}
 
+/* CATEGORY DROPDOWN */
+.cat-dropdown-wrap{margin-bottom:22px;}
+.cat-dropdown{
+  font-size:12.5px;
+  padding:9px 14px;
+  border-radius:8px;
+  border:1px solid var(--border);
+  background:var(--card);
+  color:var(--ink);
+  font-family:'DM Sans',sans-serif;
+  cursor:pointer;
+  outline:none;
+  min-width:200px;
+  appearance:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%230C3F30' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;
+  background-position:right 12px center;
+  padding-right:34px;
+}
+.cat-dropdown:hover{border-color:var(--muted);}
+@media(max-width:768px){
+  .cat-dropdown{width:100%;}
+}
+
 
 /* ARTWORKS GRID */
 .aw-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;}
@@ -450,6 +474,16 @@ img{display:block;max-width:100%;}
 
 <!-- CONTENT -->
 <div class="content">
+
+  <!-- Category dropdown -->
+  <div class="cat-dropdown-wrap">
+    <select class="cat-dropdown" onchange="if(this.value){window.location.href=this.value;}">
+      <option value="digital-art.php<?= $search ? '?q=' . urlencode($search) : '' ?>" <?= !$catFilter ? 'selected' : '' ?>>All Styles</option>
+      <?php foreach ($categories as $cat): ?>
+      <option value="digital-art.php?category=<?= $cat['id'] ?><?= $search ? '&q=' . urlencode($search) : '' ?>" <?= $catFilter == $cat['id'] ? 'selected' : '' ?>><?= htmlspecialchars($cat['name']) ?></option>
+      <?php endforeach; ?>
+    </select>
+  </div>
 
   <form method="GET" action="digital-art.php" style="margin-bottom:20px;display:flex;gap:8px;max-width:420px;">
   <?php foreach ($_GET as $k => $v): if ($k === 'q' || $k === 'page') continue; ?>
