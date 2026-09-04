@@ -130,7 +130,28 @@ if ($allParams) {
  $stmt2->close();
 
 // Sidebar data
- $categories = $conn->query("SELECT id, name FROM categories ORDER BY name ASC")->fetch_all(MYSQLI_ASSOC);
+ $categories = $conn->query("SELECT id, name, slug FROM categories ORDER BY name ASC")->fetch_all(MYSQLI_ASSOC);
+
+// Only show categories that the upload page actually allows for digital
+// listings: the Digital Art category itself, plus the delivery-neutral
+// categories (things that can be sold either physically or digitally).
+// Keeps this filter dropdown in sync with what artists can pick when
+// uploading with delivery type = digital.
+$__digitalNeutralCategories = ['illustration', 'mixed media', 'other forms of art', 'photography', 'stickers'];
+$categories = array_values(array_filter($categories, function ($cat) use ($__digitalNeutralCategories) {
+    $slug = strtolower($cat['slug'] ?? '');
+    $name = strtolower($cat['name'] ?? '');
+
+    $isDigital = strpos($slug, 'digital') !== false || strpos($name, 'digital') !== false;
+    if ($isDigital) return true;
+
+    foreach ($__digitalNeutralCategories as $neutral) {
+        if (strpos($slug, str_replace(' ', '-', $neutral)) !== false || strpos($name, $neutral) !== false) {
+            return true;
+        }
+    }
+    return false;
+}));
  $cities = $conn->query("SELECT DISTINCT city FROM artworks WHERE status = 'active' AND city IS NOT NULL AND city != '' ORDER BY city ASC")->fetch_all(MYSQLI_ASSOC);
  $mediums = $conn->query("SELECT DISTINCT medium FROM artworks WHERE status = 'active' AND medium IS NOT NULL AND medium != '' ORDER BY medium ASC")->fetch_all(MYSQLI_ASSOC);
 

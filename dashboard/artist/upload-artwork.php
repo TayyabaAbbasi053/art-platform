@@ -957,6 +957,22 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
             </div>
             <div class="preview-grid" id="previewGrid"></div>
 
+            <div class="form-grid full" id="deliveryTypeGroup">
+                <div class="field-group">
+                    <label>How will buyers receive this? <span>*</span></label>
+                    <div style="display:flex;gap:16px;margin-top:4px;">
+                        <label style="display:flex;align-items:center;gap:6px;font-weight:400;font-size:13px;cursor:pointer;">
+                            <input type="radio" name="delivery_type" value="physical" checked> Physical (shipped)
+                        </label>
+                        <label style="display:flex;align-items:center;gap:6px;font-weight:400;font-size:13px;cursor:pointer;">
+                            <input type="radio" name="delivery_type" value="digital"> Digital (downloaded)
+                        </label>
+                    </div>
+                    <p style="font-size:11px;color:var(--muted);margin-top:6px;">Tell us whether buyers will receive a physical piece or a digital download.</p>
+                </div>
+            </div>
+
+
             <!-- ── Details ────────────────────────────── -->
             <div class="form-grid full" style="margin-top: 24px;">
                 <div class="field-group">
@@ -977,22 +993,7 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
                 </div>
                 <div class="field-group">
                     <label>Medium <span>*</span></label>
-                    <input type="text" name="medium" class="field-input" placeholder="e.g. Oil on Canvas" required>
-                </div>
-            </div>
-
-            <div class="form-grid full" id="deliveryTypeGroup">
-                <div class="field-group">
-                    <label>How will buyers receive this? <span>*</span></label>
-                    <div style="display:flex;gap:16px;margin-top:4px;">
-                        <label style="display:flex;align-items:center;gap:6px;font-weight:400;font-size:13px;cursor:pointer;">
-                            <input type="radio" name="delivery_type" value="physical" checked> Physical (shipped)
-                        </label>
-                        <label style="display:flex;align-items:center;gap:6px;font-weight:400;font-size:13px;cursor:pointer;">
-                            <input type="radio" name="delivery_type" value="digital"> Digital (downloaded)
-                        </label>
-                    </div>
-                    <p style="font-size:11px;color:var(--muted);margin-top:6px;">Tell us whether buyers will receive a physical piece or a digital download.</p>
+                    <input type="text" name="medium" id="mediumInput" class="field-input" placeholder="e.g. Oil on Canvas" required>
                 </div>
             </div>
 
@@ -1060,7 +1061,7 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
             <div class="form-grid full">
                 <div class="field-group">
                     <label>Description</label>
-                    <textarea name="description" class="field-textarea" placeholder="Tell the story behind this artwork, techniques used, inspiration..."></textarea>
+                    <textarea name="description" id="descriptionInput" class="field-textarea" placeholder="Tell the story behind this artwork, techniques used, inspiration..."></textarea>
                 </div>
             </div>
 
@@ -1265,6 +1266,8 @@ const weightInput = document.getElementById('weightInput');
 const sizeInput = document.getElementById('sizeInput');
 const sizeHint = document.getElementById('sizeHint');
 const sizeError = document.getElementById('sizeError');
+const mediumInput = document.getElementById('mediumInput');
+const descriptionInput = document.getElementById('descriptionInput');
 
 // ── Size unit validation ──────────────────────────────
 // The "Size" field is free text, so nothing stops an artist from typing
@@ -1302,8 +1305,61 @@ function isDigitalSelected() {
     return checked ? checked.value === 'digital' : false;
 }
 
+// ── Category list depends on delivery type ────────────────────────────
+// "Digital Art" only makes sense when buyers receive a digital download,
+// and the physical craft categories (Calligraphy, Pottery, Wood Work, etc.)
+// only make sense when something is actually being shipped. So the two
+// sets are mutually exclusive in the dropdown — flip the toggle and the
+// list of choices flips with it.
+function isDigitalCategoryOption(option) {
+    const slug = (option.dataset.slug || '').toLowerCase();
+    const name = option.textContent.trim().toLowerCase();
+    return slug.includes('digital') || name.includes('digital art') || name.includes('digital');
+}
+
+// These categories work for either delivery type (e.g. a photograph or an
+// illustration can be sold as a physical print OR a digital download), so
+// they stay visible no matter which way the toggle is set.
+const DELIVERY_NEUTRAL_CATEGORIES = [
+    'illustration',
+    'mixed media',
+    'other forms of art',
+    'photography',
+    'stickers'
+];
+
+function isDeliveryNeutralOption(option) {
+    const slug = (option.dataset.slug || '').toLowerCase().replace(/-/g, ' ');
+    const name = option.textContent.trim().toLowerCase();
+    return DELIVERY_NEUTRAL_CATEGORIES.some(entry => slug.includes(entry) || name.includes(entry));
+}
+
+function filterCategoriesByDeliveryType() {
+    const isDigital = isDigitalSelected();
+    let selectedStillValid = false;
+
+    Array.from(categorySelect.options).forEach(option => {
+        if (!option.value) return; // leave the "Select category" placeholder alone
+
+        const showThisOption = isDeliveryNeutralOption(option)
+            || (isDigital ? isDigitalCategoryOption(option) : !isDigitalCategoryOption(option));
+        option.hidden = !showThisOption;
+        option.disabled = !showThisOption;
+
+        if (showThisOption && option.selected) selectedStillValid = true;
+    });
+
+    // If the previously chosen category just got hidden (toggle flipped),
+    // reset back to the placeholder so an artist can't submit a category
+    // that no longer matches their delivery type.
+    if (!selectedStillValid) {
+        categorySelect.value = '';
+    }
+}
+
 function updateDigitalFileVisibility() {
     const isDigital = isDigitalSelected();
+    filterCategoriesByDeliveryType();
     digitalFileGroup.style.display = isDigital ? 'block' : 'none';
     digitalFileInput.required = isDigital;
     if (licenseInput) licenseInput.required = isDigital;
@@ -1331,6 +1387,18 @@ function updateDigitalFileVisibility() {
     }
     // Re-check validity, since what counts as a valid unit changes with delivery type.
     validateSizeField();
+
+    // ── Medium & Description: the hint text these fields show should talk
+    // about digital tools/formats when the listing is a digital download,
+    // instead of physical materials and a narrative "story" prompt that
+    // doesn't fit a digital file. ──
+    if (isDigital) {
+        mediumInput.placeholder = 'e.g. Digital Painting, Vector Illustration, 3D Render';
+        descriptionInput.placeholder = 'Describe the digital artwork — software/tools used, file contents, and what buyers get after purchase...';
+    } else {
+        mediumInput.placeholder = 'e.g. Oil on Canvas';
+        descriptionInput.placeholder = 'Tell the story behind this artwork, techniques used, inspiration...';
+    }
 
     const baseImageAccept = 'image/jpeg,image/png,image/webp,image/gif<?= $heicSupported ? ',image/heic,image/heif' : '' ?>';
     const digitalPreviewAccept = baseImageAccept + ',video/mp4,video/quicktime,video/webm,audio/mpeg,audio/wav,audio/mp4';
