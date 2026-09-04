@@ -192,12 +192,21 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_artists') {
 // ── Contact info filter function ─────────────────────────
 function containsContactInfo(string $text): bool {
     $patterns = [
+        // Email addresses
         '/\b[\w.+-]+@[\w-]+\.[a-z]{2,}\b/i',
-        '/(\+92[-\s]?[0-9]{3}[-\s]?[0-9]{7}|(?<!\d)0[0-9]{2,3}[-\s]?[0-9]{6,8})/',
-        '/\b(instagram|insta|ig|whatsapp|wa|facebook|fb|twitter|tiktok|snapchat)\s*[:\-@]?\s*\w+/i',
-        '/@[a-zA-Z0-9._]{2,30}/',
-        '/\b(iban|account\s*no|bank|easypaisa|jazzcash|sadapay|nayapay)\b/i',
-        '/\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b/',
+        // Pakistani phone numbers (mobile: 03XX-XXXXXXX, or +92 3XX XXXXXXX) — no longer matches generic 8-9 digit numbers
+        '/(?<!\d)(\+92[-\s]?3[0-9]{2}[-\s]?[0-9]{7}|03[0-9]{2}[-\s]?[0-9]{7})(?!\d)/',
+        // Social platform mention WITH an explicit handle separator (:, -, @) — no longer fires on plain words like "insta"/"wa" used in normal sentences
+        '/\b(instagram|insta|whatsapp|facebook|twitter|tiktok|snapchat)\b\s*[:\-@]\s*[a-zA-Z0-9._]{3,30}/i',
+        // @handle mentions — must start with a letter, so things like "@5pm" or "@2x" no longer match
+        '/@[a-zA-Z][a-zA-Z0-9._]{2,29}\b/',
+        // Bank/payment details — dropped bare "bank"/"account" (too common in normal chat), kept specific phrases/services
+        '/\b(iban|bank\s*(?:account|details|transfer)|easypaisa|jazzcash|sadapay|nayapay)\b/i',
+        // Card-style number groups (requires separators, so it won't match random 16-digit runs like order/tracking IDs written without spaces)
+        '/\b\d{4}[-\s]\d{4}[-\s]\d{4}[-\s]\d{4}\b/',
+        // Actual links
+        '/\bhttps?:\/\/\S+/i',
+        '/\b[a-z0-9-]+\.(com|net|org|io|co|pk)\b/i',
     ];
     foreach ($patterns as $p) {
         if (preg_match($p, $text)) return true;
