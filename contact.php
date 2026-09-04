@@ -222,15 +222,14 @@ img{max-width:100%;display:block;}
 </nav>
 
 <!-- HERO -->
-<section class="hero" style="padding:0;position:relative;">
-  <img src="contacthero.jpeg" alt="Contact Us" style="width:100%;height:auto;object-fit:contain;display:block;">
-  <div style="position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(12,63,48,0.45);display:flex;align-items:flex-end;padding-bottom:40px;">
-    <div class="hero-inner" style="padding:0 28px;">
+<section class="hero" style="padding:0;position:relative;min-height:280px;display:flex;align-items:center;">
+  <img src="arthero.jpeg" alt="Contact Us" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;display:block;">
+  <div style="position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(12,63,48,0.65);"></div>
+  <div class="hero-inner" style="position:relative;z-index:1;padding:52px 28px;">
       <div class="hero-tag">GET IN TOUCH</div>
       <h1>We'd love to <em>hear from you</em>.</h1>
       <p class="hero-desc">Have questions about buying, selling, or requesting custom artwork? Our team is here to help.</p>
     </div>
-  </div>
 </section>
 
 <!-- MAIN CONTENT -->
