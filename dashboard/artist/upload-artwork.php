@@ -231,6 +231,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $categoryId             = (int) ($_POST['category'] ?? 0);
     $medium                 = trim($_POST['medium'] ?? '');
     $size                   = trim($_POST['size'] ?? '');
+    $licenseType            = trim($_POST['license_type'] ?? '');
     $isShowcaseOnly         = isset($_POST['is_showcase_only']) ? 1 : 0;
     $price                  = $isShowcaseOnly ? null : (float) ($_POST['price'] ?? 0);
     $city                   = trim($_POST['city'] ?? '');
@@ -277,6 +278,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $errorMsg = 'Invalid digital file type. Allowed: ZIP, PSD, AI, PNG, JPG, PDF, GIF, MP4, MOV, WebM, MP3, WAV, M4A.';
     } elseif ($isDigitalItem && $_FILES['digital_file']['size'] > 300 * 1024 * 1024) {
         $errorMsg = 'Digital file must be under 300MB.';
+    } elseif ($isDigitalItem && $licenseType === '') {
+        $errorMsg = 'Please select a license type for this digital artwork.';
     } else {
         
         // 1. Insert Artwork
@@ -312,8 +315,25 @@ if (!$stmt) {
                 if (move_uploaded_file($_FILES['digital_file']['tmp_name'], $digitalDest)) {
                     chmod($digitalDest, 0644);
                     $dbDigitalPath = 'uploads/digital_files/' . $digitalName;
-                    $stmtDigital = $conn->prepare("UPDATE artworks SET digital_file_path = ? WHERE id = ?");
-                    $stmtDigital->bind_param('si', $dbDigitalPath, $artworkId);
+
+                    // Auto-derive format & size from the actual uploaded file —
+                    // never trust manual entry for these.
+                    $digitalFileSizeBytes = $_FILES['digital_file']['size'];
+
+                    // Resolution only applies to image-type digital files;
+                    // stays NULL for zip/psd/ai/video/audio, which is fine —
+                    // the detail page simply won't show that row for those.
+                    $digitalResolution = null;
+                    $resolutionCheckableExt = ['jpg', 'jpeg', 'png', 'gif'];
+                    if (in_array($digitalFileExt, $resolutionCheckableExt)) {
+                        $dim = @getimagesize($digitalDest);
+                        if ($dim !== false) {
+                            $digitalResolution = $dim[0] . ' x ' . $dim[1] . ' px';
+                        }
+                    }
+
+                    $stmtDigital = $conn->prepare("UPDATE artworks SET digital_file_path = ?, digital_file_format = ?, digital_file_size_bytes = ?, digital_resolution = ?, license_type = ? WHERE id = ?");
+                    $stmtDigital->bind_param('ssissi', $dbDigitalPath, $digitalFileExt, $digitalFileSizeBytes, $digitalResolution, $licenseType, $artworkId);
                     $stmtDigital->execute();
                 } else {
                     $conn->rollback();
@@ -965,7 +985,18 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
                     <input type="file" name="digital_file" id="digitalFileInput" class="field-input" accept=".zip,.psd,.ai,.png,.jpg,.jpeg,.pdf,.gif,.mp4,.mov,.webm,.mp3,.wav,.m4a">
                     <p style="font-size:11px;color:var(--muted);margin-top:6px;">This is the actual file the buyer will download after payment is confirmed — upload the clearest/highest-quality version. Not shown publicly. Max 300MB. Allowed: ZIP, PSD, AI, PNG, JPG, PDF, GIF, MP4, MOV, WebM, MP3, WAV, M4A.</p>
                 </div>
+                <div class="field-group">
+                    <label>Licensing <span>*</span></label>
+                    <select name="license_type" id="licenseInput" class="field-input">
+                        <option value="">Select a license...</option>
+                        <option value="Personal Use">Personal Use — buyer can use it for themselves, not resell or use commercially</option>
+                        <option value="Commercial Use">Commercial Use — buyer can use it for business/commercial purposes</option>
+                        <option value="Extended/Exclusive">Extended / Exclusive — buyer gets full or exclusive rights</option>
+                    </select>
+                    <p style="font-size:11px;color:var(--muted);margin-top:6px;">Tell buyers what they're allowed to do with the file after purchase. Shown on the listing.</p>
+                </div>
             </div>
+
 
             <div class="form-grid">
                 <div class="field-group">
@@ -1208,6 +1239,7 @@ dropZone.addEventListener('click', () => fileInput.click());
 const categorySelect = document.getElementById('categorySelect');
 const digitalFileGroup = document.getElementById('digitalFileGroup');
 const digitalFileInput = document.getElementById('digitalFileInput');
+const licenseInput = document.getElementById('licenseInput');
 const deliveryTypeGroup = document.getElementById('deliveryTypeGroup');
 const deliveryTypeRadios = document.querySelectorAll('input[name="delivery_type"]');
 const weightGroup = document.getElementById('weightGroup');
@@ -1226,6 +1258,7 @@ function updateDigitalFileVisibility() {
     const isDigital = isDigitalSelected();
     digitalFileGroup.style.display = isDigital ? 'block' : 'none';
     digitalFileInput.required = isDigital;
+    if (licenseInput) licenseInput.required = isDigital;
 
     // ── Weight: digital art has no physical shipment, so hide the field
     // and lock the value at 1 (kg) instead of asking the artist for it. ──

@@ -37,8 +37,8 @@ if ($cityFilter) {
     $types .= 's';
 }
 if ($styleFilter) {
-    $where[] = "ap.art_style = ?";
-    $params[] = $styleFilter;
+    $where[] = "ap.art_style LIKE ?";
+    $params[] = "%$styleFilter%";
     $types .= 's';
 }
 
@@ -76,7 +76,6 @@ if ($allParams) $stmt->bind_param($allTypes, ...$allParams);
 
 // Get filter options
  $cities = $conn->query("SELECT DISTINCT ap.city FROM artist_profiles ap JOIN users u ON u.id=ap.user_id WHERE u.role='artist' AND u.status='active' AND ap.city IS NOT NULL AND ap.city != '' ORDER BY ap.city")->fetch_all(MYSQLI_ASSOC);
- $styles = $conn->query("SELECT DISTINCT ap.art_style FROM artist_profiles ap JOIN users u ON u.id=ap.user_id WHERE u.role='artist' AND u.status='active' AND ap.art_style IS NOT NULL AND ap.art_style != '' ORDER BY ap.art_style")->fetch_all(MYSQLI_ASSOC);
 
 function getProfileImageUrl($p) {
     if (!$p) return null;
@@ -412,12 +411,7 @@ select.filter-input {
   </div>
   <div class="filter-group">
     <label>ART STYLE</label>
-    <select name="style" class="filter-input">
-      <option value="">All Styles</option>
-      <?php foreach ($styles as $s): ?>
-      <option value="<?= htmlspecialchars($s['art_style']) ?>" <?= $styleFilter==$s['art_style']?'selected':'' ?>><?= htmlspecialchars($s['art_style']) ?></option>
-      <?php endforeach; ?>
-    </select>
+    <input type="text" name="style" class="filter-input" placeholder="e.g. Watercolor, Calligraphy..." value="<?= htmlspecialchars($styleFilter) ?>">
   </div>
   <button type="submit" class="filter-btn">Filter</button>
   <?php if ($search||$cityFilter||$styleFilter): ?>

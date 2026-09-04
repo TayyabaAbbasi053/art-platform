@@ -484,6 +484,23 @@ h1{font-family:'Playfair Display',serif;font-size:clamp(24px,2.5vw,32px);font-we
       <?php if (($artwork['delivery_type'] ?? 'physical') !== 'digital'): ?>
       <div class="meta-item"><div class="label">Framing</div><div class="value"><?= $artwork['is_framed'] ? 'Framed' : 'Unframed' ?></div></div>
       <?php endif; ?>
+      <?php if (($artwork['delivery_type'] ?? 'physical') === 'digital'): ?>
+        <?php if (!empty($artwork['license_type'])): ?>
+        <div class="meta-item"><div class="label">Licensing</div><div class="value"><?= htmlspecialchars($artwork['license_type']) ?></div></div>
+        <?php endif; ?>
+        <?php if (!empty($artwork['digital_file_format'])): ?>
+        <div class="meta-item"><div class="label">File Format</div><div class="value"><?= htmlspecialchars(strtoupper($artwork['digital_file_format'])) ?></div></div>
+        <?php endif; ?>
+        <?php if (!empty($artwork['digital_file_size_bytes'])):
+          $bytes = (int) $artwork['digital_file_size_bytes'];
+          $fileSizeDisplay = $bytes >= 1048576 ? round($bytes / 1048576, 1) . ' MB' : round($bytes / 1024, 1) . ' KB';
+        ?>
+        <div class="meta-item"><div class="label">File Size</div><div class="value"><?= htmlspecialchars($fileSizeDisplay) ?></div></div>
+        <?php endif; ?>
+        <?php if (!empty($artwork['digital_resolution'])): ?>
+        <div class="meta-item"><div class="label">Resolution</div><div class="value"><?= htmlspecialchars($artwork['digital_resolution']) ?></div></div>
+        <?php endif; ?>
+      <?php endif; ?>
     </div>
 
     <?php if ($artwork['description']): ?>
