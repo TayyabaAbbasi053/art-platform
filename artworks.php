@@ -123,7 +123,7 @@ if ($allParams) {
  $stmt2->close();
 
 // Sidebar data
- $categories = $conn->query("SELECT id, name FROM categories ORDER BY name ASC")->fetch_all(MYSQLI_ASSOC);
+ $categories = $conn->query("SELECT id, name FROM categories WHERE name != 'Digital Art' ORDER BY name ASC")->fetch_all(MYSQLI_ASSOC);
  $cities = $conn->query("SELECT DISTINCT city FROM artworks WHERE status = 'active' AND city IS NOT NULL AND city != '' ORDER BY city ASC")->fetch_all(MYSQLI_ASSOC);
  $mediums = $conn->query("SELECT DISTINCT medium FROM artworks WHERE status = 'active' AND medium IS NOT NULL AND medium != '' ORDER BY medium ASC")->fetch_all(MYSQLI_ASSOC);
 
