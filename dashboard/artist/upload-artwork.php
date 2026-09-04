@@ -268,8 +268,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $digitalFileExt = $hasDigitalFile ? strtolower(pathinfo($_FILES['digital_file']['name'], PATHINFO_EXTENSION)) : '';
     $allowedDigitalExt = ['zip', 'psd', 'ai', 'png', 'jpg', 'jpeg', 'pdf', 'gif', 'mp4', 'mov', 'webm', 'mp3', 'wav', 'm4a'];
 
+    // A "size" like "24 x 36" is ambiguous without a unit (inches? cm?),
+    // and for digital items px vs MB mean completely different things —
+    // so require a recognizable unit token, mirroring the client-side check.
+    $physicalSizeUnitRegex = '/\b(in|inch|inches|"|cm|centimeters?|mm|millimeters?|ft|feet|\'|m|meters?)\b/i';
+    $digitalSizeUnitRegex  = '/\b(px|pixels?|kb|mb|gb)\b/i';
+    $sizeUnitRegex = $isDigitalItem ? $digitalSizeUnitRegex : $physicalSizeUnitRegex;
+    $sizeMissingUnit = $size !== '' && !preg_match($sizeUnitRegex, $size);
+
     if ($title === '' || (!$isShowcaseOnly && $price <= 0) || $categoryId === 0 || !$hasFiles) {
         $errorMsg = 'Please fill in all required fields and upload at least one image.';
+    } elseif ($size === '') {
+        $errorMsg = 'Please enter a size.';
+    } elseif ($sizeMissingUnit) {
+        $errorMsg = $isDigitalItem
+            ? 'Please include a unit with the size, e.g. "1920 x 1080 px" or "15 MB".'
+            : 'Please include a unit with the size, e.g. "24 x 36 inches" or "60 x 90 cm".';
     } elseif ($imageCount > 5) {
         $errorMsg = 'You can only upload up to 5 images.';
     } elseif ($isDigitalItem && !$hasDigitalFile) {
@@ -628,6 +642,9 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
     color: var(--ink); outline: none; transition: border-color .15s;
 }
 .field-input:focus, .field-select:focus, .field-textarea:focus { border-color: var(--ink); }
+.field-input.field-invalid { border-color: #c0392b; }
+.field-error-text { font-size: 11px; color: #c0392b; margin-top: 6px; display: none; }
+.field-error-text.show { display: block; }
 .field-textarea { min-height: 120px; resize: vertical; line-height: 1.6; }
 .city-search-wrap{position:relative;}
 .city-dropdown{display:none;position:absolute;top:100%;left:0;right:0;background:var(--bg);border:1.5px solid var(--border);border-radius:8px;max-height:180px;overflow-y:auto;z-index:50;box-shadow:0 8px 20px rgba(0,0,0,0.1);margin-top:4px;}
@@ -1002,7 +1019,8 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
                 <div class="field-group">
                     <label>Size <span>*</span></label>
                     <input type="text" name="size" id="sizeInput" class="field-input" placeholder="e.g. 24 x 36 inches" required>
-                    <p style="font-size:11px;color:var(--muted);margin-top:6px;" id="sizeHint"></p>
+                    <p style="font-size:11px;color:var(--muted);margin-top:6px;" id="sizeHint">Include the unit (e.g. inches, cm, ft).</p>
+                    <p class="field-error-text" id="sizeError">Please include a unit with the size (e.g. "24 x 36 inches", "1920 x 1080 px", "15 MB").</p>
                 </div>
                 <div class="field-group">
                     <label>Price (PKR) <span id="priceRequiredMark">*</span></label>
@@ -1246,6 +1264,36 @@ const weightGroup = document.getElementById('weightGroup');
 const weightInput = document.getElementById('weightInput');
 const sizeInput = document.getElementById('sizeInput');
 const sizeHint = document.getElementById('sizeHint');
+const sizeError = document.getElementById('sizeError');
+
+// ── Size unit validation ──────────────────────────────
+// The "Size" field is free text, so nothing stops an artist from typing
+// just "24 x 36" with no unit. That's ambiguous (inches? cm?) for physical
+// pieces, and meaningless for digital ones (px vs MB are very different).
+// Require a recognizable unit token before letting the form submit.
+const PHYSICAL_SIZE_UNITS = /\b(in|inch|inches|"|cm|centimeters?|mm|millimeters?|ft|feet|'|m|meters?)\b/i;
+const DIGITAL_SIZE_UNITS  = /\b(px|pixels?|kb|mb|gb)\b/i;
+
+function validateSizeField() {
+    const value = sizeInput.value.trim();
+    const isDigital = isDigitalSelected();
+    const unitPattern = isDigital ? DIGITAL_SIZE_UNITS : PHYSICAL_SIZE_UNITS;
+
+    // Empty is handled by the native "required" attribute — don't also
+    // flag it here, or the user sees two errors at once.
+    const missingUnit = value !== '' && !unitPattern.test(value);
+
+    sizeInput.classList.toggle('field-invalid', missingUnit);
+    sizeError.classList.toggle('show', missingUnit);
+    return !missingUnit;
+}
+
+sizeInput.addEventListener('blur', validateSizeField);
+sizeInput.addEventListener('input', function () {
+    // Once an error is showing, clear it live as soon as it's fixed
+    // rather than making the user click away again.
+    if (sizeInput.classList.contains('field-invalid')) validateSizeField();
+});
 
 // Every artwork asks the artist directly, regardless of category — the
 // radio choice is the single source of truth for physical vs. digital.
@@ -1279,8 +1327,10 @@ function updateDigitalFileVisibility() {
         sizeHint.textContent = 'Images: enter dimensions in pixels (e.g. "1920 x 1080 px"). Audio/video files: enter the file size in MB (e.g. "15 MB").';
     } else {
         sizeInput.placeholder = 'e.g. 24 x 36 inches';
-        sizeHint.textContent = '';
+        sizeHint.textContent = 'Include the unit (e.g. inches, cm, ft).';
     }
+    // Re-check validity, since what counts as a valid unit changes with delivery type.
+    validateSizeField();
 
     const baseImageAccept = 'image/jpeg,image/png,image/webp,image/gif<?= $heicSupported ? ',image/heic,image/heif' : '' ?>';
     const digitalPreviewAccept = baseImageAccept + ',video/mp4,video/quicktime,video/webm,audio/mpeg,audio/wav,audio/mp4';
@@ -1461,6 +1511,15 @@ const submitBtn = document.getElementById('submitBtn');
 uploadForm.addEventListener('submit', function (e) {
     if (isSubmitting) {
         e.preventDefault();
+        return;
+    }
+
+    // Block submission until the size field has a recognizable unit —
+    // scroll/focus it so the artist sees exactly what needs fixing.
+    if (!validateSizeField()) {
+        e.preventDefault();
+        sizeInput.focus();
+        sizeInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
         return;
     }
 
