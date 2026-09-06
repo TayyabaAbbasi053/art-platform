@@ -115,8 +115,7 @@ $profile = $conn->query("
            has_easypaisa, easypaisa_name, easypaisa_number,
            has_jazzcash, jazzcash_name, jazzcash_number,
            has_nayapay, nayapay_name, nayapay_number,
-           has_sadapay, sadapay_name, sadapay_number,
-           profile_complete
+           has_sadapay, sadapay_name, sadapay_number
     FROM artist_profiles WHERE user_id = $artistId
 ")->fetch_assoc();
 
@@ -159,17 +158,6 @@ elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $npNum      = $hasNayapay ? trim($_POST['nayapay_number'] ?? '') : null;
     $spName     = $hasSadapay ? trim($_POST['sadapay_name'] ?? '') : null;
     $spNum      = $hasSadapay ? trim($_POST['sadapay_number'] ?? '') : null;
-
-    // Determine if profile is now complete
-    $profileComplete = (
-    !empty($bio) &&
-    !empty($city) &&
-    !empty($address) &&
-    !empty($art_style) &&
-    !empty($newPicture) &&
-    ($hasBankAccount || $hasEasypaisa || $hasJazzcash || $hasNayapay || $hasSadapay)
-) ? 1 : 0;
-    $profileCompletedAt = ($profileComplete && !($profile['profile_complete'] ?? 0)) ? date('Y-m-d H:i:s') : null;
 
     // Validation
     if ($name === '') {
@@ -275,8 +263,8 @@ elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // contact_phone, art_style, accepts_commissions, has_bank_account, bank_name, 
             // bank_account_title, bank_account_number, has_easypaisa, easypaisa_name, easypaisa_number,
             // has_jazzcash, jazzcash_name, jazzcash_number, has_nayapay, nayapay_name, nayapay_number,
-            // has_sadapay, sadapay_name, sadapay_number, profile_complete, profile_completed_at
-            // + 1 for WHERE user_id = 27 total parameters
+            // has_sadapay, sadapay_name, sadapay_number
+            // + 1 for WHERE user_id = 25 total parameters
             $stmt = $conn->prepare("
                 UPDATE artist_profiles
                 SET bio = ?, city = ?, address = ?, instagram_url = ?, contact_email = ?,
@@ -286,11 +274,11 @@ elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     has_jazzcash = ?, jazzcash_name = ?, jazzcash_number = ?,
                     has_nayapay = ?, nayapay_name = ?, nayapay_number = ?,
                     has_sadapay = ?, sadapay_name = ?, sadapay_number = ?,
-                    profile_complete = ?, profile_completed_at = ?, profile_updated_at = NOW()
+                    profile_updated_at = NOW()
                 WHERE user_id = ?
             ");
             
-            // 27 parameters total: 26 SET fields + 1 WHERE
+            // 25 parameters total: 24 SET fields + 1 WHERE
             // Types: s=string, i=integer
             // s(1) bio, s(2) city, s(3) address, s(4) instagram_url, s(5) contact_email,
             // s(6) contact_phone, s(7) art_style, i(8) accepts_commissions,
@@ -299,9 +287,8 @@ elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // i(16) has_jazzcash, s(17) jazzcash_name, s(18) jazzcash_number,
             // i(19) has_nayapay, s(20) nayapay_name, s(21) nayapay_number,
             // i(22) has_sadapay, s(23) sadapay_name, s(24) sadapay_number,
-            // i(25) profile_complete, s(26) profile_completed_at,
-            // i(27) user_id
-            $typeString = 'sssssssiisssississississisi';
+            // i(25) user_id
+            $typeString = 'sssssssiisssississississi';
             
             $stmt->bind_param(
                 $typeString,
@@ -312,10 +299,8 @@ elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $hasJazzcash, $jcName, $jcNum,
                 $hasNayapay, $npName, $npNum,
                 $hasSadapay, $spName, $spNum,
-                $profileComplete, $profileCompletedAt,
                 $artistId
             );
-            error_log('PROFILE UPDATE - artistId: ' . $artistId . ' profileComplete: ' . $profileComplete . ' profileCompletedAt: ' . var_export($profileCompletedAt, true));
             $stmt->execute();
 
             // Refresh session and data
@@ -328,8 +313,7 @@ elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
                        has_easypaisa, easypaisa_name, easypaisa_number,
                        has_jazzcash, jazzcash_name, jazzcash_number,
                        has_nayapay, nayapay_name, nayapay_number,
-                       has_sadapay, sadapay_name, sadapay_number,
-                       profile_complete
+                       has_sadapay, sadapay_name, sadapay_number
                 FROM artist_profiles WHERE user_id = $artistId
             ")->fetch_assoc();
 
@@ -337,6 +321,21 @@ elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 }
+
+// ── Profile completeness (computed live — profile_complete column was dropped) ──
+$hasPayment = (bool)(
+    $profile['has_bank_account'] || $profile['has_easypaisa'] ||
+    $profile['has_jazzcash']     || $profile['has_nayapay'] ||
+    $profile['has_sadapay']
+);
+$profileComplete = (
+    !empty($profile['bio']) &&
+    !empty($profile['city']) &&
+    !empty($profile['address']) &&
+    !empty($profile['art_style']) &&
+    !empty($user['profile_picture']) &&
+    $hasPayment
+);
 
 // ── Avatar URL for display ──────────────────────────────
 $avatarUrl = $user['profile_picture'] ? '../../' . $user['profile_picture'] : null;
@@ -706,7 +705,7 @@ textarea.field-input { resize: vertical; min-height: 110px; line-height: 1.6; }
 <main class="main">
 <div class="content">
 
-    <?php if (!($profile['profile_complete'] ?? 1)): ?>
+    <?php if (!$profileComplete): ?>
     <div style="background:#fef3cd;border:1px solid #e6c200;border-radius:12px;padding:14px 20px;margin-bottom:24px;display:flex;align-items:flex-start;gap:12px;">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#856404" stroke-width="2" style="flex-shrink:0;margin-top:2px;"><path d="M12 9v4m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
         <div>
