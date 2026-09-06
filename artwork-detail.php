@@ -234,6 +234,8 @@ h1{font-family:'Playfair Display',serif;font-size:clamp(24px,2.5vw,32px);font-we
 .qa-success{background:#e6f4ef;border:1px solid #0C3F30;border-radius:8px;padding:10px 14px;font-size:13px;color:#0C3F30;margin-bottom:14px;}
 .qa-error{background:#fdeaea;border:1px solid #c0392b;border-radius:8px;padding:10px 14px;font-size:13px;color:#c0392b;margin-bottom:14px;}
 .qa-empty{font-size:13px;opacity:.5;font-style:italic;margin-bottom:20px;}
+.qa-notice{display:flex;align-items:flex-start;gap:8px;background:var(--sand);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--ink);opacity:.85;margin-bottom:14px;line-height:1.5;}
+.qa-notice svg{flex-shrink:0;margin-top:1px;opacity:.8;}
 .meta-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0;padding:16px 0;border-top:1px solid var(--border);border-bottom:1px solid var(--border);}
 .meta-item .label{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:4px;}
 .meta-item .value{font-size:13px;font-weight:500;color:var(--ink);}
@@ -574,6 +576,10 @@ h1{font-family:'Playfair Display',serif;font-size:clamp(24px,2.5vw,32px);font-we
       <?php elseif ($qMsg === 'error'): ?>
         <div class="qa-error">Please fill in your name and question.</div>
       <?php endif; ?>
+      <div class="qa-notice">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        <span>Questions and the artist's replies are public and visible to everyone viewing this artwork. Please avoid sharing personal or contact details.</span>
+      </div>
       <form method="POST" action="artwork-detail.php?id=<?= $artworkId ?>">
         <input type="hidden" name="ask_question" value="1">
         <input type="text" name="buyer_name" placeholder="Your name *" required value="<?= htmlspecialchars($_POST['buyer_name'] ?? '') ?>">
