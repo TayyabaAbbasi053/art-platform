@@ -8,6 +8,9 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
     exit;
 }
 
+// ── Shared sidebar badge: pending commissions (admin sees all, regardless of other filters) ──
+$pendingCommissionCount = (int) ($conn->query("SELECT COUNT(*) FROM orders WHERE order_type = 'commission' AND order_status = 'pending'")->fetch_row()[0] ?? 0);
+
  $adminName = $_SESSION['name'] ?? 'Admin';
  $id = (int)($_GET['id'] ?? 0);
 
@@ -177,6 +180,7 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
 .nav-item.active { color: var(--ink); background: var(--sand); font-weight: 500; }
 .nav-item .icon { width: 16px; height: 16px; flex-shrink: 0; opacity: .7; }
 .nav-item.active .icon, .nav-item:hover .icon { opacity: 1; }
+.badge { margin-left: auto; background: var(--sand); color: var(--ink); font-size: 9px; font-weight: 600; padding: 1px 6px; border-radius: 20px; min-width: 18px; text-align: center; }
 .sidebar-bottom { margin-top: auto; padding: 16px; border-top: 1px solid rgba(246,237,222,.1); }
 .signout-btn { display: flex; align-items: center; gap: 8px; padding: 9px 12px; font-size: 12px; color: var(--bg); text-decoration: none; border-radius: 8px; transition: all .15s; width: 100%; background: none; border: none; cursor: pointer; font-family: 'DM Sans', sans-serif; }
 .signout-btn:hover { background: rgba(255,255,255,0.1); color: var(--bg); }
@@ -318,6 +322,7 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
     <a href="commissions.php" class="nav-item">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
         Commissions
+        <?php if ($pendingCommissionCount > 0): ?><span class="badge"><?= $pendingCommissionCount ?></span><?php endif; ?>
     </a>
     <a href="messages.php" class="nav-item">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16v13H4z"/><path d="M4 4l8 9 8-9"/></svg>

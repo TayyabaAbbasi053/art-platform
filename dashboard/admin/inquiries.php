@@ -129,6 +129,9 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
     exit;
 }
 
+// ── Shared sidebar badge: pending commissions (admin sees all, regardless of other filters) ──
+$pendingCommissionCount = (int) ($conn->query("SELECT COUNT(*) FROM orders WHERE order_type = 'commission' AND order_status = 'pending'")->fetch_row()[0] ?? 0);
+
  $adminName = $_SESSION['name'] ?? 'Admin';
  $toast = $_SESSION['toast'] ?? '';
  unset($_SESSION['toast']);
@@ -827,7 +830,7 @@ td[data-label="Actions"]:before { display: none; }
         <a href="categories.php" class="nav-item"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h10M4 18h7"/></svg> Categories</a>
         <div class="sidebar-section">Requests</div>
         <a href="inquiries.php" class="nav-item active"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg> Orders & Inquiries<?php if (($statusCounts['pending'] ?? 0) > 0): ?><span class="badge"><?= $statusCounts['pending'] ?></span><?php endif; ?></a>
-        <a href="commissions.php" class="nav-item"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg> Commissions</a>
+        <a href="commissions.php" class="nav-item"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg> Commissions<?php if ($pendingCommissionCount > 0): ?><span class="badge"><?= $pendingCommissionCount ?></span><?php endif; ?></a>
         <a href="messages.php" class="nav-item"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16v13H4z"/><path d="M4 4l8 9 8-9"/></svg> Messages</a>
         <div class="sidebar-bottom"><a href="../../logout.php" class="signout-btn"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg> Sign out</a></div>
     </aside>

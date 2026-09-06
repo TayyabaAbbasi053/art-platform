@@ -8,6 +8,9 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
     exit;
 }
 
+// ── Shared sidebar badge: pending commissions (admin sees all, regardless of other filters) ──
+$pendingCommissionCount = (int) ($conn->query("SELECT COUNT(*) FROM orders WHERE order_type = 'commission' AND order_status = 'pending'")->fetch_row()[0] ?? 0);
+
  $adminName = $_SESSION['name'] ?? 'Admin';
  $toast = '';
 
@@ -573,6 +576,7 @@ tr:hover td { background: var(--sand); box-shadow: 0 4px 12px rgba(12,63,48,.06)
     <a href="commissions.php" class="nav-item">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
         Commissions
+        <?php if ($pendingCommissionCount > 0): ?><span class="badge"><?= $pendingCommissionCount ?></span><?php endif; ?>
     </a>
     <a href="messages.php" class="nav-item">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16v13H4z"/><path d="M4 4l8 9 8-9"/></svg>

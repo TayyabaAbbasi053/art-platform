@@ -7,6 +7,9 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
     exit;
 }
 
+// ── Shared sidebar badge: pending commissions (admin sees all, regardless of other filters) ──
+$pendingCommissionCount = (int) ($conn->query("SELECT COUNT(*) FROM orders WHERE order_type = 'commission' AND order_status = 'pending'")->fetch_row()[0] ?? 0);
+
 $adminName = $_SESSION['name'] ?? 'Admin';
 
 // ── Handle Mark as Paid (single order) ────────────────────────
@@ -242,6 +245,7 @@ html,body{height:100%;background:var(--bg);color:var(--ink);font-family:'DM Sans
 .nav-item.active{color:var(--ink);background:var(--sand);border-left-color:var(--ink);font-weight:500;}
 .nav-item .icon{width:16px;height:16px;flex-shrink:0;opacity:.8;stroke:var(--bg);}
 .nav-item.active .icon,.nav-item:hover .icon{stroke:var(--ink);opacity:1;}
+.badge{margin-left:auto;background:var(--sand);color:var(--ink);font-size:9px;font-weight:600;padding:1px 6px;border-radius:20px;min-width:18px;text-align:center;}
 .sidebar-bottom{margin-top:auto;padding:16px;border-top:1px solid var(--border);}
 .signout-btn{display:flex;align-items:center;gap:8px;padding:9px 12px;font-size:12px;color:var(--bg);text-decoration:none;border-radius:8px;transition:all .15s;width:100%;background:none;border:none;cursor:pointer;font-family:'DM Sans',sans-serif;}
 .signout-btn:hover{background:var(--sand);color:var(--ink);}
@@ -394,7 +398,7 @@ tr.is-paid{opacity:.55;}
     <a href="categories.php" class="nav-item"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h10M4 18h7"/></svg> Categories</a>
     <div class="sidebar-section">Requests</div>
     <a href="inquiries.php" class="nav-item"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg> Orders & Inquiries</a>
-    <a href="commissions.php" class="nav-item"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg> Commissions</a>
+    <a href="commissions.php" class="nav-item"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg> Commissions<?php if ($pendingCommissionCount > 0): ?><span class="badge"><?= $pendingCommissionCount ?></span><?php endif; ?></a>
     <a href="messages.php" class="nav-item"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16v13H4z"/><path d="M4 4l8 9 8-9"/></svg> Messages</a>
     <a href="reports.php" class="nav-item active"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg> Reports</a>
     <div class="sidebar-bottom"><a href="../../logout.php" class="signout-btn"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg> Sign out</a></div>
