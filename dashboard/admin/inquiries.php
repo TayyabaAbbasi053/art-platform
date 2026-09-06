@@ -1116,7 +1116,7 @@ if ($item['item_status'] === 'pending' && $item['payment_method'] === 'cod') {
                                 <div class="dv">${esc(aw.title)}</div>
                                 <div style="margin-top:6px;display:flex;gap:16px;flex-wrap:wrap;">
                                     <div><div class="dl">Price</div><div class="dv">PKR ${Number(aw.price).toLocaleString()}</div></div>
-                                    <div><div class="dl">Artist</div><div class="dv">${esc(aw.artist_name)}</div></div>
+                                    <div><div class="dl">Artist</div><div class="dv"><a href="artist-view.php?id=${aw.artist_id}">${esc(aw.artist_name)}</a></div></div>
                                 </div>
                             </div>
                         </div>`;
