@@ -8,8 +8,12 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
     exit;
 }
 
-// ── Shared sidebar badge: pending commissions (admin sees all, regardless of other filters) ──
+// ── Shared sidebar badges (admin sees all, regardless of other filters) ──
 $pendingCommissionCount = (int) ($conn->query("SELECT COUNT(*) FROM orders WHERE order_type = 'commission' AND order_status = 'pending'")->fetch_row()[0] ?? 0);
+$sidebarHiddenArtworks  = (int) ($conn->query("SELECT COUNT(*) FROM artworks WHERE status='hidden'")->fetch_row()[0] ?? 0);
+$sidebarPendingArtists  = (int) ($conn->query("SELECT COUNT(*) FROM users WHERE role='artist' AND status='pending'")->fetch_row()[0] ?? 0);
+$sidebarNewInquiries    = (int) ($conn->query("SELECT COUNT(*) FROM orders WHERE order_type = 'artwork' AND order_status = 'pending'")->fetch_row()[0] ?? 0);
+$sidebarUnreadMessages  = (int) ($conn->query("SELECT COUNT(*) FROM contact_messages WHERE is_read=0")->fetch_row()[0] ?? 0);
 
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
@@ -724,10 +728,16 @@ tr:hover td { background: var(--bg); box-shadow: 0 4px 12px rgba(12,63,48,.06); 
     <a href="artworks.php" class="nav-item">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9l4-4 4 4 4-4 4 4"/><circle cx="8.5" cy="14.5" r="1.5"/></svg>
         Artworks
+        <?php if ($sidebarHiddenArtworks > 0): ?>
+            <span class="badge"><?= $sidebarHiddenArtworks ?></span>
+        <?php endif; ?>
     </a>
     <a href="artists.php" class="nav-item active">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
         Artists
+        <?php if ($sidebarPendingArtists > 0): ?>
+            <span class="badge amber"><?= $sidebarPendingArtists ?></span>
+        <?php endif; ?>
     </a>
     <a href="payments.php" class="nav-item">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
@@ -745,6 +755,9 @@ tr:hover td { background: var(--bg); box-shadow: 0 4px 12px rgba(12,63,48,.06); 
     <a href="inquiries.php" class="nav-item">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
         Buyer Inquiries
+        <?php if ($sidebarNewInquiries > 0): ?>
+            <span class="badge"><?= $sidebarNewInquiries ?></span>
+        <?php endif; ?>
     </a>
     <a href="commissions.php" class="nav-item">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
@@ -754,6 +767,9 @@ tr:hover td { background: var(--bg); box-shadow: 0 4px 12px rgba(12,63,48,.06); 
     <a href="messages.php" class="nav-item">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16v13H4z"/><path d="M4 4l8 9 8-9"/></svg>
         Messages
+        <?php if ($sidebarUnreadMessages > 0): ?>
+            <span class="badge amber"><?= $sidebarUnreadMessages ?></span>
+        <?php endif; ?>
     </a>
     <div class="sidebar-bottom">
         <a href="../../logout.php" class="signout-btn">

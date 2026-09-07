@@ -694,7 +694,10 @@ function buildQS($overrides = []) {
         if ($v === null) unset($q[$k]);
         else $q[$k] = $v;
     }
-    unset($q['page']);
+    // Only reset back to page 1 when a filter (not the page number itself) changes.
+    if (!array_key_exists('page', $overrides)) {
+        unset($q['page']);
+    }
     return http_build_query($q);
 }
 
@@ -725,6 +728,13 @@ function getDeliveryStatusFromOrderStatus($status) {
     ];
     return $map[$status] ?? 'pending';
 }
+
+// ── Sidebar notification badge counts (same as index.php) ─
+ $sidebarStats = [
+    'pending_artists' => (int)($conn->query("SELECT COUNT(*) FROM users WHERE role='artist' AND status='pending'")->fetch_row()[0] ?? 0),
+    'new_inquiries'   => (int)($conn->query("SELECT COUNT(*) FROM orders WHERE order_type='artwork' AND order_status='pending'")->fetch_row()[0] ?? 0),
+    'unread_messages' => (int)($conn->query("SELECT COUNT(*) FROM contact_messages WHERE is_read=0")->fetch_row()[0] ?? 0),
+];
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -961,7 +971,7 @@ tr:hover td{background:var(--grey1)}
     <a href="index.php" class="nav-item"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg> Overview</a>
     <div class="sidebar-section">Content</div>
     <a href="artworks.php" class="nav-item"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9l4-4 4 4 4-4 4 4"/><circle cx="8.5" cy="14.5" r="1.5"/></svg> Artworks</a>
-    <a href="artists.php" class="nav-item"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg> Artists</a>
+    <a href="artists.php" class="nav-item"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg> Artists<?php if ($sidebarStats['pending_artists'] > 0): ?><span class="badge"><?= $sidebarStats['pending_artists'] ?></span><?php endif; ?></a>
     <a href="payments.php" class="nav-item"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg> Payments</a>
     <a href="blogs.php" class="nav-item">
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16a1 1 0 011 1v14a1 1 0 01-1 1H4a1 1 0 01-1-1V5a1 1 0 011-1z"/><path d="M7 8h10M7 12h6"/></svg>
@@ -969,9 +979,9 @@ tr:hover td{background:var(--grey1)}
 </a>
     <a href="categories.php" class="nav-item"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h10M4 18h7"/></svg> Categories</a>
     <div class="sidebar-section">Requests</div>
-    <a href="inquiries.php" class="nav-item"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg> Orders & Inquiries</a>
+    <a href="inquiries.php" class="nav-item"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg> Orders & Inquiries<?php if ($sidebarStats['new_inquiries'] > 0): ?><span class="badge"><?= $sidebarStats['new_inquiries'] ?></span><?php endif; ?></a>
     <a href="commissions.php" class="nav-item active"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg> Commissions<?php if ($statusCounts['pending'] > 0): ?><span class="badge"><?= $statusCounts['pending'] ?></span><?php endif; ?></a>
-    <a href="messages.php" class="nav-item"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16v13H4z"/><path d="M4 4l8 9 8-9"/></svg> Messages</a>
+    <a href="messages.php" class="nav-item"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16v13H4z"/><path d="M4 4l8 9 8-9"/></svg> Messages<?php if ($sidebarStats['unread_messages'] > 0): ?><span class="badge"><?= $sidebarStats['unread_messages'] ?></span><?php endif; ?></a>
     <div class="sidebar-bottom"><a href="../../logout.php" class="signout-btn"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg> Sign out</a></div>
 </aside>
 

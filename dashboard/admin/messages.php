@@ -7,8 +7,11 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
     exit;
 }
 
-// ── Shared sidebar badge: pending commissions (admin sees all, regardless of other filters) ──
+// ── Shared sidebar badges (match Overview dashboard notification icons) ──
 $pendingCommissionCount = (int) ($conn->query("SELECT COUNT(*) FROM orders WHERE order_type = 'commission' AND order_status = 'pending'")->fetch_row()[0] ?? 0);
+$sidebarPendingArtists  = (int) ($conn->query("SELECT COUNT(*) FROM users WHERE role='artist' AND status='pending'")->fetch_row()[0] ?? 0);
+$sidebarHiddenArtworks  = (int) ($conn->query("SELECT COUNT(*) FROM artworks WHERE status='hidden'")->fetch_row()[0] ?? 0);
+$sidebarNewInquiries    = (int) ($conn->query("SELECT COUNT(*) FROM orders WHERE order_type = 'artwork' AND order_status = 'pending'")->fetch_row()[0] ?? 0);
 
  $adminName = $_SESSION['name'] ?? 'Admin';
  $toast = '';
@@ -310,8 +313,8 @@ tr.unread:hover td { background: var(--sand); }
     <div class="sidebar-section">Overview</div>
     <a href="index.php" class="nav-item"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg> Overview</a>
     <div class="sidebar-section">Content</div>
-    <a href="artworks.php" class="nav-item"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9l4-4 4 4 4-4 4 4"/><circle cx="8.5" cy="14.5" r="1.5"/></svg> Artworks</a>
-    <a href="artists.php" class="nav-item"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg> Artists</a>
+    <a href="artworks.php" class="nav-item"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9l4-4 4 4 4-4 4 4"/><circle cx="8.5" cy="14.5" r="1.5"/></svg> Artworks<?php if ($sidebarHiddenArtworks > 0): ?><span class="badge"><?= $sidebarHiddenArtworks ?></span><?php endif; ?></a>
+    <a href="artists.php" class="nav-item"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg> Artists<?php if ($sidebarPendingArtists > 0): ?><span class="badge amber"><?= $sidebarPendingArtists ?></span><?php endif; ?></a>
     <a href="payments.php" class="nav-item"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg> Payments</a>
     <a href="blogs.php" class="nav-item">
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16a1 1 0 011 1v14a1 1 0 01-1 1H4a1 1 0 01-1-1V5a1 1 0 011-1z"/><path d="M7 8h10M7 12h6"/></svg>
@@ -319,7 +322,7 @@ tr.unread:hover td { background: var(--sand); }
 </a>
     <a href="categories.php" class="nav-item"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h10M4 18h7"/></svg> Categories</a>
     <div class="sidebar-section">Requests</div>
-    <a href="inquiries.php" class="nav-item"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg> Buyer Inquiries</a>
+    <a href="inquiries.php" class="nav-item"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg> Buyer Inquiries<?php if ($sidebarNewInquiries > 0): ?><span class="badge"><?= $sidebarNewInquiries ?></span><?php endif; ?></a>
     <a href="commissions.php" class="nav-item"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg> Commissions<?php if ($pendingCommissionCount > 0): ?><span class="badge"><?= $pendingCommissionCount ?></span><?php endif; ?></a>
     <a href="messages.php" class="nav-item active"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16v13H4z"/><path d="M4 4l8 9 8-9"/></svg> Messages<?php if ($unreadCount > 0): ?><span class="badge amber"><?= $unreadCount ?></span><?php endif; ?></a>
     <div class="sidebar-bottom">
