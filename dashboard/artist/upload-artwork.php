@@ -101,6 +101,17 @@ if (isset($_SESSION['heic_support_checked']) && (time() - $_SESSION['heic_suppor
     $_SESSION['heic_support_ok'] = $heicSupported;
 }
 
+// ── Fetch Pending Artworks Count for Sidebar Badge ──────
+ $pendingCount = (int) ($conn->query("SELECT COUNT(*) FROM artworks WHERE artist_id = $artistId AND status = 'pending'")->fetch_row()[0] ?? 0);
+
+// ── Fetch New Commissions Count for Sidebar Badge ───────
+ $newCommCount = (int) ($conn->query("
+    SELECT COUNT(*) 
+    FROM commission_requests cr 
+    JOIN orders o ON cr.order_id = o.id 
+    WHERE cr.artist_id = $artistId AND o.order_type = 'commission' AND o.order_status = 'assigned'
+")->fetch_row()[0] ?? 0);
+
 // ── Fetch New Orders Count for Sidebar Badge ────────────
  $newOrdersCount = 0;
  $countStmt = $conn->prepare("
@@ -876,19 +887,28 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
     <a href="my-artworks.php" class="nav-item">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9l4-4 4 4 4-4 4 4"/><circle cx="8.5" cy="14.5" r="1.5"/></svg>
         My Artworks
+        <?php if ($pendingCount > 0): ?><span class="badge amber"><?= $pendingCount ?></span><?php endif; ?>
         <?php if ($pendingQCount > 0): ?><span class="badge" style="background:#c0392b;color:#fff;display:flex;align-items:center;gap:4px;"><span style="background:#fff;width:6px;height:6px;border-radius:50%;display:inline-block;"></span><?= $pendingQCount ?></span><?php endif; ?>
     </a>
     <a href="commissions.php" class="nav-item">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
         Commission Requests
-        <?php if ($unreadCommissionMsgs > 0): ?><span class="badge" style="background:#c0392b;color:#fff;display:flex;align-items:center;gap:4px;"><span style="background:#fff;width:6px;height:6px;border-radius:50%;display:inline-block;"></span><?= $unreadCommissionMsgs ?></span><?php endif; ?>
+        <?php if ($unreadCommissionMsgs > 0): ?>
+            <span class="badge" style="background:#c0392b;color:#fff;display:flex;align-items:center;gap:4px;"><span style="background:#fff;width:6px;height:6px;border-radius:50%;display:inline-block;"></span><?= $unreadCommissionMsgs ?></span>
+        <?php elseif ($newCommCount > 0): ?>
+            <span class="badge"><?= $newCommCount ?></span>
+        <?php endif; ?>
     </a>
     
     <!-- ADDED ORDERS LINK -->
     <a href="orders.php" class="nav-item">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 7H4a2 2 0 00-2 2v6a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>
         Orders
-        <?php if ($newOrdersCount > 0): ?><span class="badge" style="background:#c0392b;color:#fff;"><?= $newOrdersCount ?></span><?php endif; ?>
+        <?php if ($unreadOrderMsgs > 0): ?>
+            <span class="badge" style="background:#c0392b;color:#fff;display:flex;align-items:center;gap:4px;"><span style="background:#fff;width:6px;height:6px;border-radius:50%;display:inline-block;"></span><?= $unreadOrderMsgs ?></span>
+        <?php elseif ($newOrdersCount > 0): ?>
+            <span class="badge"><?= $newOrdersCount ?></span>
+        <?php endif; ?>
     </a>
 
     <div class="sidebar-section">Account</div>
@@ -1129,13 +1149,16 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
         <a href="index.php">Dashboard</a>
         <a href="upload-artwork.php">Upload Artwork</a>
         <a href="my-artworks.php">My Artworks
-            <?php if ($pendingQCount > 0): ?><span style="background:#c0392b;color:#fff;font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;margin-left:6px;"><?= $pendingQCount ?></span><?php endif; ?>
+            <?php if ($pendingCount > 0): ?><span style="background:var(--sand);color:var(--ink);font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;margin-left:6px;"><?= $pendingCount ?></span><?php endif; ?>
+            <?php if ($pendingQCount > 0): ?><span style="background:#c0392b;color:#fff;font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;margin-left:4px;"><?= $pendingQCount ?></span><?php endif; ?>
         </a>
         <a href="commissions.php">Commissions
             <?php if ($unreadCommissionMsgs > 0): ?><span style="background:#c0392b;color:#fff;font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;margin-left:6px;"><?= $unreadCommissionMsgs ?></span><?php endif; ?>
+            <?php if ($unreadCommissionMsgs == 0 && $newCommCount > 0): ?><span style="background:var(--sand);color:var(--ink);font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;margin-left:6px;"><?= $newCommCount ?></span><?php endif; ?>
         </a>
         <a href="orders.php">Orders
-            <?php if ($newOrdersCount > 0): ?><span style="background:#c0392b;color:#fff;font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;margin-left:6px;"><?= $newOrdersCount ?></span><?php endif; ?>
+            <?php if ($unreadOrderMsgs > 0): ?><span style="background:#c0392b;color:#fff;font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;margin-left:6px;"><?= $unreadOrderMsgs ?></span><?php endif; ?>
+            <?php if ($unreadOrderMsgs == 0 && $newOrdersCount > 0): ?><span style="background:var(--sand);color:var(--ink);font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;margin-left:6px;"><?= $newOrdersCount ?></span><?php endif; ?>
         </a>
         <a href="profile.php">Profile</a>
     </div>

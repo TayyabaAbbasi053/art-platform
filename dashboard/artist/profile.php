@@ -347,7 +347,7 @@ $newCommCount = (int) ($conn->query("
     SELECT COUNT(*) 
     FROM commission_requests cr 
     JOIN orders o ON cr.order_id = o.id 
-    WHERE cr.artist_id = $artistId AND o.order_type = 'commission' AND o.order_status = 'pending'
+    WHERE cr.artist_id = $artistId AND o.order_type = 'commission' AND o.order_status = 'assigned'
 ")->fetch_row()[0] ?? 0);
 
 $newOrdersCount = 0;
@@ -662,16 +662,20 @@ textarea.field-input { resize: vertical; min-height: 110px; line-height: 1.6; }
     <a href="commissions.php" class="nav-item">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
         Commission Requests
-        <?php if ($newCommCount > 0): ?><span class="badge"><?= $newCommCount ?></span><?php endif; ?>
-            <?php if ($unreadCommissionMsgs > 0): ?><span class="badge" style="background:#c0392b;color:#fff;display:flex;align-items:center;gap:4px;"><span style="background:#fff;width:6px;height:6px;border-radius:50%;display:inline-block;"></span><?= $unreadCommissionMsgs ?></span><?php endif; ?>
+        <?php if ($unreadCommissionMsgs > 0): ?>
+            <span class="badge" style="background:#c0392b;color:#fff;display:flex;align-items:center;gap:4px;"><span style="background:#fff;width:6px;height:6px;border-radius:50%;display:inline-block;"></span><?= $unreadCommissionMsgs ?></span>
+        <?php elseif ($newCommCount > 0): ?>
+            <span class="badge"><?= $newCommCount ?></span>
+        <?php endif; ?>
     </a>
     <a href="orders.php" class="nav-item">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 7H4a2 2 0 00-2 2v6a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>
         Orders
-        <?php if ($newOrdersCount > 0): ?>
+        <?php if ($unreadOrderMsgs > 0): ?>
+            <span class="badge" style="background:#c0392b;color:#fff;display:flex;align-items:center;gap:4px;"><span style="background:#fff;width:6px;height:6px;border-radius:50%;display:inline-block;"></span><?= $unreadOrderMsgs ?></span>
+        <?php elseif ($newOrdersCount > 0): ?>
             <span class="badge"><?= $newOrdersCount ?></span>
         <?php endif; ?>
-        <?php if ($unreadOrderMsgs > 0): ?><span class="badge" style="background:#c0392b;color:#fff;display:flex;align-items:center;gap:4px;"><span style="background:#fff;width:6px;height:6px;border-radius:50%;display:inline-block;"></span><?= $unreadOrderMsgs ?></span><?php endif; ?>
     </a>
 
     <div class="sidebar-section">Account</div>
@@ -954,12 +958,12 @@ textarea.field-input { resize: vertical; min-height: 110px; line-height: 1.6; }
     <?php if ($pendingQCount > 0): ?> <span style="background:#c0392b;color:#fff;font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;margin-left:6px;"><?= $pendingQCount ?></span><?php endif; ?>
 </a>
 <a href="commissions.php">Commission Requests
-    <?php if ($newCommCount > 0): ?> <span style="background:var(--sand);color:var(--ink);font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;margin-left:6px;"><?= $newCommCount ?></span><?php endif; ?>
     <?php if ($unreadCommissionMsgs > 0): ?> <span style="background:#c0392b;color:#fff;font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;margin-left:4px;"><?= $unreadCommissionMsgs ?></span><?php endif; ?>
+    <?php if ($unreadCommissionMsgs == 0 && $newCommCount > 0): ?> <span style="background:var(--sand);color:var(--ink);font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;margin-left:6px;"><?= $newCommCount ?></span><?php endif; ?>
 </a>
 <a href="orders.php">Orders
-    <?php if ($newOrdersCount > 0): ?> <span style="background:var(--sand);color:var(--ink);font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;margin-left:6px;"><?= $newOrdersCount ?></span><?php endif; ?>
     <?php if ($unreadOrderMsgs > 0): ?> <span style="background:#c0392b;color:#fff;font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;margin-left:4px;"><?= $unreadOrderMsgs ?></span><?php endif; ?>
+    <?php if ($unreadOrderMsgs == 0 && $newOrdersCount > 0): ?> <span style="background:var(--sand);color:var(--ink);font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;margin-left:6px;"><?= $newOrdersCount ?></span><?php endif; ?>
 </a>
     <a href="profile.php">My Profile</a>
     <div style="margin-top: 40px;">

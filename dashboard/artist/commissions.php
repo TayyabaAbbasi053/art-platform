@@ -322,7 +322,6 @@ foreach ($requests as &$req) {
 unset($req);
 // ── Fetch unread message counts per commission ───────────
 $unreadByOrder = [];
-$totalUnread = 0;
 if (!empty($requests)) {
     $orderIds = array_column($requests, 'id');
     $placeholders = implode(',', array_fill(0, count($orderIds), '?'));
@@ -340,9 +339,27 @@ if (!empty($requests)) {
     $unreadResult = $unreadStmt->get_result();
     while ($row = $unreadResult->fetch_assoc()) {
         $unreadByOrder[$row['order_id']] = (int)$row['unread_count'];
-        $totalUnread += (int)$row['unread_count'];
     }
 }
+
+// Total unread commission messages for this artist — matches index.php's scope
+// (all commission_requests for the artist, including ones still 'pending'),
+// rather than only the non-pending rows loaded into $requests above.
+$totalUnread = (int)$conn->query("
+    SELECT COUNT(*) FROM order_messages om
+    JOIN commission_requests cr ON cr.order_id = om.order_id
+    WHERE cr.artist_id = $artistId
+      AND om.sender_role != 'artist'
+      AND om.is_read_by_artist = 0
+")->fetch_row()[0];
+
+// Newly-assigned commissions — same definition as index.php's new_commissions,
+// used as the nav badge fallback when there are no unread messages.
+$newCommissionsCount = (int)$conn->query("
+    SELECT COUNT(*) FROM commission_requests cr
+    JOIN orders o ON cr.order_id = o.id
+    WHERE cr.artist_id = $artistId AND o.order_type = 'commission' AND o.order_status = 'assigned'
+")->fetch_row()[0];
 
 $pendingQCount = (int)$conn->query("
     SELECT COUNT(*) FROM artwork_questions aq
@@ -629,7 +646,7 @@ tr:hover td { background: var(--bg); box-shadow: 0 4px 12px rgba(12,63,48,.06); 
     <a href="commissions.php" class="nav-item active">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
         Commission Requests
-        <?php if ($totalUnread > 0): ?><span class="badge" style="background:#c0392b;color:#fff;display:flex;align-items:center;gap:4px;"><span style="background:#fff;width:6px;height:6px;border-radius:50%;display:inline-block;"></span><?= $totalUnread ?></span><?php endif; ?>
+        <?php if ($totalUnread > 0): ?><span class="badge" style="background:#c0392b;color:#fff;display:flex;align-items:center;gap:4px;"><span style="background:#fff;width:6px;height:6px;border-radius:50%;display:inline-block;"></span><?= $totalUnread ?></span><?php elseif ($newCommissionsCount > 0): ?><span class="badge"><?= $newCommissionsCount ?></span><?php endif; ?>
     </a>
     <a href="orders.php" class="nav-item">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 7H4a2 2 0 00-2 2v6a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>
@@ -1114,7 +1131,7 @@ if (chatAttachRemoveBtn) {
             <?php if ($pendingQCount > 0): ?><span style="background:#c0392b;color:#fff;font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;margin-left:6px;"><?= $pendingQCount ?></span><?php endif; ?>
         </a>
         <a href="commissions.php">Commissions
-            <?php if ($totalUnread > 0): ?><span style="background:#c0392b;color:#fff;font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;margin-left:6px;"><?= $totalUnread ?></span><?php endif; ?>
+            <?php if ($totalUnread > 0): ?><span style="background:#c0392b;color:#fff;font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;margin-left:6px;"><?= $totalUnread ?></span><?php elseif ($newCommissionsCount > 0): ?><span style="background:var(--sand);color:var(--ink);font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;margin-left:6px;"><?= $newCommissionsCount ?></span><?php endif; ?>
         </a>
         <a href="orders.php">Orders
             <?php if ($unreadOrderMsgs > 0): ?><span style="background:#c0392b;color:#fff;font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;margin-left:6px;"><?= $unreadOrderMsgs ?></span><?php elseif ($unseenOrderCount > 0): ?><span style="background:var(--sand);color:var(--ink);font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;margin-left:6px;"><?= $unseenOrderCount ?> New</span><?php endif; ?>
