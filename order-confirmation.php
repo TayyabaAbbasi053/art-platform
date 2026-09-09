@@ -2,14 +2,13 @@
 session_start();
 require_once __DIR__ . '/config/db.php';
 
-// ── Auth guard ───────────────────────────────────────────
-if (!isset($_SESSION['user_id'])) {
-    header('Location: login.php?redirect=' . urlencode($_SERVER['REQUEST_URI']));
-    exit;
-}
-
- $buyerId = (int) $_SESSION['user_id'];
- $orderId = isset($_GET['order_id']) ? (int)$_GET['order_id'] : 0;
+// ── Determine viewer ─────────────────────────────────────
+// Guest artwork checkouts don't create an account, so this page can't
+// blanket-require login the way it used to — that just sent every guest
+// straight to the login screen instead of their confirmation.
+ $isLoggedIn = isset($_SESSION['user_id']);
+ $buyerId    = $isLoggedIn ? (int) $_SESSION['user_id'] : null;
+ $orderId    = isset($_GET['order_id']) ? (int)$_GET['order_id'] : 0;
 
 if (!$orderId) {
     header('Location: orders.php');
@@ -24,7 +23,9 @@ function getImageUrl($path, $type = 'artwork') {
     return $type === 'commission' ? 'uploads/commissions/' . $path : 'uploads/artworks/' . $path;
 }
 
-// ── Fetch order details and verify ownership ─────────────
+// ── Fetch order details ───────────────────────────────────
+// Ownership is checked separately below, since a guest order has no
+// buyer_id to filter on.
  $stmt = $conn->prepare("
     SELECT o.*, u.name AS buyer_name, u.email AS buyer_email,
            c.name AS commission_category_name,
@@ -35,15 +36,36 @@ function getImageUrl($path, $type = 'artwork') {
     LEFT JOIN categories c ON o.commission_category_id = c.id
     LEFT JOIN commission_requests cr ON cr.order_id = o.id
     LEFT JOIN users ua ON cr.artist_id = ua.id
-    WHERE o.id = ? AND o.buyer_id = ?
+    WHERE o.id = ?
 ");
- $stmt->bind_param('ii', $orderId, $buyerId);
+ $stmt->bind_param('i', $orderId);
  $stmt->execute();
  $order = $stmt->get_result()->fetch_assoc();
 
 if (!$order) {
     header('Location: orders.php');
     exit;
+}
+
+// ── Verify ownership ──────────────────────────────────────
+ $isGuestOrder = $order['buyer_id'] === null;
+
+if ($isGuestOrder) {
+    // Guest orders (no account) are only viewable by the browser session
+    // that just placed them — checkout.php stamps the order id into
+    // $_SESSION['guest_order_access'] right after creating it.
+    $allowedGuestOrders = $_SESSION['guest_order_access'] ?? [];
+    if (!in_array($orderId, $allowedGuestOrders, true)) {
+        header('Location: index.php');
+        exit;
+    }
+} else {
+    // Registered-buyer orders (and all commissions) still require login,
+    // and only the buyer who placed it can view it.
+    if (!$isLoggedIn || $buyerId !== (int)$order['buyer_id']) {
+        header('Location: login.php?redirect=' . urlencode($_SERVER['REQUEST_URI']));
+        exit;
+    }
 }
 
 // ── Self-heal missing order_items for commission orders ──
@@ -116,16 +138,27 @@ function getPaymentMethodLabel($method) {
 
 function getStatusLabel($status) {
     $labels = [
-        'pending'        => 'Pending',
-        'price_proposed' => 'Price Proposed',
-        'confirmed'      => 'Confirmed',
-        'processing'     => 'Processing',
-        'shipped'        => 'Shipped',
-        'delivered'      => 'Delivered',
-        'cancelled'      => 'Cancelled',
-        'refunded'       => 'Refunded'
+        'pending'            => 'Pending',
+        'price_proposed'     => 'Price Proposed',
+        'assigned'           => 'Artist Assigned',
+        'confirmed'          => 'Confirmed',
+        'payment_review'     => 'Payment Under Review',
+        'payment_confirmed'  => 'Payment Confirmed',
+        'processing'         => 'Processing',
+        'ready_to_ship'      => 'Ready to Ship',
+        'cod'                => 'Cash on Delivery',
+        'shipped'            => 'Shipped',
+        'delivered'          => 'Delivered',
+        'cancelled'          => 'Cancelled',
+        'refunded'           => 'Refunded'
     ];
-    return $labels[$status] ?? ucfirst($status);
+    return $labels[$status] ?? ucfirst(str_replace('_', ' ', $status));
+}
+
+// Statuses at/after which a shipment is realistically in motion — used to
+// decide whether to surface the tracking details block.
+function isShippingStage($status) {
+    return in_array($status, ['ready_to_ship', 'shipped', 'delivered'], true);
 }
 ?>
 <!DOCTYPE html>
@@ -227,6 +260,10 @@ img{max-width:100%;display:block;}
 .shipping-title{font-weight:600;margin-bottom:12px;}
 .shipping-address{font-size:13px;color:var(--body);line-height:1.6;margin-bottom:8px;}
 .shipping-estimate{font-size:12px;color:var(--muted);}
+.tracking-box{margin-top:14px;padding-top:14px;border-top:1px dashed var(--border);}
+.tracking-row{display:flex;justify-content:space-between;gap:12px;padding:5px 0;font-size:12.5px;}
+.tracking-label{color:var(--muted);}
+.tracking-value{font-weight:600;color:var(--ink);text-align:right;}
 
 /* COMMISSION BRIEF */
 .commission-brief{background:var(--card);border:1px solid var(--border);border-radius:16px;overflow:hidden;margin-bottom:28px;}
@@ -366,7 +403,12 @@ img{max-width:100%;display:block;}
       <input type="text" placeholder="Search...">
     </div>
     <div class="nend">
+      <?php if ($isLoggedIn): ?>
       <a href="logout.php" class="btn-ghost">Logout</a>
+      <?php else: ?>
+      <a href="login.php" class="btn-ghost">Login</a>
+      <a href="register.php" class="btn-dark">Create Account</a>
+      <?php endif; ?>
 
       <button class="ham-btn" aria-label="Open menu">
         <span></span><span></span><span></span>
@@ -602,20 +644,52 @@ img{max-width:100%;display:block;}
         🚚 Estimated delivery: <?= $minDate ?> – <?= $maxDate ?>
       <?php endif; ?>
     </div>
+
+    <?php if (!empty($order['tracking_number']) || isShippingStage($order['order_status'])): ?>
+    <div class="tracking-box">
+      <div class="tracking-row">
+        <span class="tracking-label">Courier</span>
+        <span class="tracking-value"><?= !empty($order['courier']) ? htmlspecialchars($order['courier']) : 'Not assigned yet' ?></span>
+      </div>
+      <div class="tracking-row">
+        <span class="tracking-label">Tracking Number</span>
+        <span class="tracking-value">
+          <?php if (!empty($order['tracking_number'])): ?>
+            <?= htmlspecialchars($order['tracking_number']) ?>
+          <?php else: ?>
+            Will appear here once your order ships
+          <?php endif; ?>
+        </span>
+      </div>
+    </div>
+    <?php endif; ?>
   </div>
   <?php endif; ?>
 
   <!-- ACTION BUTTONS -->
   <div class="action-buttons">
-    <a href="dashboard/buyer/order-detail.php?id=<?= $orderId ?>" class="btn btn-primary">
-      <?= $isCommission ? 'Track Your Commission →' : 'Track Your Order →' ?>
-    </a>
-    <?php if ($isCommission): ?>
-    <a href="dashboard/buyer/account.php" class="btn btn-secondary">View All Commissions</a>
+    <?php if ($isGuestOrder): ?>
+      <!-- Guests have no dashboard login yet — the order-detail page lives
+           behind buyer login, so point them at creating an account instead. -->
+      <a href="register.php?email=<?= urlencode($order['guest_email'] ?? '') ?>" class="btn btn-primary">Create an Account to Track This Order →</a>
+      <a href="artworks.php" class="btn btn-secondary">Continue Shopping</a>
     <?php else: ?>
-    <a href="artworks.php" class="btn btn-secondary">Continue Shopping</a>
+      <a href="dashboard/buyer/order-detail.php?id=<?= $orderId ?>" class="btn btn-primary">
+        <?= $isCommission ? 'Track Your Commission →' : 'Track Your Order →' ?>
+      </a>
+      <?php if ($isCommission): ?>
+      <a href="dashboard/buyer/account.php" class="btn btn-secondary">View All Commissions</a>
+      <?php else: ?>
+      <a href="artworks.php" class="btn btn-secondary">Continue Shopping</a>
+      <?php endif; ?>
     <?php endif; ?>
   </div>
+
+  <?php if ($isGuestOrder): ?>
+  <p style="text-align:center;font-size:12px;color:var(--muted);margin-top:-6px;">
+    We've also emailed your order number and details to <?= htmlspecialchars($order['guest_email'] ?? 'your inbox') ?>.
+  </p>
+  <?php endif; ?>
 
   <!-- RECOMMENDATIONS -->
   <div class="recommendations">
@@ -693,8 +767,13 @@ img{max-width:100%;display:block;}
     <a href="contact.php">Contact</a>
   </div>
   <div class="drawer-actions">
+    <?php if ($isLoggedIn): ?>
     <a href="dashboard/buyer/account.php" class="drawer-btn-ghost">My Account</a>
     <a href="logout.php" class="drawer-btn-dark">Logout</a>
+    <?php else: ?>
+    <a href="login.php" class="drawer-btn-ghost">Login</a>
+    <a href="register.php" class="drawer-btn-dark">Create Account</a>
+    <?php endif; ?>
   </div>
 </div>
 

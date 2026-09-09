@@ -525,10 +525,8 @@ h1{font-family:'Playfair Display',serif;font-size:clamp(24px,2.5vw,32px);font-we
     <div class="btn-group btn-group-2" style="flex-direction:row;">
   <?php if ($artwork['status'] === 'sold'): ?>
     <button class="btn btn-secondary" disabled style="opacity:0.6;cursor:not-allowed;flex:1;width:auto;">Sold Out</button>
-  <?php elseif ($isLoggedIn): ?>
-    <a href="checkout.php?artwork_id=<?= $artworkId ?>" class="btn btn-terr" style="text-align:center;flex:1;width:auto;">Buy Now</a>
   <?php else: ?>
-    <a href="login.php?redirect=<?= urlencode($_SERVER['REQUEST_URI']) ?>" class="btn btn-terr" style="text-align:center;flex:1;width:auto;">Login to Buy</a>
+    <a href="checkout.php?artwork_id=<?= $artworkId ?>" class="btn btn-terr" style="text-align:center;flex:1;width:auto;">Buy Now</a>
   <?php endif; ?>
   <a href="commission.php?artist=<?= $artwork['artist_id'] ?>" class="btn btn-outline" style="text-align:center;flex:1;width:auto;">
     Request Similar Custom Work

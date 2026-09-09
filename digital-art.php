@@ -586,10 +586,8 @@ img{display:block;max-width:100%;}
       </div>
       <?php if ($art['status'] === 'sold'): ?>
   <button class="aw-add-cart" disabled style="opacity:0.5;cursor:not-allowed;">🚫 Sold Out</button>
-<?php elseif ($isLoggedIn): ?>
-  <a href="checkout.php?artwork_id=<?= $art['id'] ?>" class="aw-add-cart" style="text-decoration:none;">🛒 Buy Now</a>
 <?php else: ?>
-  <a href="artwork-detail.php?id=<?= $art['id'] ?>" class="aw-view-btn">View Details</a>
+  <a href="checkout.php?artwork_id=<?= $art['id'] ?>" class="aw-add-cart" style="text-decoration:none;">🛒 Buy Now</a>
 <?php endif; ?>
     </div>
     <?php endforeach; ?>

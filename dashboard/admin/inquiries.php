@@ -124,6 +124,112 @@ function sendBuyerOrderEmail(mysqli $conn, int $orderId, string $type): string {
     }
 }
 
+// Emails the actual digital artwork file(s) to the buyer as attachments.
+// Guest-safe (uses the same COALESCE(u.email, o.guest_email) fallback as
+// sendBuyerOrderEmail). An order can contain more than one digital artwork,
+// so every digital item on the order gets attached in one email.
+function sendDigitalArtworkEmail(mysqli $conn, int $orderId): string {
+    $stmt = $conn->prepare("
+        SELECT o.order_number, o.buyer_id, o.guest_name, o.guest_email,
+               COALESCE(u.name, o.guest_name)  AS buyer_name,
+               COALESCE(u.email, o.guest_email) AS buyer_email
+        FROM orders o
+        LEFT JOIN users u ON o.buyer_id = u.id
+        WHERE o.id = ?
+        LIMIT 1
+    ");
+    $stmt->bind_param('i', $orderId);
+    $stmt->execute();
+    $order = $stmt->get_result()->fetch_assoc();
+
+    if (!$order) return 'DEBUG: no matching order for order_id ' . $orderId;
+    if (empty($order['buyer_email'])) return 'DEBUG: row found but buyer_email is empty';
+
+    $itemsStmt = $conn->prepare("
+        SELECT a.id AS artwork_id, a.title, a.digital_file_path
+        FROM order_items oi
+        JOIN artworks a ON oi.item_id = a.id AND oi.item_type = 'artwork'
+        WHERE oi.order_id = ? AND a.delivery_type = 'digital'
+    ");
+    $itemsStmt->bind_param('i', $orderId);
+    $itemsStmt->execute();
+    $items = $itemsStmt->get_result()->fetch_all(MYSQLI_ASSOC);
+
+    if (empty($items)) return 'DEBUG: no digital artwork items found on order_id ' . $orderId;
+
+    // Same base-path convention as getArtworkImageUrl() below: paths in the
+    // DB are stored relative to the project root, prefixed with "uploads/".
+    $projectRoot = rtrim(realpath(__DIR__ . '/../../'), '/\\') . '/';
+
+    $mail = new PHPMailer(true);
+    $attachedTitles = [];
+    $missingTitles  = [];
+    $attachedIds    = [];
+
+    try {
+        $mail->isSMTP();
+        $mail->Host       = 'smtp-relay.brevo.com';
+        $mail->SMTPAuth   = true;
+        $mail->Username   = $_ENV['BREVO_SMTP_USERNAME'];
+        $mail->Password   = $_ENV['BREVO_SMTP_PASSWORD'];
+        $mail->SMTPSecure = 'tls';
+        $mail->Port       = 587;
+        $mail->setFrom('teamartbazaar.pk@gmail.com', 'Art Bazaar');
+        $mail->addReplyTo('teamartbazaar.pk@gmail.com', 'Art Bazaar');
+        $mail->addAddress($order['buyer_email'], $order['buyer_name']);
+        $mail->isHTML(true);
+        $mail->CharSet = 'UTF-8';
+        $mail->SMTPDebug = 2;
+        $mail->Debugoutput = function($str, $level) {
+            error_log("PHPMailer [digital] debug: $str");
+        };
+
+        foreach ($items as $item) {
+            $relPath = ltrim((string)($item['digital_file_path'] ?? ''), '/');
+            if ($relPath === '') { $missingTitles[] = $item['title']; continue; }
+
+            $fullPath = (strpos($relPath, 'uploads/') === 0)
+                ? $projectRoot . $relPath
+                : $projectRoot . 'uploads/digital/' . $relPath;
+
+            if (!is_file($fullPath)) { $missingTitles[] = $item['title']; continue; }
+
+            $downloadName = preg_replace('/[^A-Za-z0-9 ._-]/', '', $item['title']) . '_' . basename($fullPath);
+            $mail->addAttachment($fullPath, $downloadName);
+            $attachedTitles[] = $item['title'];
+            $attachedIds[]    = (int)$item['artwork_id'];
+        }
+
+        if (empty($attachedTitles)) {
+            return 'DEBUG: no digital files could be attached (missing on disk): ' . implode(', ', $missingTitles);
+        }
+
+        $titlesList = implode(', ', $attachedTitles);
+        $mail->Subject = "Art Bazaar — Your Artwork: Order #{$order['order_number']}";
+        $mail->AltBody = "Hi {$order['buyer_name']}, your payment for Order #{$order['order_number']} has been confirmed. Your digital artwork ({$titlesList}) is attached to this email.";
+        $mail->Body    = "<p>Hi {$order['buyer_name']},</p>
+            <p>Your payment for <strong>Order #{$order['order_number']}</strong> has been confirmed.</p>
+            <p>Your digital artwork — <strong>{$titlesList}</strong> — is attached to this email. Please download and keep a personal copy.</p>
+            <p>— Art Bazaar Team</p>";
+
+        $mail->send();
+
+        foreach ($attachedIds as $awId) {
+            $conn->query("UPDATE artworks SET digital_download_count = digital_download_count + 1 WHERE id = " . $awId);
+        }
+
+        $result = 'OK: sent to ' . $order['buyer_email'] . ' with (' . $titlesList . ')';
+        if (!empty($missingTitles)) {
+            $result .= ' | MISSING on disk, not attached: ' . implode(', ', $missingTitles);
+        }
+        return $result;
+
+    } catch (Exception $e) {
+        error_log('Art Bazaar digital artwork email failed: ' . $e->getMessage() . ' | ErrorInfo: ' . $mail->ErrorInfo);
+        return 'DEBUG: PHPMailer error — ' . $mail->ErrorInfo;
+    }
+}
+
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
     header('Location: ../../login.php');
     exit;
@@ -179,17 +285,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'mark_
             $adminId = (int)$_SESSION['user_id'];
 
             if ($isDigitalOrder) {
-                // Digital artwork — nothing to ship, mark paid AND delivered in one step
+                // Digital artwork — nothing to ship, mark paid AND email the file to the buyer
                 $stmt = $conn->prepare("UPDATE orders SET payment_status = 'paid', order_status = 'delivered' WHERE id = ?");
                 $stmt->bind_param('i', $id);
                 $stmt->execute();
 
-                $note = 'Payment verified by admin. Digital artwork auto-delivered.';
+                error_log('[mark_paid] digital order, about to call sendDigitalArtworkEmail for order_id=' . $id);
+                $digitalEmailDebug = sendDigitalArtworkEmail($conn, $id);
+                error_log('[mark_paid] sendDigitalArtworkEmail returned: ' . $digitalEmailDebug);
+
+                $emailSucceeded = (strpos($digitalEmailDebug, 'OK') === 0);
+
+                $note = $emailSucceeded
+                    ? 'Payment verified by admin. Digital artwork emailed to buyer. [' . $digitalEmailDebug . ']'
+                    : 'Payment verified by admin. Digital artwork email FAILED — ' . $digitalEmailDebug;
                 $stmtH = $conn->prepare("INSERT INTO order_status_history (order_id, status_from, status_to, changed_by_role, changed_by_id, notes) VALUES (?, 'pending', 'delivered', 'admin', ?, ?)");
                 $stmtH->bind_param('iis', $id, $adminId, $note);
                 $stmtH->execute();
 
-                $toast = 'Order marked as paid. Digital artwork delivered to buyer.';
+                $toast = $emailSucceeded
+                    ? 'Order marked as paid. Digital artwork emailed to buyer.'
+                    : 'Order marked as paid, but the artwork email FAILED (' . $digitalEmailDebug . '). Order still shows as delivered — please deliver it manually or fix the file/email and resend.';
             } else {
                 // Update payment status and move order to confirmed
                 $stmt = $conn->prepare("UPDATE orders SET payment_status = 'paid', order_status = 'payment_confirmed' WHERE id = ?");

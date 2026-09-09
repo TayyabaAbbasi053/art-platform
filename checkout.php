@@ -2,13 +2,24 @@
 session_start();
 require_once __DIR__ . '/config/db.php';
 
+// ── Determine checkout flow early (the guest gate below needs it) ──
+ $commissionOrderId = isset($_GET['order_id']) && ($_GET['type'] ?? '') === 'commission' ? (int)$_GET['order_id'] : 0;
+ $isCommissionCheckout = $commissionOrderId > 0;
+
 // ── Auth guard ───────────────────────────────────────────
-if (!isset($_SESSION['user_id'])) {
+// Commission orders are already tied to an account from the moment they're
+// requested (price negotiation, order messages, order history all live
+// behind login), so that flow still requires sign-in. Direct artwork
+// purchases no longer force a login — a guest can check out with just
+// their contact details, and gets offered a password afterwards on the
+// confirmation page.
+if ($isCommissionCheckout && !isset($_SESSION['user_id'])) {
     header('Location: login.php?redirect=' . urlencode($_SERVER['REQUEST_URI']));
     exit;
 }
 
- $buyerId = (int)$_SESSION['user_id'];
+ $isGuest = !isset($_SESSION['user_id']);
+ $buyerId = $isGuest ? null : (int)$_SESSION['user_id'];
  $buyerEmail = $_SESSION['email'] ?? '';
  $buyerName = $_SESSION['name'] ?? '';
  $pakistaniCities = [
@@ -30,9 +41,6 @@ if (!isset($_SESSION['user_id'])) {
     'Tando Muhammad Khan','Taunsa','Turbat','Umerkot','Vehari','Wah Cantonment','Wazirabad'
 ];
 
-// ── Determine checkout flow ──────────────────────────────
- $commissionOrderId = isset($_GET['order_id']) && ($_GET['type'] ?? '') === 'commission' ? (int)$_GET['order_id'] : 0;
- $isCommissionCheckout = $commissionOrderId > 0;
  $isDigitalItem = false;
 
  $cartItems = [];
@@ -282,12 +290,14 @@ if ($isCommissionCheckout) {
 // of delivery_type (left untouched, as requested).
  $isDigitalCartCheckout = (!$isCommissionCheckout && $isDigitalItem);
 
-// ── Fetch saved addresses ───────────────────────────────────
+// ── Fetch saved addresses (registered buyers only — guests have none) ──
  $addresses = [];
- $addrQuery = $conn->prepare("SELECT * FROM buyer_addresses WHERE buyer_id = ? ORDER BY is_default DESC, created_at DESC");
- $addrQuery->bind_param('i', $buyerId);
- $addrQuery->execute();
- $addresses = $addrQuery->get_result()->fetch_all(MYSQLI_ASSOC);
+if (!$isGuest) {
+    $addrQuery = $conn->prepare("SELECT * FROM buyer_addresses WHERE buyer_id = ? ORDER BY is_default DESC, created_at DESC");
+    $addrQuery->bind_param('i', $buyerId);
+    $addrQuery->execute();
+    $addresses = $addrQuery->get_result()->fetch_all(MYSQLI_ASSOC);
+}
 
 // ── Handle form submission ───────────────────────────────────
  $orderSuccess = false;
@@ -296,6 +306,7 @@ if ($isCommissionCheckout) {
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
     $fullName = trim($_POST['full_name'] ?? '');
+    $guestEmail = $isGuest ? trim($_POST['email'] ?? '') : $buyerEmail;
     $address = $isDigitalCartCheckout ? '' : trim($_POST['address'] ?? '');
     $city = $isDigitalCartCheckout ? '' : trim($_POST['city'] ?? '');
     $phone = trim($_POST['phone'] ?? '');
@@ -339,8 +350,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
             }
         }
         
-        if (!$fullName || !$phone || (!$isDigitalCartCheckout && !$address)) {
+        if (!$fullName || !$phone || (!$isDigitalCartCheckout && !$address) || ($isGuest && !$guestEmail)) {
             $orderError = 'Please fill in all required fields.';
+        } elseif ($isGuest && !filter_var($guestEmail, FILTER_VALIDATE_EMAIL)) {
+            $orderError = 'Please enter a valid email address.';
         } elseif (!in_array($paymentMethod, $allowedMethods)) {
             if ($isCommissionCheckout) {
                 $orderError = 'Cash on Delivery is not available for commissions. Please choose JazzCash, Easypaisa, or Nayapay.';
@@ -410,11 +423,25 @@ $stmt->bind_param('ssssssddi', $paymentMethod, $screenshotPath, $address, $city,
                     
                     $initialPaymentStatus = $isCod ? 'cod_pending' : 'pending';
 
+                    // Guests: buyer_id stays NULL, contact details are stored
+                    // directly on the order (guest_name/guest_email/guest_phone).
+                    // Logged-in buyers: buyer_id is set, guest_* columns stay NULL.
+                    $guestNameParam  = $isGuest ? $fullName : null;
+                    $guestEmailParam = $isGuest ? $guestEmail : null;
+                    $guestPhoneParam = $isGuest ? $phone : null;
+
                     $stmt = $conn->prepare("
-                        INSERT INTO orders (buyer_id, order_number, order_type, order_status, subtotal, shipping_fee, discount, total, payment_method, payment_status, payment_screenshot, shipping_address, shipping_city, shipping_phone, buyer_notes, created_at)
-                        VALUES (?, ?, ?, 'pending', ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+                        INSERT INTO orders (buyer_id, guest_name, guest_email, guest_phone, order_number, order_type, order_status, subtotal, shipping_fee, discount, total, payment_method, payment_status, payment_screenshot, shipping_address, shipping_city, shipping_phone, buyer_notes, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
                     ");
-                    $stmt->bind_param('issddssssssss', $buyerId, $orderNumber, $orderType, $subtotal, $finalShippingFee, $finalTotal, $paymentMethod, $initialPaymentStatus, $screenshotPath, $address, $city, $phone, $notes);
+                    $stmt->bind_param(
+                        'isssssdddsssssss',
+                        $buyerId, $guestNameParam, $guestEmailParam, $guestPhoneParam,
+                        $orderNumber, $orderType,
+                        $subtotal, $finalShippingFee, $finalTotal,
+                        $paymentMethod, $initialPaymentStatus, $screenshotPath,
+                        $address, $city, $phone, $notes
+                    );
                     $stmt->execute();
                     $orderId = $conn->insert_id;
                     
@@ -440,7 +467,7 @@ $stmt->bind_param('ssssssddi', $paymentMethod, $screenshotPath, $address, $city,
                     $stmtHistory->execute();
                 }
                 
-                if ($saveAddress && !$isDigitalCartCheckout) {
+                if ($saveAddress && !$isDigitalCartCheckout && !$isGuest) {
                     $checkAddr = $conn->prepare("SELECT id FROM buyer_addresses WHERE buyer_id = ? AND address_line1 = ? AND city = ?");
                     $checkAddr->bind_param('iss', $buyerId, $address, $city);
                     $checkAddr->execute();
@@ -453,6 +480,18 @@ $stmt->bind_param('ssssssddi', $paymentMethod, $screenshotPath, $address, $city,
                 
                 $conn->commit();
                 $orderSuccess = true;
+
+                // Guests have no account to tie the order to, so grant this
+                // browser session one-time access to the confirmation page
+                // for the order it just placed (order-confirmation.php checks
+                // this instead of forcing a login).
+                if ($isGuest) {
+                    if (!isset($_SESSION['guest_order_access']) || !is_array($_SESSION['guest_order_access'])) {
+                        $_SESSION['guest_order_access'] = [];
+                    }
+                    $_SESSION['guest_order_access'][] = (int)$orderId;
+                }
+
                 header("Location: order-confirmation.php?order_id=" . $orderId);
                 exit;
                 
@@ -683,7 +722,11 @@ img{max-width:100%;display:block;}
       <input type="text" placeholder="Search...">
     </div>
     <div class="nend">
+      <?php if ($isGuest): ?>
+      <a href="login.php?redirect=<?= urlencode($_SERVER['REQUEST_URI']) ?>" class="btn-ghost">Login</a>
+      <?php else: ?>
       <a href="logout.php" class="btn-ghost">Logout</a>
+      <?php endif; ?>
 
       <button class="ham-btn" aria-label="Open menu">
         <span></span><span></span><span></span>
@@ -770,6 +813,14 @@ img{max-width:100%;display:block;}
               <input type="tel" name="phone" id="phone" placeholder="03XX-XXXXXXX" required>
             </div>
           </div>
+
+          <?php if ($isGuest): ?>
+          <div class="form-group">
+            <label>Email Address <span>*</span></label>
+            <input type="email" name="email" id="guestEmail" placeholder="you@example.com" required>
+            <p style="font-size:11px;color:var(--muted);margin-top:6px;">We'll send your order confirmation here<?= $isDigitalItem ? ' and deliver your artwork to this address once payment is confirmed' : '' ?>. You can set a password after checkout to track this order anytime.</p>
+          </div>
+          <?php endif; ?>
           
           <?php if (!$isDigitalCartCheckout): ?>
           <div class="form-group">
@@ -792,10 +843,12 @@ img{max-width:100%;display:block;}
             </div>
           </div>
           
+          <?php if (!$isGuest): ?>
           <div class="checkbox-group">
             <input type="checkbox" name="save_address" id="saveAddress" value="1">
             <label for="saveAddress">Save this address to my account</label>
           </div>
+          <?php endif; ?>
           <?php else: ?>
           <p style="font-size:11px;color:var(--muted);">This is a digital item — it'll be delivered digitally, so no shipping address is needed.</p>
           <?php endif; ?>
@@ -967,8 +1020,13 @@ img{max-width:100%;display:block;}
     <a href="contact.php">Contact</a>
   </div>
   <div class="drawer-actions">
+    <?php if ($isGuest): ?>
+    <a href="login.php" class="drawer-btn-ghost">Login</a>
+    <a href="register.php" class="drawer-btn-dark">Sign Up</a>
+    <?php else: ?>
     <a href="dashboard/buyer/account.php" class="drawer-btn-ghost">My Account</a>
     <a href="logout.php" class="drawer-btn-dark">Logout</a>
+    <?php endif; ?>
   </div>
 </div>
 

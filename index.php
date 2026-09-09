@@ -617,10 +617,8 @@ h1.htitle em{font-style:italic;color:var(--ink);}
           <div class="aw-foot"><div class="aw-price"><small>Rs. </small><?= number_format($art['price']) ?></div><span class="aw-cat"><?= htmlspecialchars($art['category_name']) ?></span></div>
           <?php if ($art['status'] === 'sold'): ?>
   <button class="aw-buy-btn" disabled style="opacity:0.5;cursor:not-allowed;background:#ccc;">🚫 Sold Out</button>
-<?php elseif ($isLoggedIn): ?>
-  <a href="checkout.php?artwork_id=<?= $art['id'] ?>" class="aw-add-cart" style="text-decoration:none;">🛒 Buy Now</a>
 <?php else: ?>
-  <a href="login.php?redirect=<?= urlencode($_SERVER['REQUEST_URI']) ?>" class="aw-add-cart" style="text-decoration:none;">Login to Buy</a>
+  <a href="checkout.php?artwork_id=<?= $art['id'] ?>" class="aw-add-cart" style="text-decoration:none;">🛒 Buy Now</a>
 <?php endif; ?>
         </div>
       </div>
@@ -680,10 +678,8 @@ h1.htitle em{font-style:italic;color:var(--ink);}
         <div class="aw-foot"><div class="aw-price"><small>Rs. </small><?= number_format($art['price']) ?></div><span class="aw-cat"><?= htmlspecialchars($art['category_name']) ?></span></div>
         <?php if ($art['status'] === 'sold'): ?>
   <button class="aw-buy-btn" disabled style="opacity:0.5;cursor:not-allowed;background:#ccc;">🚫 Sold Out</button>
-<?php elseif ($isLoggedIn): ?>
-  <a href="checkout.php?artwork_id=<?= $art['id'] ?>" class="aw-add-cart" style="text-decoration:none;">🛒 Buy Now</a>
 <?php else: ?>
-  <a href="login.php?redirect=<?= urlencode($_SERVER['REQUEST_URI']) ?>" class="aw-add-cart" style="text-decoration:none;">Login to Buy</a>
+  <a href="checkout.php?artwork_id=<?= $art['id'] ?>" class="aw-add-cart" style="text-decoration:none;">🛒 Buy Now</a>
 <?php endif; ?>
       </div> 
     </div>
