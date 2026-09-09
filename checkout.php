@@ -132,34 +132,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_calculate_shippi
             $breakdown[] = 'PKR ' . $baseAjax . ($surchargeAjax > 0 ? ' + PKR ' . $surchargeAjax . ' (weight)' : '') . ' = PKR ' . $fee;
         }
     } else {
-        // Look up the real delivery_type server-side rather than trusting
-        // the posted is_digital flag — this is just a live estimate, but
-        // no reason to let the client's guess drive it when we have the
-        // artwork id right here.
-        $ajaxIsDigital = false;
+        // One query gets everything: delivery_type (to decide if shipping even
+        // applies), weight, and artist city (for the fee + the breakdown line).
+        // This used to be up to three round-trips for the same artwork.
+        $fee = 0;
         if ($ajaxArtworkId > 0) {
-            $awTypeRes = $conn->query("SELECT delivery_type FROM artworks WHERE id = " . $ajaxArtworkId . " LIMIT 1");
-            $awTypeRow = $awTypeRes ? $awTypeRes->fetch_assoc() : null;
-            $ajaxIsDigital = ($awTypeRow['delivery_type'] ?? 'physical') === 'digital';
-        }
-        $fee = $ajaxIsDigital ? 0 : calculateShippingServerSide($conn, $buyerCity, $items);
-    }
-
-    // Build breakdown for display (artwork items only — commission breakdown, if any, was set above)
-    if (!empty($items)) {
-        $ids = array_map(fn($i) => (int)$i['id'], array_filter($items, fn($i) => $i['type'] === 'artwork'));
-        if (!empty($ids)) {
-            $idsStr = implode(',', $ids);
-            $q = "SELECT a.weight_kg,
+            $q = "SELECT a.delivery_type, a.weight_kg,
                          (SELECT ap.city FROM artist_profiles ap WHERE ap.user_id = a.artist_id LIMIT 1) AS artist_city
-                  FROM artworks a WHERE a.id IN ($idsStr)";
-            $bRes = $conn->query($q);
-            while ($bRow = $bRes->fetch_assoc()) {
-                $artistCity  = $bRow['artist_city'] ?? '';
-                $weightKg    = (float)($bRow['weight_kg'] ?? 1.00);
+                  FROM artworks a WHERE a.id = $ajaxArtworkId LIMIT 1";
+            $awRes = $conn->query($q);
+            $awRow = $awRes ? $awRes->fetch_assoc() : null;
+            $ajaxIsDigital = ($awRow['delivery_type'] ?? 'physical') === 'digital';
+
+            if ($awRow && !$ajaxIsDigital) {
+                $artistCity = $awRow['artist_city'] ?? '';
+                $weightKg   = (float)($awRow['weight_kg'] ?? 1.00);
                 $base = (!empty($artistCity) && strcasecmp(trim($buyerCity), trim($artistCity)) === 0) ? 250 : 350;
-                $surcharge   = (int)(max(0, ceil($weightKg - 1)) * 100);
-                $breakdown[] = 'PKR ' . $base . ($surcharge > 0 ? ' + PKR ' . $surcharge . ' (weight)' : '') . ' = PKR ' . ($base + $surcharge);
+                $surcharge = (int)(max(0, ceil($weightKg - 1)) * 100);
+                $fee = $base + $surcharge;
+                $breakdown[] = 'PKR ' . $base . ($surcharge > 0 ? ' + PKR ' . $surcharge . ' (weight)' : '') . ' = PKR ' . $fee;
             }
         }
     }
@@ -901,7 +892,7 @@ img{max-width:100%;display:block;}
           </div>
           
           <div class="summary-row">
-            <span>Shipping</span>
+            <span>Shipping <span id="shipping-loading" style="display:none;font-weight:400;color:var(--muted);">(calculating…)</span></span>
             <span id="shipping-amount">PKR <?= number_format($shippingFee) ?></span>
           </div>
           
@@ -1064,7 +1055,9 @@ function initCitySearch(searchId, hiddenId, dropdownId) {
     function selectCity(city) {
         searchInput.value = city;
         hiddenInput.value = city;
-        hiddenInput.dispatchEvent(new Event('input', { bubbles: true }));
+        // A dropdown pick is a definitive answer, not a keystroke mid-typing —
+        // fire a dedicated event so the listener can skip the debounce.
+        hiddenInput.dispatchEvent(new CustomEvent('city:selected', { bubbles: true, detail: { city } }));
         dropdown.classList.remove('open');
     }
 
@@ -1117,6 +1110,7 @@ document.querySelector('.drawer-close')?.addEventListener('click', closeDrawer);
 document.addEventListener('DOMContentLoaded', () => {
     const cityInput = document.getElementById('city');
     const shippingAmountEl = document.getElementById('shipping-amount');
+    const shippingLoadingEl = document.getElementById('shipping-loading');
     const totalAmountEl = document.getElementById('total-amount');
     const placeOrderBtn = document.getElementById('placeOrderBtn');
     const warningMsg = placeOrderBtn.nextElementSibling; // The <p> tag
@@ -1127,27 +1121,53 @@ document.addEventListener('DOMContentLoaded', () => {
     const COD_LIMIT = 10000;
     
     let timeoutId;
+    let inFlightController = null;
+    let requestSeq = 0;
+
+    // Debounce is short — just enough to avoid firing a request per keystroke —
+    // since the real wait the buyer feels is the request itself, not this delay.
+    const DEBOUNCE_MS = 200;
 
     if (cityInput) {
         cityInput.addEventListener('input', function() {
             const city = this.value.trim();
-            
+
             clearTimeout(timeoutId);
-            timeoutId = setTimeout(() => {
-                if(city.length > 2) {
-                    fetchShipping(city);
-                } else {
-                    // Reset if city cleared
-                    shippingAmountEl.textContent = 'PKR 0';
-                    totalAmountEl.textContent = 'PKR ' + subtotal.toLocaleString();
-                    placeOrderBtn.disabled = true;
-                    if(warningMsg) warningMsg.style.display = 'block';
-                }
-            }, 500);
+
+            if (city.length > 2) {
+                // Give instant feedback that something is happening, before
+                // the debounce timer or the network round-trip even starts.
+                if (shippingLoadingEl) shippingLoadingEl.style.display = 'inline';
+                timeoutId = setTimeout(() => fetchShipping(city), DEBOUNCE_MS);
+            } else {
+                if (shippingLoadingEl) shippingLoadingEl.style.display = 'none';
+                // Reset if city cleared
+                shippingAmountEl.textContent = 'PKR 0';
+                totalAmountEl.textContent = 'PKR ' + subtotal.toLocaleString();
+                placeOrderBtn.disabled = true;
+                if(warningMsg) warningMsg.style.display = 'block';
+            }
+        });
+
+        // A pick from the dropdown is a definitive city, not a keystroke mid-typing —
+        // skip the debounce entirely and calculate right away.
+        cityInput.addEventListener('city:selected', function(e) {
+            const city = (e.detail && e.detail.city) ? e.detail.city.trim() : this.value.trim();
+            if (city.length > 2) {
+                clearTimeout(timeoutId);
+                if (shippingLoadingEl) shippingLoadingEl.style.display = 'inline';
+                fetchShipping(city);
+            }
         });
     }
 
     function fetchShipping(city) {
+        // Abort a stale in-flight request so a slow earlier response can't
+        // clobber a faster later one (e.g. buyer kept typing after a pick).
+        if (inFlightController) inFlightController.abort();
+        inFlightController = new AbortController();
+        const mySeq = ++requestSeq;
+
         const formData = new FormData();
         formData.append('ajax_calculate_shipping', '1');
         if (!isCommission) {
@@ -1159,10 +1179,14 @@ formData.append('is_digital', isDigital ? '1' : '0');
 
         fetch('checkout.php', {
             method: 'POST',
-            body: formData
+            body: formData,
+            signal: inFlightController.signal
         })
         .then(response => response.json())
         .then(data => {
+            if (mySeq !== requestSeq) return; // superseded by a newer request
+            if (shippingLoadingEl) shippingLoadingEl.style.display = 'none';
+
             if (data.shipping_fee !== undefined) {
                 const newShipping = parseFloat(data.shipping_fee);
                 const newTotal = subtotal + newShipping;
@@ -1189,6 +1213,8 @@ formData.append('is_digital', isDigital ? '1' : '0');
             }
         })
         .catch(err => {
+            if (err.name === 'AbortError') return;
+            if (shippingLoadingEl) shippingLoadingEl.style.display = 'none';
             console.error('Shipping calc error:', err);
         });
     }
@@ -1298,9 +1324,9 @@ function selectAddress(element, address, city, phone) {
   document.getElementById('city').value = city;
   document.getElementById('phone').value = phone;
   
-  // Trigger calculation update
-  const event = new Event('input', { bubbles: true });
-  document.getElementById('city').dispatchEvent(event);
+  // A saved address is a definitive city too — skip the debounce.
+  const cityEl = document.getElementById('city');
+  cityEl.dispatchEvent(new CustomEvent('city:selected', { bubbles: true, detail: { city } }));
 }
 </script>
 </body>
