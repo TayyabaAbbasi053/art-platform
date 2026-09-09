@@ -122,6 +122,17 @@ if ($allParams) {
  $artworks = $stmt2->get_result()->fetch_all(MYSQLI_ASSOC);
  $stmt2->close();
 
+// Favorites for the logged-in user (guests never see the heart button at all)
+ $favoritedIds = [];
+if ($isLoggedIn) {
+    $favStmt = $conn->prepare("SELECT artwork_id FROM favorites WHERE user_id = ?");
+    $favStmt->bind_param('i', $_SESSION['user_id']);
+    $favStmt->execute();
+    $favRows = $favStmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $favStmt->close();
+    $favoritedIds = array_flip(array_column($favRows, 'artwork_id'));
+}
+
 // Sidebar data
  $categories = $conn->query("SELECT id, name FROM categories WHERE name != 'Digital Art' ORDER BY name ASC")->fetch_all(MYSQLI_ASSOC);
  $cities = $conn->query("SELECT DISTINCT city FROM artworks WHERE status = 'active' AND city IS NOT NULL AND city != '' ORDER BY city ASC")->fetch_all(MYSQLI_ASSOC);
@@ -285,6 +296,11 @@ img{display:block;max-width:100%;}
 .aw-badge{font-size:8.5px;letter-spacing:.8px;text-transform:uppercase;padding:3px 7px;border-radius:4px;font-weight:600;}
 .aw-badge.sold{background:rgba(12,63,48,.78);color:var(--bg);}
 .aw-badge.feat{background:var(--sand);color:var(--ink);}
+.aw-fav-btn{position:absolute;top:8px;right:8px;width:30px;height:30px;border-radius:50%;background:rgba(246,237,222,.92);border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--ink);transition:transform .15s,background .15s;z-index:2;padding:0;}
+.aw-fav-btn:hover{transform:scale(1.1);background:var(--bg);}
+.aw-fav-btn.active{color:#c0392b;}
+.aw-fav-btn.pulse{animation:favPop .32s ease;}
+@keyframes favPop{0%{transform:scale(1);}45%{transform:scale(1.35);}100%{transform:scale(1);}}
 .aw-body{padding:11px 12px 0;}
 .aw-title{font-size:13px;font-weight:500;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px;cursor:pointer;}
 .aw-by{font-size:11.5px;color:var(--muted);margin-bottom:8px;}
@@ -525,6 +541,11 @@ img{display:block;max-width:100%;}
           <span class="aw-badge feat">Featured</span>
           <?php endif; ?>
         </div>
+        <?php if ($isLoggedIn): $isFav = isset($favoritedIds[$art['id']]); ?>
+        <button type="button" class="aw-fav-btn<?= $isFav ? ' active' : '' ?>" data-artwork-id="<?= $art['id'] ?>" onclick="event.stopPropagation(); toggleFavorite(this);" aria-label="<?= $isFav ? 'Remove from favorites' : 'Add to favorites' ?>" aria-pressed="<?= $isFav ? 'true' : 'false' ?>">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="<?= $isFav ? 'currentColor' : 'none' ?>" stroke="currentColor" stroke-width="2"><path d="M20.8 4.6a5.5 5.5 0 00-7.8 0L12 5.6l-1-1a5.5 5.5 0 00-7.8 7.8l1 1L12 21l7.8-7.8 1-1a5.5 5.5 0 000-7.8z"/></svg>
+        </button>
+        <?php endif; ?>
       </div>
       <div class="aw-body">
         <div class="aw-title" onclick="location.href='artwork-detail.php?id=<?= $art['id'] ?>'"><?= htmlspecialchars($art['title']) ?></div>
@@ -621,6 +642,45 @@ function closeDrawer(){ navDrawer.classList.remove('open'); navOverlay.classList
 if(hamBtn) hamBtn.addEventListener('click', openDrawer);
 if(navOverlay) navOverlay.addEventListener('click', closeDrawer);
 document.querySelector('.drawer-close')?.addEventListener('click', closeDrawer);
+
+// ─── FAVORITE / WISHLIST TOGGLE (Instagram-style, no page reload) ───
+function toggleFavorite(btn){
+  if (btn.dataset.busy === '1') return; // ignore double-clicks mid-request
+  btn.dataset.busy = '1';
+
+  const artworkId = btn.dataset.artworkId;
+  const wasActive = btn.classList.contains('active');
+  const svg = btn.querySelector('svg');
+
+  // Optimistic UI update — flips instantly, like Instagram
+  btn.classList.toggle('active');
+  svg.setAttribute('fill', wasActive ? 'none' : 'currentColor');
+  btn.classList.add('pulse');
+  btn.setAttribute('aria-pressed', wasActive ? 'false' : 'true');
+  setTimeout(() => btn.classList.remove('pulse'), 320);
+
+  fetch('favorite-toggle.php', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: 'artwork_id=' + encodeURIComponent(artworkId)
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (!data.success) {
+      // Revert the optimistic update
+      btn.classList.toggle('active');
+      svg.setAttribute('fill', wasActive ? 'currentColor' : 'none');
+      btn.setAttribute('aria-pressed', wasActive ? 'true' : 'false');
+      if (data.error === 'login_required') window.location.href = 'login.php';
+    }
+  })
+  .catch(() => {
+    btn.classList.toggle('active');
+    svg.setAttribute('fill', wasActive ? 'currentColor' : 'none');
+    btn.setAttribute('aria-pressed', wasActive ? 'true' : 'false');
+  })
+  .finally(() => { btn.dataset.busy = '0'; });
+}
 </script>
 
 </body>

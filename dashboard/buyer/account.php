@@ -249,6 +249,25 @@ foreach ($commissionOrders as $comm) {
  $cartQuery->execute();
  $cartCount = $cartQuery->get_result()->fetch_assoc()['count'];
 
+// ── Fetch favorite artworks ──────────────────────────────
+ $favoriteArtworks = [];
+ $favQuery = $conn->prepare("
+    SELECT a.id, a.title, a.price, a.status,
+           u.id AS artist_id, u.name AS artist_name,
+           c.name AS category_name,
+           (SELECT image_path FROM artwork_images WHERE artwork_id = a.id ORDER BY is_cover DESC, sort_order ASC LIMIT 1) AS cover_image,
+           (SELECT media_type FROM artwork_images WHERE artwork_id = a.id ORDER BY is_cover DESC, sort_order ASC LIMIT 1) AS cover_media_type
+    FROM favorites f
+    JOIN artworks a ON f.artwork_id = a.id
+    JOIN users u ON a.artist_id = u.id
+    JOIN categories c ON a.category_id = c.id
+    WHERE f.user_id = ?
+    ORDER BY f.id DESC
+");
+ $favQuery->bind_param('i', $buyerId);
+ $favQuery->execute();
+ $favoriteArtworks = $favQuery->get_result()->fetch_all(MYSQLI_ASSOC);
+
 // ── Handle profile update ─────────────────────────────────
  $updateSuccess = false;
  $updateError = '';
@@ -304,6 +323,13 @@ function getProfileImageUrl($path) {
     $path = ltrim($path, './');
     if (strpos($path, 'uploads/') !== false) return '../../' . $path;
     return '../../uploads/profiles/' . $path;
+}
+
+function getArtworkImgUrl($p) {
+    if (!$p) return null;
+    $p = ltrim($p, './');
+    if (strpos($p, 'uploads/') !== false) return '../../' . $p;
+    return '../../uploads/artworks/' . $p;
 }
 
  $avatarUrl = getProfileImageUrl($buyer['profile_picture'] ?? null);
@@ -428,6 +454,27 @@ img{max-width:100%;display:block;}
 .view-link{color:var(--ink);font-size:12px;}
 .view-link:hover{text-decoration:underline;}
 
+/* FAVORITES GRID */
+.fav-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:16px;padding:20px;}
+.fav-card{background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden;transition:border-color .15s;}
+.fav-card:hover{border-color:var(--muted);}
+.fav-img{position:relative;aspect-ratio:1/1;background:var(--sand);overflow:hidden;cursor:pointer;}
+.fav-img img,.fav-img video{width:100%;height:100%;object-fit:cover;}
+.fav-ph{width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--muted);}
+.fav-remove-btn{position:absolute;top:8px;right:8px;width:28px;height:28px;border-radius:50%;background:rgba(246,237,222,.92);border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#c0392b;transition:transform .15s,background .15s;z-index:2;padding:0;}
+.fav-remove-btn:hover{transform:scale(1.1);background:var(--bg);}
+.fav-remove-btn.busy{opacity:.5;pointer-events:none;}
+.fav-sold-badge{position:absolute;top:8px;left:8px;background:var(--ink);color:var(--bg);font-size:9px;letter-spacing:.5px;text-transform:uppercase;font-weight:600;padding:3px 8px;border-radius:20px;}
+.fav-body{padding:12px 14px;}
+.fav-title{font-size:13px;font-weight:600;color:var(--ink);margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;}
+.fav-by{font-size:11px;color:var(--muted);margin-bottom:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.fav-by a{color:var(--muted);}
+.fav-by a:hover{text-decoration:underline;}
+.fav-foot{display:flex;justify-content:space-between;align-items:center;}
+.fav-price{font-family:'Playfair Display',serif;font-size:14px;font-weight:500;color:var(--ink);}
+.fav-price small{font-family:'DM Sans',sans-serif;font-size:10px;font-weight:400;}
+.fav-card.removing{opacity:0;transform:scale(.92);transition:opacity .25s,transform .25s;}
+
 /* SUCCESS / ERROR MESSAGES */
 .success-msg{background:var(--sand);color:var(--ink);padding:12px 16px;border-radius:10px;margin-bottom:20px;border:1px solid var(--border);}
 .error-msg{background:var(--sand);color:var(--ink);padding:12px 16px;border-radius:10px;margin-bottom:20px;border:1px solid var(--border);}
@@ -537,6 +584,11 @@ img{max-width:100%;display:block;}
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 7H4a2 2 0 00-2 2v6a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>
     My Orders
     <?php if ($orderStats['pending'] > 0): ?><span class="badge"><?= $orderStats['pending'] ?></span><?php endif; ?>
+  </a>
+  <a href="account.php#favorites" class="nav-item">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20.8 4.6a5.5 5.5 0 00-7.8 0L12 5.6l-1-1a5.5 5.5 0 00-7.8 7.8l1 1L12 21l7.8-7.8 1-1a5.5 5.5 0 000-7.8z"/></svg>
+    My Favorites
+    <?php if (!empty($favoriteArtworks)): ?><span class="badge"><?= count($favoriteArtworks) ?></span><?php endif; ?>
   </a>
   <div class="sidebar-section">Browse</div>
   <a href="../../index.php" class="nav-item">
@@ -894,6 +946,55 @@ img{max-width:100%;display:block;}
     </div>
   </div>
 
+  <!-- MY FAVORITES -->
+  <div class="profile-card" id="favorites">
+    <div class="card-header">
+      <span>♥ My Favorites</span>
+      <?php if (!empty($favoriteArtworks)): ?>
+        <span style="font-size:11px;color:var(--muted);font-weight:400;"><?= count($favoriteArtworks) ?> artwork<?= count($favoriteArtworks) !== 1 ? 's' : '' ?></span>
+      <?php endif; ?>
+    </div>
+    <div class="card-body" style="padding:0;">
+      <?php if (empty($favoriteArtworks)): ?>
+        <div class="empty">No favorites yet. <a href="../../artworks.php" style="color:var(--ink);">Browse artworks →</a></div>
+      <?php else: ?>
+        <div class="fav-grid" id="favGrid">
+          <?php foreach ($favoriteArtworks as $fav): $fimg = getArtworkImgUrl($fav['cover_image']); ?>
+          <div class="fav-card" id="fav-card-<?= $fav['id'] ?>" data-artwork-id="<?= $fav['id'] ?>">
+            <div class="fav-img" onclick="location.href='../../artwork-detail.php?id=<?= $fav['id'] ?>'">
+              <?php if ($fimg && $fav['cover_media_type'] === 'video'): ?>
+              <video src="<?= htmlspecialchars($fimg) ?>" muted playsinline></video>
+              <?php elseif ($fimg && $fav['cover_media_type'] === 'audio'): ?>
+              <div class="fav-ph" style="font-size:24px;">🎵</div>
+              <?php elseif ($fimg): ?>
+              <img src="<?= htmlspecialchars($fimg) ?>" alt="<?= htmlspecialchars($fav['title']) ?>" loading="lazy">
+              <?php else: ?>
+              <div class="fav-ph">
+                <svg width="26" height="26" fill="none" stroke="currentColor" stroke-width="1" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+              </div>
+              <?php endif; ?>
+              <?php if ($fav['status'] === 'sold'): ?>
+              <span class="fav-sold-badge">Sold</span>
+              <?php endif; ?>
+              <button type="button" class="fav-remove-btn" data-artwork-id="<?= $fav['id'] ?>" onclick="event.stopPropagation(); removeFavorite(this);" aria-label="Remove from favorites">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2"><path d="M20.8 4.6a5.5 5.5 0 00-7.8 0L12 5.6l-1-1a5.5 5.5 0 00-7.8 7.8l1 1L12 21l7.8-7.8 1-1a5.5 5.5 0 000-7.8z"/></svg>
+              </button>
+            </div>
+            <div class="fav-body">
+              <div class="fav-title" onclick="location.href='../../artwork-detail.php?id=<?= $fav['id'] ?>'"><?= htmlspecialchars($fav['title']) ?></div>
+              <div class="fav-by">by <a href="../../artist-profile.php?id=<?= $fav['artist_id'] ?>"><?= htmlspecialchars($fav['artist_name']) ?></a></div>
+              <div class="fav-foot">
+                <div class="fav-price"><small>Rs. </small><?= number_format($fav['price']) ?></div>
+                <span style="font-size:10px;color:var(--muted);"><?= htmlspecialchars($fav['category_name']) ?></span>
+              </div>
+            </div>
+          </div>
+          <?php endforeach; ?>
+        </div>
+      <?php endif; ?>
+    </div>
+  </div>
+
 </div>
 </main>
 
@@ -907,6 +1008,7 @@ img{max-width:100%;display:block;}
     <div class="drawer-links">
         <a href="account.php">Overview</a>
         <a href="orders.php">My Orders</a>
+        <a href="account.php#favorites">My Favorites</a>
         <a href="../../index.php">Home</a>
         <a href="../../artworks.php">Artworks</a>
         <a href="../../artists.php">Artists</a>
@@ -939,6 +1041,45 @@ function toggleEdit() {
     editMode.style.display = 'block';
     editBtn.textContent = 'Cancel';
   }
+}
+
+// ─── REMOVE FAVORITE (from account page) ───
+function removeFavorite(btn){
+  if (btn.dataset.busy === '1') return;
+  btn.dataset.busy = '1';
+  btn.classList.add('busy');
+
+  const artworkId = btn.dataset.artworkId;
+
+  fetch('../../favorite-toggle.php', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: 'artwork_id=' + encodeURIComponent(artworkId)
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.success) {
+      const card = document.getElementById('fav-card-' + artworkId);
+      if (card) {
+        card.classList.add('removing');
+        setTimeout(() => {
+          card.remove();
+          const grid = document.getElementById('favGrid');
+          if (grid && !grid.querySelector('.fav-card')) {
+            grid.outerHTML = '<div class="empty">No favorites yet. <a href="../../artworks.php" style="color:var(--ink);">Browse artworks →</a></div>';
+          }
+        }, 250);
+      }
+    } else {
+      btn.dataset.busy = '0';
+      btn.classList.remove('busy');
+      if (data.error === 'login_required') window.location.href = '../../login.php';
+    }
+  })
+  .catch(() => {
+    btn.dataset.busy = '0';
+    btn.classList.remove('busy');
+  });
 }
 
 const COMM_CHAT_AJAX_URL = 'order-chat-ajax.php';
