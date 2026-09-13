@@ -290,6 +290,56 @@ if (!$isGuest) {
     $addresses = $addrQuery->get_result()->fetch_all(MYSQLI_ASSOC);
 }
 
+// ── AJAX Handler: save/update an abandoned-checkout draft ──────────
+// Fired from JS as soon as we know the buyer's email — immediately on
+// page load for logged-in buyers, on blur of the email field for guests
+// — so there's something to remind them with if they never finish.
+// Runs after $cartItems is already built above (from the artwork_id /
+// commission order_id in the URL), so it reflects what they're actually
+// trying to buy.
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_save_draft'])) {
+    header('Content-Type: application/json');
+    $draftEmail = trim($_POST['email'] ?? '');
+
+    if (!filter_var($draftEmail, FILTER_VALIDATE_EMAIL) || empty($cartItems)) {
+        echo json_encode(['saved' => false]);
+        exit;
+    }
+
+    // Keep the snapshot small — just enough to build a reminder email/link later
+    $snapshot = array_map(function ($item) {
+        return [
+            'type'  => $item['type'],
+            'id'    => $item['id'],
+            'title' => $item['title'] ?? '',
+            'price' => $item['price'] ?? 0,
+        ];
+    }, $cartItems);
+    $cartSnapshotJson = json_encode($snapshot);
+    $draftBuyerId = $isGuest ? null : $buyerId;
+    $draftName    = $isGuest ? trim($_POST['name'] ?? '') : $buyerName;
+
+    $existingDraft = $conn->prepare("SELECT id FROM abandoned_checkouts WHERE email = ? AND order_id IS NULL LIMIT 1");
+    $existingDraft->bind_param('s', $draftEmail);
+    $existingDraft->execute();
+    $draftRow = $existingDraft->get_result()->fetch_assoc();
+
+    if ($draftRow) {
+        // Still actively filling the form — refresh the snapshot and reset the
+        // 2-hour clock (reminded_at back to NULL) rather than firing a stale reminder.
+        $upd = $conn->prepare("UPDATE abandoned_checkouts SET cart_snapshot = ?, buyer_id = ?, guest_name = ?, last_updated_at = NOW(), reminded_at = NULL WHERE id = ?");
+        $upd->bind_param('sisi', $cartSnapshotJson, $draftBuyerId, $draftName, $draftRow['id']);
+        $upd->execute();
+    } else {
+        $ins = $conn->prepare("INSERT INTO abandoned_checkouts (email, buyer_id, guest_name, cart_snapshot, created_at, last_updated_at) VALUES (?, ?, ?, ?, NOW(), NOW())");
+        $ins->bind_param('siss', $draftEmail, $draftBuyerId, $draftName, $cartSnapshotJson);
+        $ins->execute();
+    }
+
+    echo json_encode(['saved' => true]);
+    exit;
+}
+
 // ── Handle form submission ───────────────────────────────────
  $orderSuccess = false;
  $orderError = '';
@@ -471,6 +521,20 @@ $stmt->bind_param('ssssssddi', $paymentMethod, $screenshotPath, $address, $city,
                 
                 $conn->commit();
                 $orderSuccess = true;
+
+                // Resolve any open abandoned-checkout draft for this email now that
+                // the order went through — wrapped separately so a failure here
+                // never blocks the (already-committed) order or the redirect below.
+                try {
+                    $resolvedEmail = $isGuest ? $guestEmail : $buyerEmail;
+                    if ($resolvedEmail) {
+                        $resolveStmt = $conn->prepare("UPDATE abandoned_checkouts SET order_id = ? WHERE email = ? AND order_id IS NULL");
+                        $resolveStmt->bind_param('is', $orderId, $resolvedEmail);
+                        $resolveStmt->execute();
+                    }
+                } catch (Exception $resolveEx) {
+                    error_log('Failed to resolve abandoned_checkouts draft: ' . $resolveEx->getMessage());
+                }
 
                 // Guests have no account to tie the order to, so grant this
                 // browser session one-time access to the confirmation page
@@ -1114,7 +1178,35 @@ document.addEventListener('DOMContentLoaded', () => {
     const totalAmountEl = document.getElementById('total-amount');
     const placeOrderBtn = document.getElementById('placeOrderBtn');
     const warningMsg = placeOrderBtn.nextElementSibling; // The <p> tag
-    
+
+    // ── Abandoned-checkout draft saving ─────────────────────────
+    // Logged-in buyers: we already know their email, so save right away.
+    // Guests: save once they've typed and left the email field.
+    const isGuestCheckout = <?= $isGuest ? 'true' : 'false' ?>;
+    const knownBuyerEmail = <?= json_encode($buyerEmail) ?>;
+    const knownBuyerName  = <?= json_encode($buyerName) ?>;
+
+    function saveAbandonedDraft(email, name) {
+        if (!email || !email.includes('@')) return;
+        const fd = new FormData();
+        fd.append('ajax_save_draft', '1');
+        fd.append('email', email);
+        fd.append('name', name || '');
+        fetch(window.location.pathname + window.location.search, { method: 'POST', body: fd }).catch(() => {});
+    }
+
+    if (!isGuestCheckout && knownBuyerEmail) {
+        saveAbandonedDraft(knownBuyerEmail, knownBuyerName);
+    } else {
+        const guestEmailInput = document.getElementById('guestEmail');
+        if (guestEmailInput) {
+            guestEmailInput.addEventListener('blur', function () {
+                const nameInput = document.getElementById('fullName');
+                saveAbandonedDraft(this.value.trim(), nameInput ? nameInput.value.trim() : '');
+            });
+        }
+    }
+
     const subtotal = <?php echo $subtotal; ?>;
     const isCommission = <?php echo $isCommissionCheckout ? 'true' : 'false'; ?>;
     const isDigital = <?php echo $isDigitalItem ? 'true' : 'false'; ?>;
