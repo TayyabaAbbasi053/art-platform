@@ -168,6 +168,43 @@ function getImgUrl($p) {
     if (strpos($p, 'uploads/') !== false) return $p;
     return 'uploads/artworks/' . $p;
 }
+
+// ── Live search (used by the nav search box, physical + digital together) ──
+if (isset($_GET['ajax_search'])) {
+    header('Content-Type: application/json');
+    $q = trim($_GET['q'] ?? '');
+    if (mb_strlen($q) < 2) {
+        echo json_encode([]);
+        exit;
+    }
+    $like = '%' . $q . '%';
+    $stmt = $conn->prepare("
+        SELECT a.id, a.title, a.price, a.status, a.delivery_type,
+               u.name AS artist_name, c.name AS category_name,
+               (SELECT image_path FROM artwork_images WHERE artwork_id=a.id ORDER BY is_cover DESC, sort_order ASC LIMIT 1) AS cover_image
+        FROM artworks a
+        JOIN users u ON a.artist_id = u.id
+        LEFT JOIN categories c ON a.category_id = c.id
+        WHERE a.status = 'active' AND u.status = 'active'
+          AND (a.title LIKE ? OR u.name LIKE ? OR c.name LIKE ?)
+        ORDER BY a.created_at DESC
+        LIMIT 10
+    ");
+    $stmt->bind_param('sss', $like, $like, $like);
+    $stmt->execute();
+    $rows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    foreach ($rows as &$r) {
+        $r['cover_image'] = getImgUrl($r['cover_image']);
+        $r['price_formatted'] = 'Rs. ' . number_format($r['price']);
+        $r['title'] = htmlspecialchars($r['title'], ENT_QUOTES);
+        $r['artist_name'] = htmlspecialchars($r['artist_name'], ENT_QUOTES);
+        $r['category_name'] = htmlspecialchars($r['category_name'] ?? '', ENT_QUOTES);
+    }
+    unset($r);
+    echo json_encode($rows);
+    exit;
+}
+
 // ── Notifications: this buyer's answered, unseen Q&A replies ──
 $myAnsweredQuestions = [];
 if ($isLoggedIn) {
@@ -190,8 +227,9 @@ function getProfileUrl($p) {
 }
 
  $availableArtists = $conn->query("SELECT u.id, u.name, ap.city, ap.art_style FROM users u JOIN artist_profiles ap ON u.id=ap.user_id WHERE u.role='artist' AND u.status='active' AND ap.accepts_commissions=1 AND ap.profile_complete=1 ORDER BY u.name ASC")->fetch_all(MYSQLI_ASSOC);
-$featuredArtworks = $conn->query("SELECT a.id,a.title,a.price,a.city,a.status,a.reserved_by,u.name AS artist_name,u.id AS artist_id,c.name AS category_name,(SELECT image_path FROM artwork_images WHERE artwork_id=a.id ORDER BY is_cover DESC,sort_order ASC LIMIT 1) AS cover_image,(SELECT media_type FROM artwork_images WHERE artwork_id=a.id ORDER BY is_cover DESC,sort_order ASC LIMIT 1) AS cover_media_type FROM artworks a JOIN users u ON a.artist_id=u.id LEFT JOIN categories c ON a.category_id=c.id LEFT JOIN artist_profiles ap ON ap.user_id=u.id WHERE a.status = 'active' AND a.is_featured=1 AND u.status='active' ORDER BY a.updated_at DESC LIMIT 5")->fetch_all(MYSQLI_ASSOC);
-$latestArtworks   = $conn->query("SELECT a.id,a.title,a.price,a.city,a.status,a.reserved_by,u.name AS artist_name,u.id AS artist_id,c.name AS category_name,(SELECT image_path FROM artwork_images WHERE artwork_id=a.id ORDER BY is_cover DESC,sort_order ASC LIMIT 1) AS cover_image,(SELECT media_type FROM artwork_images WHERE artwork_id=a.id ORDER BY is_cover DESC,sort_order ASC LIMIT 1) AS cover_media_type FROM artworks a JOIN users u ON a.artist_id=u.id JOIN categories c ON a.category_id=c.id JOIN artist_profiles ap ON ap.user_id=u.id WHERE a.status = 'active' AND u.status='active' AND ap.profile_complete=1 ORDER BY a.created_at DESC LIMIT 12")->fetch_all(MYSQLI_ASSOC);
+$featuredArtworks = $conn->query("SELECT a.id,a.title,a.price,a.city,a.status,a.reserved_by,a.delivery_type,u.name AS artist_name,u.id AS artist_id,c.name AS category_name,(SELECT image_path FROM artwork_images WHERE artwork_id=a.id ORDER BY is_cover DESC,sort_order ASC LIMIT 1) AS cover_image,(SELECT media_type FROM artwork_images WHERE artwork_id=a.id ORDER BY is_cover DESC,sort_order ASC LIMIT 1) AS cover_media_type FROM artworks a JOIN users u ON a.artist_id=u.id LEFT JOIN categories c ON a.category_id=c.id LEFT JOIN artist_profiles ap ON ap.user_id=u.id WHERE a.status = 'active' AND a.is_featured=1 AND u.status='active' ORDER BY a.updated_at DESC LIMIT 5")->fetch_all(MYSQLI_ASSOC);
+$latestArtworks   = $conn->query("SELECT a.id,a.title,a.price,a.city,a.status,a.reserved_by,a.delivery_type,u.name AS artist_name,u.id AS artist_id,c.name AS category_name,(SELECT image_path FROM artwork_images WHERE artwork_id=a.id ORDER BY is_cover DESC,sort_order ASC LIMIT 1) AS cover_image,(SELECT media_type FROM artwork_images WHERE artwork_id=a.id ORDER BY is_cover DESC,sort_order ASC LIMIT 1) AS cover_media_type FROM artworks a JOIN users u ON a.artist_id=u.id JOIN categories c ON a.category_id=c.id JOIN artist_profiles ap ON ap.user_id=u.id WHERE a.status = 'active' AND u.status='active' AND ap.profile_complete=1 ORDER BY a.created_at DESC LIMIT 12")->fetch_all(MYSQLI_ASSOC);
+$digitalArtworks  = $conn->query("SELECT a.id,a.title,a.price,a.status,a.delivery_type,u.name AS artist_name,u.id AS artist_id,c.name AS category_name,(SELECT image_path FROM artwork_images WHERE artwork_id=a.id ORDER BY is_cover DESC,sort_order ASC LIMIT 1) AS cover_image,(SELECT media_type FROM artwork_images WHERE artwork_id=a.id ORDER BY is_cover DESC,sort_order ASC LIMIT 1) AS cover_media_type FROM artworks a JOIN users u ON a.artist_id=u.id LEFT JOIN categories c ON a.category_id=c.id WHERE a.status = 'active' AND u.status='active' AND a.delivery_type='digital' ORDER BY a.created_at DESC LIMIT 8")->fetch_all(MYSQLI_ASSOC);
 $featuredArtists  = $conn->query("SELECT u.id,u.name,u.profile_picture,ap.city,ap.art_style,ap.accepts_commissions FROM users u JOIN artist_profiles ap ON u.id=ap.user_id WHERE u.role='artist' AND u.status='active' AND ap.is_featured=1 ORDER BY u.created_at DESC LIMIT 4")->fetch_all(MYSQLI_ASSOC);
  $categories       = $conn->query("SELECT id,name FROM categories ORDER BY name ASC")->fetch_all(MYSQLI_ASSOC);
  $heroArt = $featuredArtworks[0] ?? $latestArtworks[0] ?? null;
@@ -251,11 +289,30 @@ img{display:block;max-width:100%;}
 .nlinks a{font-size:12.5px;color:var(--bg);padding:6px 10px;border-radius:6px;transition:background .12s;}
 .nlinks a:hover{background:var(--sand); color: var(--ink);}
 .nlinks a.dd::after{content:' ▾';font-size:9px;opacity:.4;}
-.nsearch{display:flex;align-items:center;gap:6px;background:var(--bg);border:1px solid var(--sand);border-radius:6px;padding:6px 12px;width:210px;flex-shrink:0;transition:border-color .15s;}
+.nsearch{position:relative;display:flex;align-items:center;gap:6px;background:var(--bg);border:1px solid var(--sand);border-radius:6px;padding:6px 12px;width:210px;flex-shrink:0;transition:border-color .15s;}
 .nsearch:focus-within{border-color:var(--ink);}
 .nsearch input{border:none;background:transparent;font-size:12.5px;font-family:'DM Sans',sans-serif;color:var(--ink);outline:none;width:100%;}
 .nsearch input::placeholder{color:var(--ink); opacity: 0.6;}
 .nsearch svg{color:var(--ink); opacity: 0.6; flex-shrink:0;}
+
+/* ─── LIVE SEARCH RESULTS ─── */
+.search-dropdown{display:none;position:absolute;top:calc(100% + 10px);left:0;width:340px;max-height:420px;overflow-y:auto;background:var(--card);border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 30px rgba(12,63,48,.18);z-index:400;}
+.search-dropdown.open{display:block;}
+.sr-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--sand);text-decoration:none;transition:background .12s;}
+.sr-item:last-child{border-bottom:none;}
+.sr-item:hover{background:var(--sand);}
+.sr-thumb{width:44px;height:44px;border-radius:6px;object-fit:cover;background:var(--sand);flex-shrink:0;}
+.sr-thumb-ph{width:44px;height:44px;border-radius:6px;background:var(--sand);flex-shrink:0;}
+.sr-info{min-width:0;flex:1;}
+.sr-title{font-size:12.5px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.sr-by{font-size:10.5px;color:var(--ink);opacity:.6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.sr-meta{font-size:11px;color:var(--ink);opacity:.8;display:flex;align-items:center;gap:6px;margin-top:2px;}
+.sr-tag{font-size:8.5px;text-transform:uppercase;letter-spacing:.5px;background:var(--sand);padding:1px 6px;border-radius:20px;font-weight:600;}
+.sr-empty,.sr-loading{padding:18px 16px;font-size:12.5px;color:var(--ink);opacity:.6;font-style:italic;}
+
+/* ─── MOBILE SEARCH ─── */
+.msearch-btn{display:none;}
+#mobile-search-overlay{display:none;}
 .nend{display:flex;align-items:center;gap:8px;flex-shrink:0;position:relative;margin-left:auto;}
 .btn-ghost{font-size:12.5px;color:var(--bg);padding:7px 14px;border-radius:6px;border:1px solid var(--bg);background:transparent;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .12s;}
 .btn-ghost:hover{border-color:var(--sand);background:var(--sand); color: var(--ink);}
@@ -331,6 +388,7 @@ h1.htitle em{font-style:italic;color:var(--ink);}
 .aw-ph{width:100%;height:100%;display:flex;align-items:center;justify-content:center;}
 .aw-ph svg{opacity:.16;color:var(--ink);}
 .aw-sold-tag{position:absolute;top:7px;right:7px;background:rgba(12,63,48,.78);color:var(--bg);font-size:8.5px;letter-spacing:.8px;text-transform:uppercase;padding:3px 7px;border-radius:4px;}
+.aw-digital-tag{position:absolute;top:7px;left:7px;background:var(--sand);color:var(--ink);font-size:8.5px;letter-spacing:.8px;text-transform:uppercase;padding:3px 7px;border-radius:4px;font-weight:600;}
 .aw-body{padding:10px 11px 0;}
 .aw-title{font-size:12.5px;font-weight:500;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:1px;cursor:pointer;}
 .aw-by{font-size:11px;color:var(--ink);margin-bottom:8px;cursor:pointer;}
@@ -474,6 +532,15 @@ h1.htitle em{font-style:italic;color:var(--ink);}
   .nend .btn-ghost, .nend .btn-dark, .nend span { display:none; }
   .ham-btn { display:flex; flex-direction:column; justify-content:center; gap:5px; background:transparent; border:none; cursor:pointer; padding:6px; margin-left:auto;}
   .ham-btn span { display:block; width:22px; height:2px; background:var(--bg); border-radius:2px; }
+  .msearch-btn{display:flex;align-items:center;justify-content:center;background:transparent;border:1px solid rgba(246,237,222,.3);border-radius:7px;width:34px;height:34px;color:var(--bg);cursor:pointer;margin-left:6px;}
+  .msearch-btn:hover{background:rgba(246,237,222,.1);border-color:var(--sand);}
+  #mobile-search-overlay{display:none;position:fixed;inset:0;background:var(--bg);z-index:500;flex-direction:column;}
+  #mobile-search-overlay.open{display:flex;}
+  .msearch-top{display:flex;align-items:center;gap:10px;padding:16px;border-bottom:1px solid var(--border);flex-shrink:0;}
+  .msearch-top input{flex:1;border:1px solid var(--sand);border-radius:8px;padding:11px 12px;font-size:14px;font-family:'DM Sans',sans-serif;outline:none;background:var(--card);color:var(--ink);}
+  .msearch-close{background:transparent;border:none;font-size:20px;line-height:1;cursor:pointer;color:var(--ink);padding:4px;flex-shrink:0;}
+  .msearch-results{flex:1;overflow-y:auto;}
+  .msearch-results .sr-item{padding:14px 16px;}
   #nav-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:298; }
   #nav-overlay.open { display:block; }
   #nav-drawer { display:flex; flex-direction:column; position:fixed; top:0; right:0; width:75vw; max-width:300px; height:100vh; background:var(--ink); z-index:299; transform:translateX(100%); transition:transform 0.3s ease; padding:0; overflow-y:auto; }
@@ -511,7 +578,8 @@ h1.htitle em{font-style:italic;color:var(--ink);}
     </div>
     <div class="nsearch">
       <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-      <input type="text" placeholder="Search artworks, artists..." onkeydown="if(event.key==='Enter'){window.location='artworks.php?q='+encodeURIComponent(this.value);}">
+      <input type="text" id="desktopSearchInput" placeholder="Search artworks, artists..." autocomplete="off" oninput="handleSearchInput(this, 'desktopSearchDropdown')" onkeydown="if(event.key==='Escape'){this.value='';closeSearchDropdown('desktopSearchDropdown');}">
+      <div class="search-dropdown" id="desktopSearchDropdown"></div>
     </div>
     <div class="nend">
 
@@ -544,6 +612,9 @@ h1.htitle em{font-style:italic;color:var(--ink);}
         <a href="login.php" class="btn-ghost">Login</a>
       <?php endif; ?>
 
+      <button class="msearch-btn" aria-label="Search" onclick="openMobileSearch()">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+      </button>
       <button class="ham-btn" aria-label="Open menu">
         <span></span><span></span><span></span>
       </button>
@@ -610,6 +681,7 @@ h1.htitle em{font-style:italic;color:var(--ink);}
             <div class="aw-ph"><svg width="28" height="28" fill="none" stroke="currentColor" stroke-width="1" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div>
           <?php endif; ?>
           <?php if ($art['status']==='sold'): ?><span class="aw-sold-tag">Sold</span><?php endif; ?>
+          <?php if (($art['delivery_type'] ?? '') === 'digital'): ?><span class="aw-digital-tag">Digital</span><?php endif; ?>
         </a>
         <div class="aw-body">
           <a href="artwork-detail.php?id=<?= $art['id'] ?>" class="aw-title" style="display:block;text-decoration:none;"><?= htmlspecialchars($art['title']) ?></a>
@@ -671,6 +743,7 @@ h1.htitle em{font-style:italic;color:var(--ink);}
           <div class="aw-ph"><svg width="28" height="28" fill="none" stroke="currentColor" stroke-width="1" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div>
         <?php endif; ?>
         <?php if ($art['status']==='sold'): ?><span class="aw-sold-tag">Sold</span><?php endif; ?>
+        <?php if (($art['delivery_type'] ?? '') === 'digital'): ?><span class="aw-digital-tag">Digital</span><?php endif; ?>
       </a>
       <div class="aw-body">
         <a href="artwork-detail.php?id=<?= $art['id'] ?>" class="aw-title" style="display:block;text-decoration:none;"><?= htmlspecialchars($art['title']) ?></a>
@@ -688,6 +761,44 @@ h1.htitle em{font-style:italic;color:var(--ink);}
 </div></div>
 
 <div class="wrap"><hr class="divhr"></div>
+
+<!-- DIGITAL ARTWORKS -->
+<?php if (!empty($digitalArtworks)): ?>
+<div class="wrap"><div class="sec">
+  <div class="sec-hd"><h2 class="sec-title">Digital Artworks</h2><a href="digital-art.php" class="sec-lnk">View all digital art</a></div>
+  <div class="latest-grid">
+    <?php foreach ($digitalArtworks as $art): $img = getImgUrl($art['cover_image']); ?>
+    <div class="aw-card">
+      <a href="artwork-detail.php?id=<?= $art['id'] ?>" class="aw-img" style="display:block;">
+        <?php if ($img && $art['cover_media_type'] === 'video'): ?>
+          <video src="<?= htmlspecialchars($img) ?>" muted playsinline></video>
+        <?php elseif ($img && $art['cover_media_type'] === 'audio'): ?>
+          <div class="aw-ph" style="font-size:28px;">🎵</div>
+        <?php elseif ($img): ?>
+          <img src="<?= htmlspecialchars($img) ?>" alt="" loading="lazy">
+        <?php else: ?>
+          <div class="aw-ph"><svg width="28" height="28" fill="none" stroke="currentColor" stroke-width="1" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div>
+        <?php endif; ?>
+        <?php if ($art['status']==='sold'): ?><span class="aw-sold-tag">Sold</span><?php endif; ?>
+        <span class="aw-digital-tag">Digital</span>
+      </a>
+      <div class="aw-body">
+        <a href="artwork-detail.php?id=<?= $art['id'] ?>" class="aw-title" style="display:block;text-decoration:none;"><?= htmlspecialchars($art['title']) ?></a>
+        <div class="aw-by" onclick="location.href='artist-profile.php?id=<?= $art['artist_id'] ?>'">by <span><?= htmlspecialchars($art['artist_name']) ?></span></div>
+        <div class="aw-foot"><div class="aw-price"><small>Rs. </small><?= number_format($art['price']) ?></div><span class="aw-cat"><?= htmlspecialchars($art['category_name'] ?? 'Digital Art') ?></span></div>
+        <?php if ($art['status'] === 'sold'): ?>
+  <button class="aw-buy-btn" disabled style="opacity:0.5;cursor:not-allowed;background:#ccc;">🚫 Sold Out</button>
+<?php else: ?>
+  <a href="checkout.php?artwork_id=<?= $art['id'] ?>" class="aw-add-cart" style="text-decoration:none;">🛒 Buy Now</a>
+<?php endif; ?>
+      </div>
+    </div>
+    <?php endforeach; ?>
+  </div>
+</div></div>
+
+<div class="wrap"><hr class="divhr"></div>
+<?php endif; ?>
 
 <div class="wrap" style="padding:28px 28px;"><div class="comm-strip">
   <div class="cs-l">
@@ -905,6 +1016,15 @@ h1.htitle em{font-style:italic;color:var(--ink);}
   </div>
 </div>
 
+<!-- MOBILE SEARCH OVERLAY -->
+<div id="mobile-search-overlay">
+  <div class="msearch-top">
+    <input type="text" id="mobileSearchInput" placeholder="Search artworks, artists..." autocomplete="off" oninput="handleSearchInput(this, 'mobileSearchDropdown')">
+    <button class="msearch-close" aria-label="Close search" onclick="closeMobileSearch()">✕</button>
+  </div>
+  <div class="msearch-results" id="mobileSearchDropdown"></div>
+</div>
+
 <!-- DRAWER & OVERLAY -->
 <div id="nav-overlay"></div>
 <div id="nav-drawer">
@@ -952,6 +1072,83 @@ document.addEventListener('click', function(e) {
     document.getElementById('qaBellDropdown')?.classList.remove('open');
   }
 });
+
+// ── Live search (physical + digital artworks together, no page redirect) ──
+let searchDebounce = null;
+
+function renderSearchResults(dropdownId, results, query) {
+  const el = document.getElementById(dropdownId);
+  if (!el) return;
+  if (!results || results.length === 0) {
+    el.innerHTML = '<div class="sr-empty">No artworks found for "' + query + '"</div>';
+    return;
+  }
+  el.innerHTML = results.map(function (r) {
+    const thumb = r.cover_image
+      ? '<img class="sr-thumb" src="' + r.cover_image + '" alt="" loading="lazy">'
+      : '<div class="sr-thumb-ph"></div>';
+    const tag = r.delivery_type === 'digital' ? '<span class="sr-tag">Digital</span>' : '';
+    const sold = r.status === 'sold' ? '<span class="sr-tag">Sold</span>' : '';
+    return '<a class="sr-item" href="artwork-detail.php?id=' + r.id + '">' + thumb +
+      '<div class="sr-info">' +
+        '<div class="sr-title">' + r.title + '</div>' +
+        '<div class="sr-by">by ' + r.artist_name + '</div>' +
+        '<div class="sr-meta">' + r.price_formatted + tag + sold + '</div>' +
+      '</div></a>';
+  }).join('');
+}
+
+function closeSearchDropdown(dropdownId) {
+  document.getElementById(dropdownId)?.classList.remove('open');
+}
+
+function handleSearchInput(inputEl, dropdownId) {
+  const dropdownEl = document.getElementById(dropdownId);
+  const query = inputEl.value.trim();
+  clearTimeout(searchDebounce);
+
+  if (query.length < 2) {
+    if (dropdownEl) { dropdownEl.classList.remove('open'); dropdownEl.innerHTML = ''; }
+    return;
+  }
+
+  if (dropdownEl) {
+    dropdownEl.classList.add('open');
+    dropdownEl.innerHTML = '<div class="sr-loading">Searching…</div>';
+  }
+
+  searchDebounce = setTimeout(function () {
+    fetch('index.php?ajax_search=1&q=' + encodeURIComponent(query))
+      .then(function (res) { return res.json(); })
+      .then(function (data) { renderSearchResults(dropdownId, data, query); })
+      .catch(function () {
+        if (dropdownEl) dropdownEl.innerHTML = '<div class="sr-empty">Something went wrong. Try again.</div>';
+      });
+  }, 300);
+}
+
+// Close the desktop dropdown when clicking outside the search box
+document.addEventListener('click', function (e) {
+  const wrap = document.querySelector('.nsearch');
+  if (wrap && !wrap.contains(e.target)) {
+    closeSearchDropdown('desktopSearchDropdown');
+  }
+});
+
+// Mobile full-screen search overlay
+function openMobileSearch() {
+  document.getElementById('mobile-search-overlay')?.classList.add('open');
+  document.body.style.overflow = 'hidden';
+  setTimeout(function () { document.getElementById('mobileSearchInput')?.focus(); }, 50);
+}
+function closeMobileSearch() {
+  document.getElementById('mobile-search-overlay')?.classList.remove('open');
+  document.body.style.overflow = '';
+  const input = document.getElementById('mobileSearchInput');
+  const dd = document.getElementById('mobileSearchDropdown');
+  if (input) input.value = '';
+  if (dd) dd.innerHTML = '';
+}
 
 // Commission Modal Helper
 function openCM(id, name) {
