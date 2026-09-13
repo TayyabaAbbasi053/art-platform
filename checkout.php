@@ -809,7 +809,7 @@ img{max-width:100%;display:block;}
           <div class="form-group">
             <label>Email Address <span>*</span></label>
             <input type="email" name="email" id="guestEmail" placeholder="you@example.com" required>
-            <p style="font-size:11px;color:var(--muted);margin-top:6px;">We'll send your order confirmation here<?= $isDigitalItem ? ' and deliver your artwork to this address once payment is confirmed' : '' ?>. You can set a password after checkout to track this order anytime.</p>
+            <p style="font-size:11px;color:var(--muted);margin-top:6px;">We'll send your order confirmation here. You can set a password after checkout to track this order anytime.</p>
           </div>
           <?php endif; ?>
           
@@ -841,7 +841,7 @@ img{max-width:100%;display:block;}
           </div>
           <?php endif; ?>
           <?php else: ?>
-          <p style="font-size:11px;color:var(--muted);">This is a digital item — it'll be delivered digitally, so no shipping address is needed.</p>
+          <p style="font-size:11px;color:var(--muted);line-height:1.6;">This is a digital item — no shipping address is needed. Once your payment is confirmed, you'll receive an email with your artwork attached. If you created an account, you can also download it anytime from your order history </p>
           <?php endif; ?>
         </div>
         
