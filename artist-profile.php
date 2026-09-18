@@ -69,6 +69,12 @@ if ($isLoggedIn) {
  $commissionError = false;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'commission_request') {
+    // Guest commissions are no longer allowed — must be logged in
+    if (!$isLoggedIn) {
+        header("Location: login.php?redirect=" . urlencode($_SERVER['REQUEST_URI']));
+        exit;
+    }
+
     $buyerName  = trim($_POST['buyer_name'] ?? ''); 
     $buyerEmail = trim($_POST['buyer_email'] ?? '');
     $buyerPhone = trim($_POST['buyer_phone'] ?? '');
@@ -116,8 +122,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'commi
         // artwork_type now submits the category id directly
         $commissionCategoryId = !empty($_POST['artwork_type']) ? (int)$_POST['artwork_type'] : null;
 
-        // Determine buyer_id: logged-in user or NULL for guest
-        $buyerId = ($isLoggedIn) ? (int)$_SESSION['user_id'] : null;
+        // Guest commissions are disabled — buyer_id is always the logged-in user
+        $buyerId = (int)$_SESSION['user_id'];
 
         // Generate unique order number
         $orderNumber = 'COM-' . time() . '-' . rand(1000, 9999);
@@ -170,20 +176,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'commi
             $cr->execute();
 
             // Log initial status in order_status_history
-            $changedByRole = $isLoggedIn ? 'buyer' : 'system';
-            $changedById   = $isLoggedIn ? (int)$_SESSION['user_id'] : 'NULL';
+            $changedById = (int)$_SESSION['user_id'];
             $conn->query("
                 INSERT INTO order_status_history (order_id, status_from, status_to, notes, changed_by_role, changed_by_id, created_at)
-                VALUES ($newOrderId, NULL, 'pending', 'Commission request submitted', '$changedByRole', $changedById, NOW())
+                VALUES ($newOrderId, NULL, 'pending', 'Commission request submitted', 'buyer', $changedById, NOW())
             ");
 
             // Redirect to buyer account page with confirmation flag
-            if ($isLoggedIn) {
-    header('Location: dashboard/buyer/account.php?commission_submitted=1');
-} else {
-    header('Location: artist-profile.php?id=' . $artistId . '&submitted=1');
-}
-exit;
+            header('Location: dashboard/buyer/account.php?commission_submitted=1');
+            exit;
         } else {
             $commissionError = "Failed to submit. Please try again.";
         }
@@ -600,6 +601,13 @@ img{max-width:100%;display:block;}
       <p style="font-size:11px;color:var(--ink);background:var(--sand);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:12px;line-height:1.6;">Submit your custom artwork request. The artist/platform will review the details, confirm pricing, timeline, and shipping before payment. <strong>Official payment instructions will only be shared by Art Bazaar Pakistan.</strong></p>
       <?php if ($commissionError): ?><div class="mmsg er"><?= htmlspecialchars($commissionError) ?></div><?php endif; ?>
 <?php if (isset($_GET['submitted'])): ?><div class="mmsg" style="background:var(--sand);border:1px solid var(--border);color:var(--ink);">✓ Commission request submitted! We'll be in touch via email soon.</div><?php endif; ?>
+      <?php if (!$isLoggedIn): ?>
+      <div class="mmsg" style="background:var(--sand);border:1px solid var(--border);color:var(--ink);">
+        <p style="margin:0 0 12px 0;">Please log in or create a free account to request a custom artwork. This lets you track your commission's status and chat with the artist from your dashboard.</p>
+        <a href="login.php?redirect=<?= urlencode($_SERVER['REQUEST_URI']) ?>" class="msub" style="display:inline-block;text-decoration:none;text-align:center;">Log In</a>
+        <a href="register.php?redirect=<?= urlencode($_SERVER['REQUEST_URI']) ?>" style="display:inline-block;margin-top:8px;text-align:center;">Don't have an account? Sign up</a>
+      </div>
+      <?php else: ?>
       <form method="POST" enctype="multipart/form-data">
         <input type="hidden" name="action" value="commission_request">
         
@@ -695,6 +703,7 @@ img{max-width:100%;display:block;}
         
         <button type="submit" class="msub">Submit Commission Request</button>
       </form>
+      <?php endif; ?>
     </div>
   </div>
 </div>
