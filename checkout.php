@@ -357,8 +357,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
 
     // COD is never allowed for commissions or digital artworks, regardless of what was posted
     $allowedMethods = ($isCommissionCheckout || $isDigitalItem)
-        ? ['jazzcash', 'easypaisa', 'nayapay']
-        : ['jazzcash', 'easypaisa', 'nayapay', 'cod'];
+        ? ['jazzcash']
+        : ['jazzcash', 'cod'];
     $isCod = ($paymentMethod === 'cod');
 
     // Validation: City is required for calculation — not applicable to
@@ -397,9 +397,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
             $orderError = 'Please enter a valid email address.';
         } elseif (!in_array($paymentMethod, $allowedMethods)) {
             if ($isCommissionCheckout) {
-                $orderError = 'Cash on Delivery is not available for commissions. Please choose JazzCash, Easypaisa, or Nayapay.';
+                $orderError = 'Cash on Delivery is not available for commissions. Please pay via JazzCash.';
             } elseif ($isDigitalItem) {
-                $orderError = 'Cash on Delivery is not available for digital artworks. Please choose JazzCash, Easypaisa, or Nayapay.';
+                $orderError = 'Cash on Delivery is not available for digital artworks. Please pay via JazzCash.';
             } else {
                 $orderError = 'Invalid payment method.';
             }
@@ -975,30 +975,12 @@ img{max-width:100%;display:block;}
             </div>
             <div id="details-jazzcash" class="payment-details active">
               <strong>JazzCash Account Details:</strong>
-              Account Title: ABDUR RAFEH<br>
-              Account Number: 03163670633
-            </div>
-            
-            <!-- EASYPAISA -->
-            <div class="payment-option" onclick="selectPayment('easypaisa')">
-              <input type="radio" name="payment_method" value="easypaisa">
-              <span>📱 Easypaisa</span>
-            </div>
-            <div id="details-easypaisa" class="payment-details">
-              <strong>Easypaisa Account Details:</strong>
-              Account Title: Fatima Shahbaz<br>
-              Account Number: 03210903337
-            </div>
-            
-            <!-- NAYAPAY -->
-            <div class="payment-option" onclick="selectPayment('nayapay')">
-              <input type="radio" name="payment_method" value="nayapay">
-              <span>💳 Nayapay</span>
-            </div>
-            <div id="details-nayapay" class="payment-details">
-              <strong>Nayapay Account Details:</strong>
-              Account Title: Fazal karim Ahsan<br>
-              Account Number: 03304780888
+              Account Title: Artbazaar<br>
+              Account Number: 0303-5650362
+              <div style="margin-top:10px;text-align:center;">
+                <img src="uploads/payment-qr.jpeg" alt="JazzCash Scan &amp; Pay QR code" style="max-width:180px;width:100%;border-radius:8px;border:1px solid var(--border);">
+                <div style="font-size:10.5px;color:var(--muted);margin-top:4px;">Scan to pay with JazzCash</div>
+              </div>
             </div>
 
             <?php if (!$isCommissionCheckout && !$isDigitalItem && $subtotal <= 10000): ?>
