@@ -14,15 +14,25 @@ $unreadMessageCount     = (int) ($conn->query("SELECT COUNT(*) FROM contact_mess
 
 $adminName = $_SESSION['name'] ?? 'Admin';
 
+// ── Is this an AJAX request? (lets us avoid a full page reload) ──
+$isAjax = (($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'XMLHttpRequest');
+function respond_ajax($ok, $extra = []) {
+    header('Content-Type: application/json');
+    echo json_encode(array_merge(['ok' => $ok], $extra));
+    exit;
+}
+
 // ── Handle Mark as Paid (single order) ────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'mark_paid') {
     $orderId   = (int)($_POST['order_id'] ?? 0);
     $paidNotes = trim($_POST['paid_notes'] ?? '');
+    $ok = false;
     if ($orderId) {
         $stmt = $conn->prepare("UPDATE orders SET artist_paid = 1, artist_paid_at = NOW(), artist_paid_notes = ? WHERE id = ?");
         $stmt->bind_param('si', $paidNotes, $orderId);
-        $stmt->execute();
+        $ok = $stmt->execute();
     }
+    if ($isAjax) respond_ajax($ok, ['order_id' => $orderId, 'paid_at' => date('d M Y'), 'notes' => htmlspecialchars($paidNotes)]);
     $qs = http_build_query(array_filter([
         'date_from' => $_POST['date_from'] ?? '',
         'date_to'   => $_POST['date_to']   ?? '',
@@ -33,15 +43,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'mark_
     exit;
 }
 
+// ── Undo Mark as Paid (correct a mis-click) ───────────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'unmark_paid') {
+    $orderId = (int)($_POST['order_id'] ?? 0);
+    $ok = false;
+    if ($orderId) {
+        $stmt = $conn->prepare("UPDATE orders SET artist_paid = 0, artist_paid_at = NULL, artist_paid_notes = NULL WHERE id = ?");
+        $stmt->bind_param('i', $orderId);
+        $ok = $stmt->execute();
+    }
+    if ($isAjax) respond_ajax($ok, ['order_id' => $orderId]);
+    header("Location: reports.php");
+    exit;
+}
+
 // ── Handle Mark as Refunded (single cancelled order) ──────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'mark_refunded') {
     $orderId     = (int)($_POST['order_id'] ?? 0);
     $refundNotes = trim($_POST['refund_notes'] ?? '');
+    $ok = false;
     if ($orderId) {
         $stmt = $conn->prepare("UPDATE orders SET payment_status = 'refunded', refunded_at = NOW(), refund_notes = ? WHERE id = ?");
         $stmt->bind_param('si', $refundNotes, $orderId);
-        $stmt->execute();
+        $ok = $stmt->execute();
     }
+    if ($isAjax) respond_ajax($ok, ['order_id' => $orderId, 'refunded_at' => date('d M Y'), 'notes' => htmlspecialchars($refundNotes)]);
     $qs = http_build_query(array_filter([
         'date_from'  => $_POST['date_from'] ?? '',
         'date_to'    => $_POST['date_to']   ?? '',
@@ -49,6 +75,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'mark_
         'refund_msg' => '1',
     ]));
     header("Location: reports.php?$qs");
+    exit;
+}
+
+// ── Undo Mark as Refunded (correct a mis-click) ───────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'unmark_refunded') {
+    $orderId = (int)($_POST['order_id'] ?? 0);
+    $ok = false;
+    if ($orderId) {
+        $stmt = $conn->prepare("UPDATE orders SET payment_status = 'paid', refunded_at = NULL, refund_notes = NULL WHERE id = ?");
+        $stmt->bind_param('i', $orderId);
+        $ok = $stmt->execute();
+    }
+    if ($isAjax) respond_ajax($ok, ['order_id' => $orderId]);
+    header("Location: reports.php");
     exit;
 }
 
@@ -279,6 +319,20 @@ html,body{height:100%;background:var(--bg);color:var(--ink);font-family:'DM Sans
 .btn-sm{padding:5px 12px;font-size:11px;border-radius:6px;}
 .btn-pay{background:var(--ink);color:var(--bg);border:none;cursor:pointer;font-family:'DM Sans',sans-serif;}
 .btn-pay:hover{opacity:.85;}
+/* Refund action is visually distinct from Pay — different action, different color, so the two can never be confused at a glance */
+.btn-refund{background:#fff;color:#c0392b;border:1.5px solid #c0392b;cursor:pointer;font-family:'DM Sans',sans-serif;}
+.btn-refund:hover{background:#c0392b;color:#fff;}
+.btn-clear{background:none;border:1.5px solid var(--border);color:var(--ink);opacity:.75;}
+.btn-clear:hover{opacity:1;background:var(--sand);}
+.btn-undo{background:none;border:none;color:#c0392b;font-size:11px;text-decoration:underline;cursor:pointer;font-family:'DM Sans',sans-serif;opacity:.6;padding:0;margin-left:8px;}
+.btn-undo:hover{opacity:1;}
+.row-done{font-size:11px;opacity:.55;display:flex;align-items:center;flex-wrap:wrap;}
+.row-busy{opacity:.5;pointer-events:none;}
+/* Toast — confirms an action happened without forcing a full page reload */
+.toast-wrap{position:fixed;top:76px;right:24px;z-index:800;display:flex;flex-direction:column;gap:8px;}
+.toast{background:var(--ink);color:var(--bg);padding:11px 18px;border-radius:8px;font-size:12.5px;box-shadow:0 6px 18px rgba(0,0,0,.25);display:flex;align-items:center;gap:10px;animation:toast-in .18s ease-out;}
+.toast.err{background:#c0392b;}
+@keyframes toast-in{from{opacity:0;transform:translateY(-6px);}to{opacity:1;transform:translateY(0);}}
 .presets{display:flex;gap:6px;flex-wrap:wrap;margin-top:16px;padding-top:16px;border-top:1px solid var(--border);}
 .presets span{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;align-self:center;margin-right:4px;font-weight:500;opacity:.7;}
 .preset-btn{background:var(--bg);border:2px solid var(--border);color:var(--ink);padding:9px 18px;border-radius:999px;font-size:12px;font-weight:500;font-family:'DM Sans',sans-serif;cursor:pointer;text-decoration:none;transition:all .15s;white-space:nowrap;}
@@ -430,10 +484,16 @@ tr.is-paid{opacity:.55;}
     <p>Select a date range to see all orders, revenue, and which artists still need to be paid.</p>
     <form method="GET">
         <div class="filter-row">
-            <div class="filter-group"><label>From</label><input type="date" name="date_from" value="<?= htmlspecialchars($dateFrom) ?>" required></div>
-            <div class="filter-group"><label>To</label><input type="date" name="date_to" value="<?= htmlspecialchars($dateTo) ?>" required></div>
+            <div class="filter-group"><label>From</label><input type="date" name="date_from" value="<?= htmlspecialchars($dateFrom) ?>"></div>
+            <div class="filter-group"><label>To</label><input type="date" name="date_to" value="<?= htmlspecialchars($dateTo) ?>"></div>
             <div class="filter-group"><button type="submit" class="btn btn-primary">Generate Report</button></div>
+            <?php if ($hasReport): ?>
+            <div class="filter-group"><a href="reports.php" class="btn btn-clear">Clear</a></div>
+            <?php endif; ?>
         </div>
+        <?php if ($hasReport): ?>
+        <div class="period-info" style="margin:12px 0 0;opacity:.75;">Showing <strong><?= date('d M Y', strtotime($dateFrom)) ?></strong> &rarr; <strong><?= date('d M Y', strtotime($dateTo)) ?></strong></div>
+        <?php endif; ?>
         <div class="presets">
             <span>Quick</span>
             <?php
@@ -469,10 +529,6 @@ tr.is-paid{opacity:.55;}
         <div class="s-value" style="font-size:22px">PKR <?= number_format($summaryTotals['unpaid_amount']) ?></div>
         <div class="s-sub">Pending payouts</div>
     </div>
-</div>
-
-<div class="period-info">
-    Showing <strong><?= date('d M Y', strtotime($dateFrom)) ?></strong> to <strong><?= date('d M Y', strtotime($dateTo)) ?></strong> &mdash; <?= count($reportData) ?> artist<?= count($reportData)!==1?'s':'' ?> active
 </div>
 
 <?php if (empty($reportData)): ?>
@@ -535,7 +591,12 @@ tr.is-paid{opacity:.55;}
             </thead>
             <tbody>
             <?php foreach ($orders as $o): ?>
-            <tr class="<?= $o['artist_paid'] ? 'is-paid' : '' ?>">
+            <tr class="<?= $o['artist_paid'] ? 'is-paid' : '' ?>" data-order-row="<?= $o['order_id'] ?>"
+                data-order-num="<?= addslashes(htmlspecialchars($o['order_number'])) ?>"
+                data-item="<?= addslashes(htmlspecialchars($o['display_title'])) ?>"
+                data-artist="<?= addslashes(htmlspecialchars($p['name'])) ?>"
+                data-art-price="<?= $o['artwork_price_calc'] ?>"
+                data-order-total="<?= $o['order_total'] ?>">
                 <td style="white-space:nowrap"><?= date('d M Y', strtotime($o['created_at'])) ?></td>
                 <td style="font-family:monospace;font-size:11px"><?= htmlspecialchars($o['order_number']) ?></td>
                 <td><div style="font-weight:500;max-width:130px"><?= htmlspecialchars($o['display_title']) ?></div></td>
@@ -544,8 +605,8 @@ tr.is-paid{opacity:.55;}
 <td class="amount">PKR <?= number_format($o['order_total']) ?></td>
                 <td><?= getStatusPill($o['order_status']) ?></td>
                 <td><?= getStatusPill($o['payment_status']) ?></td>
-                <td><?= paidBadge($o['artist_paid'], $o['artist_paid_at']) ?></td>
-                <td>
+                <td class="paid-cell"><?= paidBadge($o['artist_paid'], $o['artist_paid_at']) ?></td>
+                <td class="action-cell">
                     <?php if (!$o['artist_paid']): ?>
                     <button class="btn btn-sm btn-pay" onclick="openPayModal(
                         <?= $o['order_id'] ?>,
@@ -556,7 +617,7 @@ tr.is-paid{opacity:.55;}
                         <?= $o['order_total'] ?>
                     )">Mark Paid</button>
                     <?php else: ?>
-                    <span style="font-size:11px;opacity:.45">Done<?= $o['artist_paid_notes'] ? ' &bull; '.htmlspecialchars(substr($o['artist_paid_notes'],0,30)) : '' ?></span>
+                    <span class="row-done">Done<?= $o['artist_paid_notes'] ? ' &bull; '.htmlspecialchars(substr($o['artist_paid_notes'],0,30)) : '' ?><button type="button" class="btn-undo" onclick="undoAction('unmark_paid', <?= $o['order_id'] ?>, this)">Undo</button></span>
                     <?php endif; ?>
                 </td>
             </tr>
@@ -622,7 +683,11 @@ tr.is-paid{opacity:.55;}
             </thead>
             <tbody>
             <?php foreach ($cancelledOrders as $co): ?>
-            <tr class="<?= $co['payment_status']==='refunded' ? 'is-paid' : '' ?>">
+            <tr class="<?= $co['payment_status']==='refunded' ? 'is-paid' : '' ?>" data-refund-row="<?= $co['order_id'] ?>"
+                data-order-num="<?= addslashes(htmlspecialchars($co['order_number'])) ?>"
+                data-item="<?= addslashes(htmlspecialchars($co['display_title'])) ?>"
+                data-buyer="<?= addslashes(htmlspecialchars($co['buyer_name'])) ?>"
+                data-order-total="<?= $co['order_total'] ?>">
                 <td style="white-space:nowrap"><?= date('d M Y', strtotime($co['created_at'])) ?></td>
                 <td style="font-family:monospace;font-size:11px"><?= htmlspecialchars($co['order_number']) ?></td>
                 <td><?= ucfirst($co['order_type']) ?></td>
@@ -631,10 +696,10 @@ tr.is-paid{opacity:.55;}
                 <td><?= htmlspecialchars($co['artist_name'] ?: '—') ?></td>
                 <td class="amount">PKR <?= number_format($co['order_total']) ?></td>
                 <td><?= getStatusPill($co['payment_status']) ?></td>
-                <td><?= refundBadge($co['payment_status'], $co['refunded_at']) ?></td>
-                <td>
+                <td class="refund-cell"><?= refundBadge($co['payment_status'], $co['refunded_at']) ?></td>
+                <td class="action-cell">
                     <?php if ($co['payment_status'] !== 'refunded'): ?>
-                    <button class="btn btn-sm btn-pay" onclick="openRefundModal(
+                    <button class="btn btn-sm btn-refund" onclick="openRefundModal(
                         <?= $co['order_id'] ?>,
                         '<?= addslashes(htmlspecialchars($co['order_number'])) ?>',
                         '<?= addslashes(htmlspecialchars($co['display_title'])) ?>',
@@ -642,7 +707,7 @@ tr.is-paid{opacity:.55;}
                         <?= $co['order_total'] ?>
                     )">Mark Refunded</button>
                     <?php else: ?>
-                    <span style="font-size:11px;opacity:.45">Done<?= $co['refund_notes'] ? ' &bull; '.htmlspecialchars(substr($co['refund_notes'],0,30)) : '' ?></span>
+                    <span class="row-done">Done<?= $co['refund_notes'] ? ' &bull; '.htmlspecialchars(substr($co['refund_notes'],0,30)) : '' ?><button type="button" class="btn-undo" onclick="undoAction('unmark_refunded', <?= $co['order_id'] ?>, this)">Undo</button></span>
                     <?php endif; ?>
                 </td>
             </tr>
@@ -703,9 +768,9 @@ tr.is-paid{opacity:.55;}
 
 <!-- MARK REFUNDED MODAL -->
 <div class="mbg" id="refund-modal">
-    <div class="modal">
+    <div class="modal" style="border-top:4px solid #c0392b;">
         <div class="mhd">
-            <h3>Mark as Refunded</h3>
+            <h3 style="color:#c0392b;">&#9888; Mark as Refunded</h3>
             <button class="mcls" onclick="document.getElementById('refund-modal').classList.remove('open')">&#10005;</button>
         </div>
         <div class="mbd">
@@ -728,37 +793,128 @@ tr.is-paid{opacity:.55;}
                     <label>Notes (optional)</label>
                     <textarea name="refund_notes" class="ft" placeholder="e.g. Refunded via JazzCash, ref #12345 on 13 June 2026..."></textarea>
                 </div>
-                <button type="submit" class="msub">&#10003; Confirm Refund</button>
+                <button type="submit" class="msub" style="background:#c0392b;">&#10003; Confirm Refund</button>
             </form>
         </div>
     </div>
 </div>
 
+<div class="toast-wrap" id="toast-wrap"></div>
 <script>
+// ── Toast: gives feedback for every action without ever reloading the page ──
+function showToast(msg, isErr) {
+    const wrap = document.getElementById('toast-wrap');
+    const t = document.createElement('div');
+    t.className = 'toast' + (isErr ? ' err' : '');
+    t.innerHTML = (isErr ? '&#9888; ' : '&#10003; ') + msg;
+    wrap.appendChild(t);
+    setTimeout(() => { t.style.opacity = '0'; t.style.transition = 'opacity .25s'; setTimeout(() => t.remove(), 250); }, 3200);
+}
+
+// ── Shared helper: POST an action via fetch so the whole page never reloads ──
+function postAction(payload) {
+    const body = new URLSearchParams(payload);
+    return fetch('reports.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' },
+        body
+    }).then(r => r.json());
+}
+
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.mbg').forEach(bg => {
+    bg.addEventListener('click', e => { if (e.target === bg) bg.classList.remove('open'); });
+});
+document.querySelectorAll('.mbg .mcls').forEach(btn => {
+    btn.addEventListener('click', () => btn.closest('.mbg').classList.remove('open'));
+});
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') document.querySelectorAll('.mbg.open').forEach(m => m.classList.remove('open'));
+});
+
+/* ---------- Mark Paid ---------- */
 function openPayModal(orderId, orderNum, itemTitle, artistName, artPrice, orderTotal) {
     document.getElementById('modal-order-id').value     = orderId;
     document.getElementById('md-order-num').textContent = orderNum;
     document.getElementById('md-artist').textContent    = artistName;
     document.getElementById('md-item').textContent      = itemTitle;
     document.getElementById('md-art-price').textContent = 'PKR ' + Number(artPrice).toLocaleString();
-    document.getElementById('md-shipping').textContent  = 'PKR ' + Number(orderTotal).toLocaleString(); // shippingFee here is actually order_total now
+    document.getElementById('md-shipping').textContent  = 'PKR ' + Number(orderTotal).toLocaleString(); // label reads "Total Order Price"
+    document.getElementById('pay-modal').querySelector('form').dataset.orderId = orderId;
     document.getElementById('pay-modal').classList.add('open');
 }
-document.getElementById('pay-modal').addEventListener('click', function(e) {
-    if (e.target === this) this.classList.remove('open');
+document.querySelector('#pay-modal form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const orderId = this.dataset.orderId;
+    const notes = this.querySelector('[name="paid_notes"]').value;
+    const row = document.querySelector(`[data-order-row="${orderId}"]`);
+    if (row) row.classList.add('row-busy');
+    postAction({ action: 'mark_paid', order_id: orderId, paid_notes: notes }).then(res => {
+        closeModal('pay-modal');
+        if (!res.ok) { showToast('Could not mark this order as paid. Please try again.', true); if (row) row.classList.remove('row-busy'); return; }
+        if (row) {
+            row.classList.remove('row-busy');
+            row.classList.add('is-paid');
+            row.querySelector('.paid-cell').innerHTML = `<span class='pill paid-pill'>&#10003; Paid ${res.paid_at}</span>`;
+            row.querySelector('.action-cell').innerHTML = `<span class="row-done">Done${res.notes ? ' &bull; ' + res.notes.slice(0,30) : ''}<button type="button" class="btn-undo" onclick="undoAction('unmark_paid', ${orderId}, this)">Undo</button></span>`;
+        }
+        showToast('Order marked as paid to artist.');
+        this.reset();
+    }).catch(() => { showToast('Network error — the order was not updated.', true); if (row) row.classList.remove('row-busy'); });
 });
 
+/* ---------- Mark Refunded ---------- */
 function openRefundModal(orderId, orderNum, itemTitle, buyerName, amount) {
     document.getElementById('refund-order-id').value   = orderId;
     document.getElementById('rd-order-num').textContent = orderNum;
     document.getElementById('rd-buyer').textContent     = buyerName;
     document.getElementById('rd-item').textContent      = itemTitle;
     document.getElementById('rd-amount').textContent    = 'PKR ' + Number(amount).toLocaleString();
+    document.getElementById('refund-modal').querySelector('form').dataset.orderId = orderId;
     document.getElementById('refund-modal').classList.add('open');
 }
-document.getElementById('refund-modal').addEventListener('click', function(e) {
-    if (e.target === this) this.classList.remove('open');
+document.querySelector('#refund-modal form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const orderId = this.dataset.orderId;
+    const notes = this.querySelector('[name="refund_notes"]').value;
+    const row = document.querySelector(`[data-refund-row="${orderId}"]`);
+    if (row) row.classList.add('row-busy');
+    postAction({ action: 'mark_refunded', order_id: orderId, refund_notes: notes }).then(res => {
+        closeModal('refund-modal');
+        if (!res.ok) { showToast('Could not mark this order as refunded. Please try again.', true); if (row) row.classList.remove('row-busy'); return; }
+        if (row) {
+            row.classList.remove('row-busy');
+            row.classList.add('is-paid');
+            row.querySelector('.refund-cell').innerHTML = `<span class='pill refunded-pill'>&#10003; Refunded ${res.refunded_at}</span>`;
+            row.querySelector('.action-cell').innerHTML = `<span class="row-done">Done${res.notes ? ' &bull; ' + res.notes.slice(0,30) : ''}<button type="button" class="btn-undo" onclick="undoAction('unmark_refunded', ${orderId}, this)">Undo</button></span>`;
+        }
+        showToast('Order marked as refunded.');
+        this.reset();
+    }).catch(() => { showToast('Network error — the order was not updated.', true); if (row) row.classList.remove('row-busy'); });
 });
+
+/* ---------- Undo (user control & freedom: every action here is reversible, and undoing never reloads the page) ---------- */
+function undoAction(action, orderId, btnEl) {
+    const isPaid = action === 'unmark_paid';
+    if (!confirm(`Undo this? This will mark the order as ${isPaid ? 'unpaid' : 'unrefunded'} again.`)) return;
+    const row = btnEl.closest('tr');
+    if (row) row.classList.add('row-busy');
+    postAction({ action, order_id: orderId }).then(res => {
+        if (!res.ok) { showToast('Could not undo. Please try again.', true); if (row) row.classList.remove('row-busy'); return; }
+        if (row) {
+            row.classList.remove('row-busy', 'is-paid');
+            const d = row.dataset;
+            if (isPaid) {
+                row.querySelector('.paid-cell').innerHTML = `<span class='pill unpaid-pill'>Unpaid</span>`;
+                row.querySelector('.action-cell').innerHTML = `<button class="btn btn-sm btn-pay" onclick="openPayModal(${orderId}, '${d.orderNum}', '${d.item}', '${d.artist}', ${d.artPrice}, ${d.orderTotal})">Mark Paid</button>`;
+            } else {
+                row.querySelector('.refund-cell').innerHTML = `<span class='pill unrefunded-pill'>Not Refunded</span>`;
+                row.querySelector('.action-cell').innerHTML = `<button class="btn btn-sm btn-refund" onclick="openRefundModal(${orderId}, '${d.orderNum}', '${d.item}', '${d.buyer}', ${d.orderTotal})">Mark Refunded</button>`;
+            }
+        }
+        showToast('Reverted.');
+    }).catch(() => { showToast('Network error — could not undo.', true); if (row) row.classList.remove('row-busy'); });
+}
 </script>
 
 </body>
