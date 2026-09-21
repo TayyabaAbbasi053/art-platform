@@ -11,161 +11,190 @@ use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 require_once __DIR__ . '/../../vendor/autoload.php';
 
-// ── Payment reminder email (sent when an artist is paused for non-payment) ──
-function sendPaymentDueEmail(string $toEmail, string $toName, string $periodLabel): bool {
-    $mail = new PHPMailer(true);
-    try {
+function periodLabel($p) {
+    return date('F Y', strtotime($p . '-01'));
+}
+
+// ─────────────────────────────────────────────────────────────
+// Shared mailer — built once, SMTP connection kept alive across
+// sends. This is what stops the page timing out on bulk emails.
+// ─────────────────────────────────────────────────────────────
+function getMailer(): PHPMailer {
+    static $mail = null;
+
+    if ($mail === null) {
+        $mail = new PHPMailer(true);
         $mail->isSMTP();
-        $mail->Host       = 'smtp-relay.brevo.com';
-        $mail->SMTPAuth   = true;
-        $mail->Username   = $_ENV['BREVO_SMTP_USERNAME'];
-        $mail->Password   = $_ENV['BREVO_SMTP_PASSWORD'];
-        $mail->SMTPSecure = 'tls';
-        $mail->Port       = 587;
-        $mail->setFrom('teamartbazaar.pk@gmail.com', 'Art Bazaar');
-        $mail->addReplyTo('teamartbazaar.pk@gmail.com', 'Art Bazaar');
-        $mail->addAddress($toEmail, $toName);
+        $mail->Host          = 'smtp-relay.brevo.com';
+        $mail->SMTPAuth      = true;
+        $mail->Username      = $_ENV['BREVO_SMTP_USERNAME'];
+        $mail->Password      = $_ENV['BREVO_SMTP_PASSWORD'];
+        $mail->SMTPSecure    = PHPMailer::ENCRYPTION_STARTTLS;
+        $mail->Port          = 587;
+
+        $mail->SMTPKeepAlive = true;  // reuse one connection for the whole batch
+        $mail->Timeout       = 15;
+
         $mail->isHTML(true);
         $mail->CharSet = 'UTF-8';
+        $mail->setFrom('teamartbazaar.pk@gmail.com', 'Art Bazaar');
+        $mail->addReplyTo('teamartbazaar.pk@gmail.com', 'Art Bazaar');
+    }
 
-        // Embed the JazzCash QR code inline so it shows directly in the email body
-        $qrPath = __DIR__ . '/../../uploads/payment-qr.jpeg';
-        $hasQr  = file_exists($qrPath);
-        if ($hasQr) {
-            $mail->addEmbeddedImage($qrPath, 'paymentqr', 'payment-qr.jpeg');
-        }
-        $qrImgTag = $hasQr
-            ? "<img src='cid:paymentqr' alt='JazzCash QR code' style='width:220px;height:auto;display:block;margin:16px auto;border:1px solid #ddd;border-radius:8px'>"
-            : '';
+    $mail->clearAddresses(); // recipients are per-message; the rest persists
+    return $mail;
+}
 
+// Close the kept-alive socket. Call after a batch, or after a failure.
+function resetMailerConnection(): void {
+    try {
+        getMailer()->smtpClose();
+    } catch (\Throwable $e) {
+        // already closed / never opened
+    }
+}
+
+// Embed the QR once per request, not once per recipient.
+function qrImgTag(PHPMailer $mail): string {
+    static $attached = null;
+    if ($attached === null) {
+        $qrPath   = __DIR__ . '/../../uploads/payment-qr.jpeg';
+        $attached = file_exists($qrPath)
+            && $mail->addEmbeddedImage($qrPath, 'paymentqr', 'payment-qr.jpeg');
+    }
+    return $attached
+        ? "<img src='cid:paymentqr' alt='JazzCash QR code' style='width:220px;height:auto;display:block;margin:16px auto;border:1px solid #ddd;border-radius:8px'>"
+        : '';
+}
+
+function emailShell(string $heading, string $inner): string {
+    return "
+    <div style='font-family:sans-serif;max-width:460px;margin:auto;padding:32px;background:#fff;border-radius:12px'>
+        <p style='font-size:13px;color:#555;margin:0 0 8px'>Art Bazaar</p>
+        <h2 style='font-size:24px;font-weight:400;color:#0a0a0a;margin:0 0 16px;font-family:Georgia,serif'>{$heading}</h2>
+        {$inner}
+        <p style='font-size:12px;color:#aaa;margin:24px 0 0'>&mdash; Art Bazaar Team</p>
+    </div>";
+}
+
+function paymentInstructionsBlock(string $qrImgTag): string {
+    return "
+        <p style='font-size:14px;color:#444;line-height:1.6;margin:0 0 8px'><strong>How to pay:</strong></p>
+        {$qrImgTag}
+        <p style='font-size:14px;color:#444;line-height:1.6;margin:0 0 4px'>Send Rs 50 via JazzCash to:</p>
+        <p style='font-size:16px;color:#0a0a0a;font-weight:600;margin:0 0 4px'>0303 5650362</p>
+        <p style='font-size:12px;color:#888;margin:0 0 16px'>Artbazaar &mdash; JazzCash Business &mdash; Mobilink Microfinance Bank</p>
+        <p style='font-size:14px;color:#444;line-height:1.6;margin:0 0 16px'>After paying, please send a screenshot of the payment on WhatsApp so we can confirm it:</p>
+        <p style='font-size:16px;color:#0a0a0a;font-weight:600;margin:0 0 24px'><a href='https://wa.me/923035650362' style='color:#0a0a0a;text-decoration:none'>+92 303 5650362</a></p>";
+}
+
+// ── Payment reminder email (sent when an artist is paused for non-payment) ──
+function sendPaymentDueEmail(string $toEmail, string $toName, string $periodLabel): bool {
+    try {
+        $mail = getMailer();
+        $mail->addAddress($toEmail, $toName);
+
+        $safeName = htmlspecialchars($toName, ENT_QUOTES, 'UTF-8');
         $mail->Subject = 'Action Required: Art Bazaar Monthly Fee Unpaid — Account Paused';
         $mail->AltBody = "Hi $toName, your Art Bazaar monthly artist fee (Rs 50) for $periodLabel hasn't been received, so your account has been paused and your listings are hidden from buyers. Pay Rs 50 via JazzCash to 0303 5650362 (Artbazaar, JazzCash Business, Mobilink Microfinance Bank), then send the payment screenshot on WhatsApp to +92 303 5650362. Your account will be reactivated automatically once we confirm the payment.";
-        $mail->Body = "
-        <div style='font-family:sans-serif;max-width:460px;margin:auto;padding:32px;background:#fff;border-radius:12px'>
-            <p style='font-size:13px;color:#555;margin:0 0 8px'>Art Bazaar</p>
-            <h2 style='font-size:24px;font-weight:400;color:#0a0a0a;margin:0 0 16px;font-family:Georgia,serif'>Monthly fee unpaid — account paused</h2>
-            <p style='font-size:14px;color:#444;line-height:1.6;margin:0 0 16px'>Hello {$toName},</p>
-            <p style='font-size:14px;color:#444;line-height:1.6;margin:0 0 16px'>Your Rs 50 monthly artist fee for <strong>{$periodLabel}</strong> hasn't been received yet, so your Art Bazaar account has been temporarily paused and your artwork is no longer visible to buyers.</p>
-            <p style='font-size:14px;color:#444;line-height:1.6;margin:0 0 8px'><strong>How to pay:</strong></p>
-            {$qrImgTag}
-            <p style='font-size:14px;color:#444;line-height:1.6;margin:0 0 4px'>Send Rs 50 via JazzCash to:</p>
-            <p style='font-size:16px;color:#0a0a0a;font-weight:600;margin:0 0 4px'>0303 5650362</p>
-            <p style='font-size:12px;color:#888;margin:0 0 16px'>Artbazaar &mdash; JazzCash Business &mdash; Mobilink Microfinance Bank</p>
-            <p style='font-size:14px;color:#444;line-height:1.6;margin:0 0 16px'>After paying, please send a screenshot of the payment on WhatsApp so we can confirm it:</p>
-            <p style='font-size:16px;color:#0a0a0a;font-weight:600;margin:0 0 24px'><a href='https://wa.me/923035650362' style='color:#0a0a0a;text-decoration:none'>+92 303 5650362</a></p>
-            <p style='font-size:13px;color:#0a5240;line-height:1.6;margin:0 0 8px'><strong>Once we confirm your payment, your account will be reactivated automatically</strong> and your listings will go live again.</p>
-            <p style='font-size:12px;color:#aaa;margin:24px 0 0'>— Art Bazaar Team</p>
-        </div>";
+        $mail->Body = emailShell(
+            'Monthly fee unpaid &mdash; account paused',
+            "<p style='font-size:14px;color:#444;line-height:1.6;margin:0 0 16px'>Hello {$safeName},</p>
+             <p style='font-size:14px;color:#444;line-height:1.6;margin:0 0 16px'>Your Rs 50 monthly artist fee for <strong>{$periodLabel}</strong> hasn't been received yet, so your Art Bazaar account has been temporarily paused and your artwork is no longer visible to buyers.</p>"
+            . paymentInstructionsBlock(qrImgTag($mail)) .
+            "<p style='font-size:13px;color:#0a5240;line-height:1.6;margin:0 0 8px'><strong>Once we confirm your payment, your account will be reactivated automatically</strong> and your listings will go live again.</p>"
+        );
+
         $mail->send();
         return true;
     } catch (Exception $e) {
         error_log('Art Bazaar payment-due email failed for ' . $toEmail . ': ' . $e->getMessage());
+        resetMailerConnection();
         return false;
     }
 }
 
-// ── Payment reminder email (sent in bulk to unpaid artists; does NOT pause the account) ──
+// ── Payment reminder email (bulk to unpaid artists; does NOT pause the account) ──
 function sendPaymentReminderEmail(string $toEmail, string $toName, string $periodLabel): bool {
-    $mail = new PHPMailer(true);
     try {
-        $mail->isSMTP();
-        $mail->Host       = 'smtp-relay.brevo.com';
-        $mail->SMTPAuth   = true;
-        $mail->Username   = $_ENV['BREVO_SMTP_USERNAME'];
-        $mail->Password   = $_ENV['BREVO_SMTP_PASSWORD'];
-        $mail->SMTPSecure = 'tls';
-        $mail->Port       = 587;
-        $mail->setFrom('teamartbazaar.pk@gmail.com', 'Art Bazaar');
-        $mail->addReplyTo('teamartbazaar.pk@gmail.com', 'Art Bazaar');
+        $mail = getMailer();
         $mail->addAddress($toEmail, $toName);
-        $mail->isHTML(true);
-        $mail->CharSet = 'UTF-8';
 
-        // Embed the JazzCash QR code inline so it shows directly in the email body
-        $qrPath = __DIR__ . '/../../uploads/payment-qr.jpeg';
-        $hasQr  = file_exists($qrPath);
-        if ($hasQr) {
-            $mail->addEmbeddedImage($qrPath, 'paymentqr', 'payment-qr.jpeg');
-        }
-        $qrImgTag = $hasQr
-            ? "<img src='cid:paymentqr' alt='JazzCash QR code' style='width:220px;height:auto;display:block;margin:16px auto;border:1px solid #ddd;border-radius:8px'>"
-            : '';
-
+        $safeName = htmlspecialchars($toName, ENT_QUOTES, 'UTF-8');
         $mail->Subject = 'Reminder: Art Bazaar Monthly Fee Due — ' . $periodLabel;
         $mail->AltBody = "Hi $toName, this is a reminder that your Art Bazaar monthly artist fee (Rs 50) for $periodLabel hasn't been received yet. Pay Rs 50 via JazzCash to 0303 5650362 (Artbazaar, JazzCash Business, Mobilink Microfinance Bank), then send the payment screenshot on WhatsApp to +92 303 5650362.";
-        $mail->Body = "
-        <div style='font-family:sans-serif;max-width:460px;margin:auto;padding:32px;background:#fff;border-radius:12px'>
-            <p style='font-size:13px;color:#555;margin:0 0 8px'>Art Bazaar</p>
-            <h2 style='font-size:24px;font-weight:400;color:#0a0a0a;margin:0 0 16px;font-family:Georgia,serif'>Reminder: monthly fee due</h2>
-            <p style='font-size:14px;color:#444;line-height:1.6;margin:0 0 16px'>Hello {$toName},</p>
-            <p style='font-size:14px;color:#444;line-height:1.6;margin:0 0 16px'>This is a friendly reminder that your Rs 50 monthly artist fee for <strong>{$periodLabel}</strong> hasn't been received yet.</p>
-            <p style='font-size:14px;color:#444;line-height:1.6;margin:0 0 8px'><strong>How to pay:</strong></p>
-            {$qrImgTag}
-            <p style='font-size:14px;color:#444;line-height:1.6;margin:0 0 4px'>Send Rs 50 via JazzCash to:</p>
-            <p style='font-size:16px;color:#0a0a0a;font-weight:600;margin:0 0 4px'>0303 5650362</p>
-            <p style='font-size:12px;color:#888;margin:0 0 16px'>Artbazaar &mdash; JazzCash Business &mdash; Mobilink Microfinance Bank</p>
-            <p style='font-size:14px;color:#444;line-height:1.6;margin:0 0 16px'>After paying, please send a screenshot of the payment on WhatsApp so we can confirm it:</p>
-            <p style='font-size:16px;color:#0a0a0a;font-weight:600;margin:0 0 24px'><a href='https://wa.me/923035650362' style='color:#0a0a0a;text-decoration:none'>+92 303 5650362</a></p>
-            <p style='font-size:12px;color:#aaa;margin:24px 0 0'>— Art Bazaar Team</p>
-        </div>";
+        $mail->Body = emailShell(
+            'Reminder: monthly fee due',
+            "<p style='font-size:14px;color:#444;line-height:1.6;margin:0 0 16px'>Hello {$safeName},</p>
+             <p style='font-size:14px;color:#444;line-height:1.6;margin:0 0 16px'>This is a friendly reminder that your Rs 50 monthly artist fee for <strong>{$periodLabel}</strong> hasn't been received yet.</p>"
+            . paymentInstructionsBlock(qrImgTag($mail))
+        );
+
         $mail->send();
         return true;
     } catch (Exception $e) {
         error_log('Art Bazaar payment-reminder email failed for ' . $toEmail . ': ' . $e->getMessage());
+        resetMailerConnection();
         return false;
     }
 }
 
 // ── Reactivation email (sent when a paused artist is marked as paid) ──
 function sendPaymentReactivatedEmail(string $toEmail, string $toName): bool {
-    $mail = new PHPMailer(true);
     try {
-        $mail->isSMTP();
-        $mail->Host       = 'smtp-relay.brevo.com';
-        $mail->SMTPAuth   = true;
-        $mail->Username   = $_ENV['BREVO_SMTP_USERNAME'];
-        $mail->Password   = $_ENV['BREVO_SMTP_PASSWORD'];
-        $mail->SMTPSecure = 'tls';
-        $mail->Port       = 587;
-        $mail->setFrom('teamartbazaar.pk@gmail.com', 'Art Bazaar');
-        $mail->addReplyTo('teamartbazaar.pk@gmail.com', 'Art Bazaar');
+        $mail = getMailer();
         $mail->addAddress($toEmail, $toName);
-        $mail->isHTML(true);
-        $mail->CharSet = 'UTF-8';
+
+        $safeName = htmlspecialchars($toName, ENT_QUOTES, 'UTF-8');
         $mail->Subject = 'Payment Received — Your Art Bazaar Account Is Active Again';
         $mail->AltBody = "Hi $toName, we've confirmed your monthly fee payment. Your Art Bazaar account is active again and your listings are visible to buyers.";
-        $mail->Body = "
-            <p>Hello {$toName},</p>
-            <p>We've confirmed your monthly fee payment — your Art Bazaar account is <strong>active again</strong> and your listings are visible to buyers.</p>
-            <p>Thanks for staying on top of it!</p>
-            <p>— Art Bazaar Team</p>";
+        $mail->Body = emailShell(
+            'Payment received &mdash; account active',
+            "<p style='font-size:14px;color:#444;line-height:1.6;margin:0 0 16px'>Hello {$safeName},</p>
+             <p style='font-size:14px;color:#444;line-height:1.6;margin:0 0 16px'>We've confirmed your monthly fee payment &mdash; your Art Bazaar account is <strong>active again</strong> and your listings are visible to buyers.</p>
+             <p style='font-size:14px;color:#444;line-height:1.6;margin:0 0 16px'>Thanks for staying on top of it!</p>"
+        );
+
         $mail->send();
         return true;
     } catch (Exception $e) {
         error_log('Art Bazaar reactivation email failed for ' . $toEmail . ': ' . $e->getMessage());
+        resetMailerConnection();
         return false;
     }
 }
 
-// ── Pause (block) an artist for non-payment and notify them ──
+// ── Pause (block) a single artist for non-payment and notify them ──
 function blockArtistForNonPayment($conn, int $id, string $periodLabel): void {
-    $row = $conn->query("SELECT email, name FROM users WHERE id = $id AND role = 'artist'")->fetch_assoc();
+    $stmt = $conn->prepare("SELECT email, name FROM users WHERE id = ? AND role = 'artist'");
+    $stmt->bind_param('i', $id);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
     if (!$row) return;
+
     $reason = "Monthly Rs 50 artist fee unpaid for {$periodLabel}. Pay and send the payment screenshot on WhatsApp to be reactivated.";
     $stmt = $conn->prepare("UPDATE users SET status='blocked', status_reason=?, status_reason_set_at=NOW() WHERE id=? AND role='artist'");
     $stmt->bind_param('si', $reason, $id);
     $stmt->execute();
+
     if (!sendPaymentDueEmail($row['email'], $row['name'], $periodLabel)) {
         error_log('Payment-due email NOT sent for user_id=' . $id . ', email=' . $row['email']);
     }
 }
 
-// ── If an artist was paused/pending, reactivate them and notify (called when marked paid) ──
+// ── If an artist was paused/pending, reactivate them and notify ──
 function reactivateArtistIfNeeded($conn, int $id): void {
-    $row = $conn->query("SELECT email, name, status FROM users WHERE id = $id AND role = 'artist'")->fetch_assoc();
+    $stmt = $conn->prepare("SELECT email, name, status FROM users WHERE id = ? AND role = 'artist'");
+    $stmt->bind_param('i', $id);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
     if (!$row) return;
+
     if (in_array($row['status'], ['blocked', 'pending'], true)) {
-        $conn->query("UPDATE users SET status='active', status_reason=NULL, status_reason_set_at=NULL, activated_at=NOW() WHERE id={$id} AND role='artist'");
+        $stmt = $conn->prepare("UPDATE users SET status='active', status_reason=NULL, status_reason_set_at=NULL, activated_at=NOW() WHERE id=? AND role='artist'");
+        $stmt->bind_param('i', $id);
+        $stmt->execute();
+
         if (!sendPaymentReactivatedEmail($row['email'], $row['name'])) {
             error_log('Reactivation email NOT sent for user_id=' . $id . ', email=' . $row['email']);
         }
@@ -180,12 +209,8 @@ $unreadMessageCount     = (int) ($conn->query("SELECT COUNT(*) FROM contact_mess
 
 $adminId   = (int)$_SESSION['user_id'];
 $adminName = $_SESSION['name'] ?? 'Admin';
-$toast     = '';
 
 // ── Make sure a row exists for every active artist for the requested period ──
-// This is what gives the "automatic monthly reset": as soon as anyone opens
-// this page after the 1st, new unpaid rows get created for the new month.
-// Old months are NEVER touched or deleted, so full history is kept.
 function ensurePeriodRows($conn, $period) {
     $stmt = $conn->prepare("
         INSERT IGNORE INTO artist_payments (artist_id, period, amount, status)
@@ -213,28 +238,65 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->bind_param('iis', $adminId, $id, $period);
                 $stmt->execute();
                 reactivateArtistIfNeeded($conn, $id);
-                $toast = 'Marked as paid.';
+                resetMailerConnection();
+                $_SESSION['toast'] = 'Marked as paid.';
             } else {
                 $stmt = $conn->prepare("UPDATE artist_payments SET status='unpaid', paid_by=NULL, paid_at=NULL WHERE artist_id=? AND period=?");
                 $stmt->bind_param('is', $id, $period);
                 $stmt->execute();
                 blockArtistForNonPayment($conn, $id, periodLabel($period));
-                $toast = 'Marked as unpaid — artist paused and notified by email.';
+                resetMailerConnection();
+                $_SESSION['toast'] = 'Marked as unpaid — artist paused and notified by email.';
             }
         }
     }
 
     if ($action === 'block_unpaid_bulk') {
+        set_time_limit(0);
+        ignore_user_abort(true);
+
         $ids = array_filter(array_map('intval', explode(',', $_POST['ids'] ?? '')));
         if ($ids) {
-            foreach ($ids as $aid) {
-                blockArtistForNonPayment($conn, $aid, periodLabel($period));
+            $placeholders = implode(',', array_fill(0, count($ids), '?'));
+            $label  = periodLabel($period);
+            $reason = "Monthly Rs 50 artist fee unpaid for {$label}. Pay and send the payment screenshot on WhatsApp to be reactivated.";
+
+            // One UPDATE for everyone, instead of one per artist.
+            $stmt = $conn->prepare("
+                UPDATE users
+                SET status='blocked', status_reason=?, status_reason_set_at=NOW()
+                WHERE role='artist' AND id IN ($placeholders)
+            ");
+            $stmt->bind_param('s' . str_repeat('i', count($ids)), $reason, ...$ids);
+            $stmt->execute();
+
+            // Then fetch all addresses in one query and email over one connection.
+            $stmt = $conn->prepare("SELECT id, email, name FROM users WHERE role='artist' AND id IN ($placeholders)");
+            $stmt->bind_param(str_repeat('i', count($ids)), ...$ids);
+            $stmt->execute();
+            $recipients = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+
+            $sent = 0; $failed = 0;
+            foreach ($recipients as $row) {
+                if (sendPaymentDueEmail($row['email'], $row['name'], $label)) {
+                    $sent++;
+                } else {
+                    $failed++;
+                    error_log('Payment-due email NOT sent for user_id=' . $row['id']);
+                }
+                usleep(150000); // 0.15s — stay under Brevo's per-second relay limit
             }
-            $toast = count($ids) . ' unpaid artist(s) paused and notified by email.';
+            resetMailerConnection();
+
+            $_SESSION['toast'] = count($ids) . ' unpaid artist(s) paused. '
+                . "$sent notified by email." . ($failed ? " $failed failed — check logs." : '');
         }
     }
 
     if ($action === 'notify_all_unpaid') {
+        set_time_limit(0);
+        ignore_user_abort(true);
+
         $stmt = $conn->prepare("
             SELECT u.id, u.email, u.name
             FROM artist_payments ap
@@ -243,23 +305,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ");
         $stmt->bind_param('s', $period);
         $stmt->execute();
-        $unpaidRes = $stmt->get_result();
-        $sent = 0;
-        $failed = 0;
+
+        // Pull the whole result set first so the DB cursor isn't held open
+        // for the entire duration of the SMTP loop.
+        $recipients = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+
+        $sent = 0; $failed = 0;
         $label = periodLabel($period);
-        while ($row = $unpaidRes->fetch_assoc()) {
+
+        foreach ($recipients as $row) {
             if (sendPaymentReminderEmail($row['email'], $row['name'], $label)) {
                 $sent++;
             } else {
                 $failed++;
             }
+            usleep(150000);
         }
-        $toast = $sent === 0 && $failed === 0
+        resetMailerConnection();
+
+        $_SESSION['toast'] = ($sent === 0 && $failed === 0)
             ? 'No unpaid artists found for this period.'
-            : "Reminder email sent to $sent unpaid artist(s)." . ($failed ? " $failed failed to send — check logs." : '');
+            : "Reminder email sent to $sent unpaid artist(s)."
+              . ($failed ? " $failed failed to send — check logs." : '');
     }
 
     if ($action === 'mark_paid_bulk') {
+        set_time_limit(0);
+        ignore_user_abort(true);
+
         $ids = array_filter(array_map('intval', explode(',', $_POST['ids'] ?? '')));
         if ($ids) {
             $placeholders = implode(',', array_fill(0, count($ids), '?'));
@@ -268,13 +341,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt = $conn->prepare("UPDATE artist_payments SET status='paid', paid_by=?, paid_at=NOW() WHERE period=? AND artist_id IN ($placeholders)");
             $stmt->bind_param($types, ...$params);
             $stmt->execute();
+
             foreach ($ids as $aid) {
                 reactivateArtistIfNeeded($conn, $aid);
+                usleep(150000);
             }
-            $toast = count($ids) . ' artist(s) marked as paid.';
+            resetMailerConnection();
+
+            $_SESSION['toast'] = count($ids) . ' artist(s) marked as paid.';
         }
     }
+
+    // ── Post/Redirect/Get ────────────────────────────────
+    // Without this, refreshing the page re-submits the form and
+    // re-sends every email again.
+    $qs = $_GET;
+    $qs['period'] = $period;
+    header('Location: payments.php?' . http_build_query($qs));
+    exit;
 }
+
+// ── Toast carried over from the redirect ────────────────
+$toast = $_SESSION['toast'] ?? '';
+unset($_SESSION['toast']);
 
 // ── Filters ─────────────────────────────────────────────
 $period       = $_GET['period'] ?? $currentPeriod;
@@ -357,10 +446,6 @@ $periods = [];
 $pres = $conn->query("SELECT DISTINCT period FROM artist_payments ORDER BY period DESC");
 while ($p = $pres->fetch_assoc()) $periods[] = $p['period'];
 if (!in_array($currentPeriod, $periods)) array_unshift($periods, $currentPeriod);
-
-function periodLabel($p) {
-    return date('F Y', strtotime($p . '-01'));
-}
 
 function buildQS2($overrides = []) {
     $q = $_GET;
