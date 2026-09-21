@@ -1,5 +1,4 @@
 <?php
-session_start();
 require_once __DIR__ . '/config/db.php';
 $isLoggedIn = isset($_SESSION['user_id']);
 

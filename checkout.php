@@ -1,5 +1,4 @@
 <?php
-session_start();
 require_once __DIR__ . '/config/db.php';
 
 // ── Determine checkout flow early (the guest gate below needs it) ──
