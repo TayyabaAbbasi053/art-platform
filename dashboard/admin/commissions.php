@@ -1,5 +1,4 @@
 <?php
-session_start();
 require_once __DIR__ . '/../../config/db.php';
 require_once __DIR__ . '/../../config/smartlane.php';
 use PHPMailer\PHPMailer\PHPMailer;
@@ -1304,7 +1303,7 @@ ${cr.status==='processing'&&!isDigital&&!cr.tracking_number?`<div style="backgro
     `;
 
     document.getElementById('detailModal').classList.add('open');
-    loadMessages(cr.id,true);
+    loadMessages(cr.id);
     if(messageRefreshInterval)clearInterval(messageRefreshInterval);
     messageRefreshInterval=setInterval(()=>{if(currentCommissionId&&document.getElementById('detailModal').classList.contains('open'))loadMessages(currentCommissionId);else if(!document.getElementById('detailModal').classList.contains('open')){clearInterval(messageRefreshInterval);messageRefreshInterval=null;}},5000);
 }
@@ -1323,9 +1322,9 @@ function unassignArtist(cid){if(confirm('Remove artist?')){const f=document.crea
 
 function closeArtistSelector(){document.getElementById('artistSelectorModal').classList.remove('open');document.getElementById('artistSearchInput').value='';document.getElementById('styleFilterSelect').value='';selectedArtistIdForAssignment=null;}
 
-function loadMessages(oid,forceScroll){const c0=document.getElementById(`chatMessages-${oid}`);const wasNearBottom=c0?(c0.scrollHeight-c0.scrollTop-c0.clientHeight<80):true;fetch(`commissions.php?action=get_messages&order_id=${oid}`).then(r=>r.json()).then(d=>{const c=document.getElementById(`chatMessages-${oid}`);if(!c)return;if(!d.messages||!d.messages.length){c.innerHTML='<div style="text-align:center;padding:20px;color:var(--grey4);">No messages yet.</div>';return;}const prevScrollTop=c.scrollTop;const prevScrollHeight=c.scrollHeight;let h='';d.messages.forEach(m=>{const rc=m.sender_role==='admin'?'admin':(m.sender_role==='artist'?'artist':'buyer');const t=new Date(m.created_at).toLocaleString();const img=(m.message_type==='image'&&m.attachment_path)?`<img src="../../${esc(m.attachment_path)}" alt="Attachment" style="max-width:220px;border-radius:8px;display:block;margin-bottom:${m.message?'6px':'0'};">`:'';const bubble=m.message?`<div class="message-bubble">${esc(m.message)}</div>`:'';h+=`<div class="message ${rc}" data-msg-id="${m.id}">${img}${bubble}<div class="message-meta"><span>${esc(m.sender_name_display || m.sender_name)}</span><span>·</span><span>${t}</span><button class="delete-msg" onclick="deleteMessage(${m.id},${oid})">Delete</button></div></div>`;});c.innerHTML=h;if(forceScroll||wasNearBottom){c.scrollTop=c.scrollHeight;}else{c.scrollTop=prevScrollTop+(c.scrollHeight-prevScrollHeight);}}).catch(e=>console.error(e));}
+function loadMessages(oid){fetch(`commissions.php?action=get_messages&order_id=${oid}`).then(r=>r.json()).then(d=>{const c=document.getElementById(`chatMessages-${oid}`);if(!c)return;if(!d.messages||!d.messages.length){c.innerHTML='<div style="text-align:center;padding:20px;color:var(--grey4);">No messages yet.</div>';return;}let h='';d.messages.forEach(m=>{const rc=m.sender_role==='admin'?'admin':(m.sender_role==='artist'?'artist':'buyer');const t=new Date(m.created_at).toLocaleString();const img=(m.message_type==='image'&&m.attachment_path)?`<img src="../../${esc(m.attachment_path)}" alt="Attachment" style="max-width:220px;border-radius:8px;display:block;margin-bottom:${m.message?'6px':'0'};">`:'';const bubble=m.message?`<div class="message-bubble">${esc(m.message)}</div>`:'';h+=`<div class="message ${rc}" data-msg-id="${m.id}">${img}${bubble}<div class="message-meta"><span>${esc(m.sender_name_display || m.sender_name)}</span><span>·</span><span>${t}</span><button class="delete-msg" onclick="deleteMessage(${m.id},${oid})">Delete</button></div></div>`;});c.innerHTML=h;c.scrollTop=c.scrollHeight;}).catch(e=>console.error(e));}
 
-function sendMessage(oid){const inp=document.getElementById(`chatInput-${oid}`);const msg=inp.value.trim();if(!msg)return;fetch('commissions.php',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:`action=send_message&commission_id=${oid}&message=${encodeURIComponent(msg)}`}).then(()=>{inp.value='';loadMessages(oid,true);}).catch(e=>console.error(e));}
+function sendMessage(oid){const inp=document.getElementById(`chatInput-${oid}`);const msg=inp.value.trim();if(!msg)return;fetch('commissions.php',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:`action=send_message&commission_id=${oid}&message=${encodeURIComponent(msg)}`}).then(()=>{inp.value='';loadMessages(oid);}).catch(e=>console.error(e));}
 
 function deleteMessage(mid,oid){if(!confirm('Delete this message?'))return;fetch('commissions.php',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:`action=delete_message&message_id=${mid}`}).then(()=>loadMessages(oid)).catch(e=>console.error(e));}
 
