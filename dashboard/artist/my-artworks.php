@@ -159,6 +159,9 @@ if (isset($_GET['msg'])) {
     if ($_GET['msg'] === 'uploaded') $successMsg = 'Artwork uploaded and live on the marketplace!';
     if ($_GET['msg'] === 'deleted') $successMsg = 'Artwork deleted successfully.';
     if ($_GET['msg'] === 'answered') $successMsg = 'Reply posted successfully!';
+    if ($_GET['msg'] === 'updated') $successMsg = 'Artwork updated successfully.';
+    if ($_GET['msg'] === 'cannotedit') $errorMsg = "That artwork can't be edited because it's already sold.";
+    if ($_GET['msg'] === 'notfound') $errorMsg = 'That artwork could not be found.';
 }
 ?>
 <!DOCTYPE html>
@@ -275,6 +278,7 @@ tr:hover td { background: var(--sand); }
 .pill.active   { background: var(--ink); color: var(--bg); }
 .pill.sold     { background: var(--sand); color: var(--ink); }
 .pill.hidden   { background: var(--sand); color: var(--ink); border: 1px solid var(--ink); }
+.pill.pending  { background: var(--sand); color: var(--ink); border: 1px dashed var(--ink); }
 
 /* ── Rejection Reason ───────────────────────────────── */
 .reject-reason { 
@@ -461,6 +465,13 @@ tr:hover td { background: var(--sand); }
         </div>
     <?php endif; ?>
 
+    <?php if ($errorMsg): ?>
+        <div class="msg">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <?= htmlspecialchars($errorMsg) ?>
+        </div>
+    <?php endif; ?>
+
     <!-- Q&A Questions Panel -->
     <div class="qa-panel">
         <div class="qa-panel-header" onclick="this.nextElementSibling.classList.toggle('open'); this.querySelector('svg').style.transform = this.nextElementSibling.classList.contains('open') ? 'rotate(180deg)' : ''">
@@ -555,6 +566,15 @@ tr:hover td { background: var(--sand); }
                             </td>
                             <td>
                                 <div class="actions">
+                                    <?php if ($art['status'] !== 'sold'): ?>
+                                        <a href="edit-artwork.php?id=<?= $art['id'] ?>" class="icon-btn" title="Edit">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                        </a>
+                                    <?php else: ?>
+                                        <span class="icon-btn" style="opacity:.35;cursor:default;" title="Sold artworks can't be edited">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                        </span>
+                                    <?php endif; ?>
                                     <a href="?delete=<?= $art['id'] ?>" class="icon-btn danger" title="Delete" onclick="return confirm('Are you sure you want to permanently delete this artwork? This cannot be undone.')">
                                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
                                     </a>
