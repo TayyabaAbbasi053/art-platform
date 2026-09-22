@@ -77,6 +77,18 @@ while ($row = $itemResult->fetch_assoc()) {
     ? (($order['delivery_type'] ?? '') === 'digital')
     : (!empty($items) && ($items[0]['delivery_type'] ?? '') === 'digital');
 
+// ── Build shipping address display string ─────────────────
+// Prefer the split house_no/street/landmark columns; fall back to the
+// legacy combined shipping_address for orders placed before the migration.
+$shippingAddressParts = array_filter([
+    $order['shipping_house_no'] ?? '',
+    $order['shipping_street'] ?? '',
+    $order['shipping_landmark'] ?? '',
+], fn($v) => trim((string)$v) !== '');
+$shippingAddressDisplay = $shippingAddressParts
+    ? implode(', ', $shippingAddressParts)
+    : ($order['shipping_address'] ?? '');
+
 // ── Fetch order status history ───────────────────────────
  $history = [];
  $histQuery = $conn->prepare("
@@ -610,7 +622,7 @@ img{max-width:100%;display:block;}
     <?php if (!$isDigitalOrder): ?>
     <div class="info-card">
       <div class="info-label">Shipping Address</div>
-      <div class="info-value"><?= htmlspecialchars($order['shipping_address']) ?>, <?= htmlspecialchars($order['shipping_city']) ?></div>
+      <div class="info-value"><?= htmlspecialchars($shippingAddressDisplay) ?>, <?= htmlspecialchars($order['shipping_city']) ?></div>
     </div>
     <?php endif; ?>
   </div>

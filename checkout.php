@@ -347,8 +347,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_save_draft'])) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
     $fullName = trim($_POST['full_name'] ?? '');
     $guestEmail = $isGuest ? trim($_POST['email'] ?? '') : $buyerEmail;
-    $address = $isDigitalCartCheckout ? '' : trim($_POST['address'] ?? '');
+    $houseNo  = $isDigitalCartCheckout ? '' : trim($_POST['house_no'] ?? '');
+    $street   = $isDigitalCartCheckout ? '' : trim($_POST['street'] ?? '');
+    $landmark = $isDigitalCartCheckout ? '' : trim($_POST['landmark'] ?? '');
     $city = $isDigitalCartCheckout ? '' : trim($_POST['city'] ?? '');
+    // Combined single-line form kept for the legacy shipping_address / address_line1
+    // columns, so anything still reading those (admin views, emails) keeps working.
+    $address = $isDigitalCartCheckout ? '' : trim(implode(', ', array_filter([$houseNo, $street, $landmark, $city], fn($v) => $v !== '')));
     $phone = trim($_POST['phone'] ?? '');
     $paymentMethod = $_POST['payment_method'] ?? 'jazzcash';
     $saveAddress = isset($_POST['save_address']) ? 1 : 0;
@@ -390,8 +395,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
             }
         }
         
-        if (!$fullName || !$phone || (!$isDigitalCartCheckout && !$address) || ($isGuest && !$guestEmail)) {
+        if (!$fullName || !$phone || ($isGuest && !$guestEmail)) {
             $orderError = 'Please fill in all required fields.';
+        } elseif (!$isDigitalCartCheckout && !$street) {
+            $orderError = 'Street / Area is required.';
+        } elseif (!$isDigitalCartCheckout && !$houseNo && !$landmark) {
+            $orderError = 'Please provide either a House/Plot No. or a nearby Landmark.';
         } elseif ($isGuest && !filter_var($guestEmail, FILTER_VALIDATE_EMAIL)) {
             $orderError = 'Please enter a valid email address.';
         } elseif (!in_array($paymentMethod, $allowedMethods)) {
@@ -439,12 +448,13 @@ if ($isCod && $finalTotal > 10000) {
                     $stmt = $conn->prepare("
     UPDATE orders SET 
         payment_method = ?, payment_screenshot = ?, shipping_address = ?, 
+        shipping_house_no = ?, shipping_street = ?, shipping_landmark = ?,
         shipping_city = ?, shipping_phone = ?, buyer_notes = ?,
         shipping_fee = ?, total = ?,
         updated_at = NOW() 
     WHERE id = ?
 ");
-$stmt->bind_param('ssssssddi', $paymentMethod, $screenshotPath, $address, $city, $phone, $notes, $finalShippingFee, $finalTotal, $orderId);
+$stmt->bind_param('sssssssssddi', $paymentMethod, $screenshotPath, $address, $houseNo, $street, $landmark, $city, $phone, $notes, $finalShippingFee, $finalTotal, $orderId);
                     $stmt->execute();
                     
                     $stmtStatusUpdate = $conn->prepare("UPDATE orders SET order_status = 'payment_review' WHERE id = ?");
@@ -471,16 +481,16 @@ $stmt->bind_param('ssssssddi', $paymentMethod, $screenshotPath, $address, $city,
                     $guestPhoneParam = $isGuest ? $phone : null;
 
                     $stmt = $conn->prepare("
-                        INSERT INTO orders (buyer_id, guest_name, guest_email, guest_phone, order_number, order_type, order_status, subtotal, shipping_fee, discount, total, payment_method, payment_status, payment_screenshot, shipping_address, shipping_city, shipping_phone, buyer_notes, created_at)
-                        VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+                        INSERT INTO orders (buyer_id, guest_name, guest_email, guest_phone, order_number, order_type, order_status, subtotal, shipping_fee, discount, total, payment_method, payment_status, payment_screenshot, shipping_address, shipping_house_no, shipping_street, shipping_landmark, shipping_city, shipping_phone, buyer_notes, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
                     ");
                     $stmt->bind_param(
-                        'isssssdddsssssss',
+                        'isssssdddssssssssss',
                         $buyerId, $guestNameParam, $guestEmailParam, $guestPhoneParam,
                         $orderNumber, $orderType,
                         $subtotal, $finalShippingFee, $finalTotal,
                         $paymentMethod, $initialPaymentStatus, $screenshotPath,
-                        $address, $city, $phone, $notes
+                        $address, $houseNo, $street, $landmark, $city, $phone, $notes
                     );
                     $stmt->execute();
                     $orderId = $conn->insert_id;
@@ -508,12 +518,12 @@ $stmt->bind_param('ssssssddi', $paymentMethod, $screenshotPath, $address, $city,
                 }
                 
                 if ($saveAddress && !$isDigitalCartCheckout && !$isGuest) {
-                    $checkAddr = $conn->prepare("SELECT id FROM buyer_addresses WHERE buyer_id = ? AND address_line1 = ? AND city = ?");
-                    $checkAddr->bind_param('iss', $buyerId, $address, $city);
+                    $checkAddr = $conn->prepare("SELECT id FROM buyer_addresses WHERE buyer_id = ? AND street = ? AND house_no = ? AND landmark = ? AND city = ?");
+                    $checkAddr->bind_param('issss', $buyerId, $street, $houseNo, $landmark, $city);
                     $checkAddr->execute();
                     if ($checkAddr->get_result()->num_rows === 0) {
-                        $stmtAddr = $conn->prepare("INSERT INTO buyer_addresses (buyer_id, address_line1, city, phone, is_default) VALUES (?, ?, ?, ?, 0)");
-                        $stmtAddr->bind_param('isss', $buyerId, $address, $city, $phone);
+                        $stmtAddr = $conn->prepare("INSERT INTO buyer_addresses (buyer_id, address_line1, house_no, street, landmark, city, phone, is_default) VALUES (?, ?, ?, ?, ?, ?, ?, 0)");
+                        $stmtAddr->bind_param('issssss', $buyerId, $address, $houseNo, $street, $landmark, $city, $phone);
                         $stmtAddr->execute();
                     }
                 }
@@ -844,12 +854,26 @@ img{max-width:100%;display:block;}
           <?php if (!$isDigitalCartCheckout && !empty($addresses)): ?>
           <div class="saved-addresses">
             <label style="display:block;font-size:11px;letter-spacing:.7px;text-transform:uppercase;color:var(--muted);margin-bottom:8px;">Select saved address</label>
-            <?php foreach ($addresses as $addr): ?>
-            <div class="address-option" onclick="selectAddress(this, '<?= htmlspecialchars($addr['address_line1']) ?>', '<?= htmlspecialchars($addr['city']) ?>', '<?= htmlspecialchars($addr['phone']) ?>')">
+            <?php foreach ($addresses as $addr):
+                $addrHouseNo  = $addr['house_no'] ?? '';
+                $addrStreet   = $addr['street'] ?? '';
+                $addrLandmark = $addr['landmark'] ?? '';
+                // Older saved rows only have the single-line address_line1 — fall
+                // back to that for display when the granular fields are empty.
+                $addrCombined = trim(implode(', ', array_filter([$addrHouseNo, $addrStreet, $addrLandmark], fn($v) => $v !== '')));
+                $addrDisplay  = $addrCombined !== '' ? $addrCombined : ($addr['address_line1'] ?? '');
+            ?>
+            <div class="address-option"
+                 data-house_no="<?= htmlspecialchars($addrHouseNo) ?>"
+                 data-street="<?= htmlspecialchars($addrStreet) ?>"
+                 data-landmark="<?= htmlspecialchars($addrLandmark) ?>"
+                 data-city="<?= htmlspecialchars($addr['city']) ?>"
+                 data-phone="<?= htmlspecialchars($addr['phone']) ?>"
+                 onclick="selectAddress(this)">
               <input type="radio" name="saved_address_radio" <?= $addr['is_default'] ? 'checked' : '' ?>>
               <div class="address-details">
                 <div class="address-name"><?= htmlspecialchars($buyerName) ?></div>
-                <div class="address-text"><?= htmlspecialchars($addr['address_line1']) ?>, <?= htmlspecialchars($addr['city']) ?></div>
+                <div class="address-text"><?= htmlspecialchars($addrDisplay) ?>, <?= htmlspecialchars($addr['city']) ?></div>
                 <div class="address-text">Phone: <?= htmlspecialchars($addr['phone']) ?></div>
               </div>
             </div>
@@ -877,11 +901,6 @@ img{max-width:100%;display:block;}
           <?php endif; ?>
           
           <?php if (!$isDigitalCartCheckout): ?>
-          <div class="form-group">
-            <label>Street Address <span>*</span></label>
-            <input type="text" name="address" id="address" placeholder="House / Building / Street" required>
-          </div>
-          
           <div class="form-row">
             <div class="form-group">
               <label>City <span>*</span></label>
@@ -892,9 +911,25 @@ img{max-width:100%;display:block;}
               </div>
             </div>
             <div class="form-group">
-              <label>Postal Code (Optional)</label>
-              <input type="text" name="postal_code" placeholder="e.g. 54000">
+              <label>Street / Area <span>*</span></label>
+              <input type="text" name="street" id="street" placeholder="e.g. Main Boulevard, Block F">
             </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>House / Plot No. <span style="text-transform:none;">(or add a landmark)</span></label>
+              <input type="text" name="house_no" id="house_no" placeholder="e.g. House 12-B">
+            </div>
+            <div class="form-group">
+              <label>Landmark <span style="text-transform:none;">(or add a house/plot no.)</span></label>
+              <input type="text" name="landmark" id="landmark" placeholder="e.g. Near City Park">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Postal Code (Optional)</label>
+            <input type="text" name="postal_code" placeholder="e.g. 54000">
           </div>
           
           <?php if (!$isGuest): ?>
@@ -1304,17 +1339,17 @@ formData.append('is_digital', isDigital ? '1' : '0');
         const radio = opt.querySelector('input');
         if (radio && radio.checked) {
             opt.classList.add('selected');
-            const textParts = opt.querySelector('.address-text')?.innerText.split(',') || [];
-            const address = textParts[0] || '';
-            const city = textParts[1]?.trim() || '';
-            const phoneEl = opt.querySelector('.address-text:last-child')?.innerText.replace('Phone: ', '') || '';
-            
-            document.getElementById('address').value = address;
-            if(city) {
-                document.getElementById('city').value = city;
-                if(!isCommission) fetchShipping(city);
+            const d = opt.dataset;
+
+            document.getElementById('house_no').value = d.house_no || '';
+            document.getElementById('street').value = d.street || '';
+            document.getElementById('landmark').value = d.landmark || '';
+            if (d.city) {
+                document.getElementById('citySearchInput').value = d.city;
+                document.getElementById('city').value = d.city;
+                if(!isCommission) fetchShipping(d.city);
             }
-            if(phoneEl) document.getElementById('phone').value = phoneEl;
+            if (d.phone) document.getElementById('phone').value = d.phone;
         }
     });
 });
@@ -1388,18 +1423,21 @@ function previewImage(event) {
   }
 }
 
-function selectAddress(element, address, city, phone) {
+function selectAddress(element) {
   document.querySelectorAll('.address-option').forEach(opt => opt.classList.remove('selected'));
   element.classList.add('selected');
-  
-  document.getElementById('address').value = address;
-  document.getElementById('citySearchInput').value = city;
-  document.getElementById('city').value = city;
-  document.getElementById('phone').value = phone;
-  
+
+  const d = element.dataset;
+  document.getElementById('house_no').value = d.house_no || '';
+  document.getElementById('street').value = d.street || '';
+  document.getElementById('landmark').value = d.landmark || '';
+  document.getElementById('citySearchInput').value = d.city || '';
+  document.getElementById('city').value = d.city || '';
+  document.getElementById('phone').value = d.phone || '';
+
   // A saved address is a definitive city too — skip the debounce.
   const cityEl = document.getElementById('city');
-  cityEl.dispatchEvent(new CustomEvent('city:selected', { bubbles: true, detail: { city } }));
+  cityEl.dispatchEvent(new CustomEvent('city:selected', { bubbles: true, detail: { city: d.city } }));
 }
 </script>
 </body>

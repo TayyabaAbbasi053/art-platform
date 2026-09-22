@@ -105,7 +105,8 @@ require_once __DIR__ . '/config/db.php';
  if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['edit'], $_GET['email'])) {
      $editEmailParam = trim($_GET['email']);
      $eStmt = $conn->prepare("SELECT u.id, u.name, u.email, u.phone,
-         p.bio, p.art_style, p.instagram_url, p.city, p.address,
+         p.bio, p.art_style, p.instagram_url, p.city,
+         p.address_house_no, p.address_street, p.address_landmark,
          p.has_bank_account, p.bank_name, p.bank_account_title, p.bank_account_number,
          p.has_easypaisa, p.easypaisa_name, p.easypaisa_number,
          p.has_jazzcash, p.jazzcash_name, p.jazzcash_number,
@@ -128,7 +129,9 @@ require_once __DIR__ . '/config/db.php';
              'art_style' => $existingRow['art_style'],
              'instagram_url' => $existingRow['instagram_url'],
              'city' => $existingRow['city'],
-             'address' => $existingRow['address'],
+             'house_no' => $existingRow['address_house_no'],
+             'street' => $existingRow['address_street'],
+             'landmark' => $existingRow['address_landmark'],
              'has_bank_account' => $existingRow['has_bank_account'] ? '1' : null,
              'bank_name' => $existingRow['bank_name'],
              'bank_account_title' => $existingRow['bank_account_title'],
@@ -187,8 +190,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $role     = $_POST['role'] ?? '';
 
     // new fields
-    $city = trim($_POST['city'] ?? '');
-    $address = trim($_POST['address'] ?? '');
+    $city     = trim($_POST['city'] ?? '');
+    $houseNo  = trim($_POST['house_no'] ?? '');
+    $street   = trim($_POST['street'] ?? '');
+    $landmark = trim($_POST['landmark'] ?? '');
+    // Address is "complete" when street + city are filled AND (house_no OR landmark) is filled.
+    // Mirrors the rule used by the DB migration / admin check query.
+    $addressComplete = ($street !== '' && $city !== '' && ($houseNo !== '' || $landmark !== '')) ? 1 : 0;
+    $addressCompletedAt = $addressComplete ? date('Y-m-d H:i:s') : null;
+    // Combine the granular fields into one string for the legacy `address` column —
+    // other pages still read `address` directly, so keep it in sync.
+    $addressCombined = implode(', ', array_filter([$houseNo, $street, $landmark, $city], fn($v) => $v !== ''));
     $hasBankAccount = isset($_POST['has_bank_account']) ? 1 : 0;
 $hasEasypaisa   = isset($_POST['has_easypaisa'])    ? 1 : 0;
 $hasJazzcash    = isset($_POST['has_jazzcash'])      ? 1 : 0;
@@ -225,8 +237,10 @@ $hasSadapay     = isset($_POST['has_sadapay'])       ? 1 : 0;
     $error = 'Art style is required.';
 } elseif ($role === 'artist' && !$city) {
     $error = 'City is required.';
-} elseif ($role === 'artist' && !$address) {
-    $error = 'Address is required.';
+} elseif ($role === 'artist' && !$street) {
+    $error = 'Street / Area is required.';
+} elseif ($role === 'artist' && !$houseNo && !$landmark) {
+    $error = 'Please provide either a House/Plot No. or a nearby Landmark.';
 } elseif ($role === 'artist' && !$hasBankAccount && !$hasEasypaisa && !$hasJazzcash && !$hasNayapay && !$hasSadapay) {
     $error = 'Please add at least one payment method.';
 } elseif ($role === 'artist' && $hasBankAccount && (!trim($_POST['bank_name'] ?? '') || !trim($_POST['bank_account_title'] ?? '') || !trim($_POST['bank_account_number'] ?? ''))) {
@@ -278,15 +292,19 @@ $hasSadapay     = isset($_POST['has_sadapay'])       ? 1 : 0;
 
                 $profile = $conn->prepare("INSERT INTO artist_profiles 
                     (user_id, bio, art_style, instagram_url, city, address,
+                     address_house_no, address_street, address_landmark, address_complete, address_completed_at,
                      has_bank_account, bank_name, bank_account_title, bank_account_number,
                      has_easypaisa, easypaisa_name, easypaisa_number,
                      has_jazzcash, jazzcash_name, jazzcash_number,
                      has_nayapay, nayapay_name, nayapay_number,
                      has_sadapay, sadapay_name, sadapay_number)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                     ON DUPLICATE KEY UPDATE
                      bio=VALUES(bio), art_style=VALUES(art_style), instagram_url=VALUES(instagram_url),
                      city=VALUES(city), address=VALUES(address),
+                     address_house_no=VALUES(address_house_no), address_street=VALUES(address_street),
+                     address_landmark=VALUES(address_landmark), address_complete=VALUES(address_complete),
+                     address_completed_at=VALUES(address_completed_at),
                      has_bank_account=VALUES(has_bank_account), bank_name=VALUES(bank_name),
                      bank_account_title=VALUES(bank_account_title), bank_account_number=VALUES(bank_account_number),
                      has_easypaisa=VALUES(has_easypaisa), easypaisa_name=VALUES(easypaisa_name), easypaisa_number=VALUES(easypaisa_number),
@@ -294,8 +312,9 @@ $hasSadapay     = isset($_POST['has_sadapay'])       ? 1 : 0;
                      has_nayapay=VALUES(has_nayapay), nayapay_name=VALUES(nayapay_name), nayapay_number=VALUES(nayapay_number),
                      has_sadapay=VALUES(has_sadapay), sadapay_name=VALUES(sadapay_name), sadapay_number=VALUES(sadapay_number)");
 
-                $profile->bind_param('isssssisssississississ',
-                    $userId, $bio_reg, $art_style_reg, $instagram_reg, $city, $address,
+                $profile->bind_param('issssssssisisssississississ',
+                    $userId, $bio_reg, $art_style_reg, $instagram_reg, $city, $addressCombined,
+                    $houseNo, $street, $landmark, $addressComplete, $addressCompletedAt,
                     $hasBankAccount, $bankName, $bankTitle, $bankNumber,
                     $hasEasypaisa, $epName, $epNum,
                     $hasJazzcash,  $jcName, $jcNum,
@@ -342,15 +361,19 @@ $hasSadapay     = isset($_POST['has_sadapay'])       ? 1 : 0;
 
                     $profile = $conn->prepare("INSERT INTO artist_profiles 
                         (user_id, bio, art_style, instagram_url, city, address,
+                         address_house_no, address_street, address_landmark, address_complete, address_completed_at,
                          has_bank_account, bank_name, bank_account_title, bank_account_number,
                          has_easypaisa, easypaisa_name, easypaisa_number,
                          has_jazzcash, jazzcash_name, jazzcash_number,
                          has_nayapay, nayapay_name, nayapay_number,
                          has_sadapay, sadapay_name, sadapay_number)
-                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                         ON DUPLICATE KEY UPDATE
                          bio=VALUES(bio), art_style=VALUES(art_style), instagram_url=VALUES(instagram_url),
                          city=VALUES(city), address=VALUES(address),
+                         address_house_no=VALUES(address_house_no), address_street=VALUES(address_street),
+                         address_landmark=VALUES(address_landmark), address_complete=VALUES(address_complete),
+                         address_completed_at=VALUES(address_completed_at),
                          has_bank_account=VALUES(has_bank_account), bank_name=VALUES(bank_name),
                          bank_account_title=VALUES(bank_account_title), bank_account_number=VALUES(bank_account_number),
                          has_easypaisa=VALUES(has_easypaisa), easypaisa_name=VALUES(easypaisa_name), easypaisa_number=VALUES(easypaisa_number),
@@ -358,8 +381,9 @@ $hasSadapay     = isset($_POST['has_sadapay'])       ? 1 : 0;
                          has_nayapay=VALUES(has_nayapay), nayapay_name=VALUES(nayapay_name), nayapay_number=VALUES(nayapay_number),
                          has_sadapay=VALUES(has_sadapay), sadapay_name=VALUES(sadapay_name), sadapay_number=VALUES(sadapay_number)");
 
-                    $profile->bind_param('isssssisssississississ',
-                        $userId, $bio_reg, $art_style_reg, $instagram_reg, $city, $address,
+                    $profile->bind_param('issssssssisisssississississ',
+                        $userId, $bio_reg, $art_style_reg, $instagram_reg, $city, $addressCombined,
+                        $houseNo, $street, $landmark, $addressComplete, $addressCompletedAt,
                         $hasBankAccount, $bankName, $bankTitle, $bankNumber,
                         $hasEasypaisa, $epName, $epNum,
                         $hasJazzcash,  $jcName, $jcNum,
@@ -477,8 +501,18 @@ $hasSadapay     = isset($_POST['has_sadapay'])       ? 1 : 0;
                         </div>
                     </div>
                     <div class="field">
-                        <label>Address</label>
-                        <input type="text" name="address" placeholder="Address" value="<?= htmlspecialchars($formData['address'] ?? '') ?>">
+                        <label>Street / Area</label>
+                        <input type="text" name="street" placeholder="e.g. Main Boulevard, Block F" value="<?= htmlspecialchars($formData['street'] ?? '') ?>">
+                    </div>
+                </div>
+                <div class="two-col">
+                    <div class="field">
+                        <label>House / Plot No. <span style="font-size:9px;color:#999;text-transform:none;letter-spacing:0">(or add a landmark)</span></label>
+                        <input type="text" name="house_no" placeholder="e.g. House 12-B" value="<?= htmlspecialchars($formData['house_no'] ?? '') ?>">
+                    </div>
+                    <div class="field">
+                        <label>Landmark <span style="font-size:9px;color:#999;text-transform:none;letter-spacing:0">(or add a house/plot no.)</span></label>
+                        <input type="text" name="landmark" placeholder="e.g. Near City Park" value="<?= htmlspecialchars($formData['landmark'] ?? '') ?>">
                     </div>
                 </div>
 
