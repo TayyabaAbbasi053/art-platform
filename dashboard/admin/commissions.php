@@ -126,6 +126,7 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
 
 // ── JSON endpoint for fetching messages ─────────────────
 if (isset($_GET['action']) && $_GET['action'] === 'get_messages') {
+    session_write_close();
     header('Content-Type: application/json');
     $orderId = (int)($_GET['order_id'] ?? 0);
     
@@ -149,39 +150,83 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_messages') {
     exit;
 }
 
-// ── JSON endpoint for fetching artists with style filter ─────────────────
+// ── JSON endpoint: paginated + searchable artist list ─────────────────────
+// Returns one small page at a time. Filtering happens in SQL, not in the browser.
 if (isset($_GET['action']) && $_GET['action'] === 'get_artists') {
+    session_write_close(); // release the session lock so this never queues behind other requests
     header('Content-Type: application/json');
-    $styleFilter = $_GET['style'] ?? '';
-    
-    $sql = "
-        SELECT u.id, u.name, u.profile_picture, 
-               ap.city, ap.art_style, ap.accepts_commissions,
-               (SELECT COUNT(*) FROM artworks WHERE artist_id = u.id AND status = 'approved') AS artwork_count
-        FROM users u
-        LEFT JOIN artist_profiles ap ON ap.user_id = u.id
-        WHERE u.role = 'artist' AND u.status = 'active'
-    ";
-    
-    if (!empty($styleFilter)) {
-        $sql .= " AND ap.art_style LIKE '%" . $conn->real_escape_string($styleFilter) . "%'";
+
+    $limit  = max(1, min(24, (int)($_GET['limit'] ?? 12)));
+    $offset = max(0, (int)($_GET['offset'] ?? 0));
+    $q      = trim((string)($_GET['q'] ?? ''));
+    $style  = trim((string)($_GET['style'] ?? ''));
+
+    try {
+        $where  = ["u.role = 'artist'", "u.status = 'active'"];
+        $types  = '';
+        $params = [];
+
+        if ($q !== '') {
+            $like    = '%' . addcslashes($q, '%_\\') . '%';
+            $where[] = '(u.name LIKE ? OR ap.city LIKE ?)';
+            $types  .= 'ss';
+            array_push($params, $like, $like);
+        }
+        if ($style !== '') {
+            $where[] = 'ap.art_style = ?';
+            $types  .= 's';
+            $params[] = $style;
+        }
+
+        // Fetch one extra row so we know if there is another page (no COUNT(*) needed)
+        $sql = "SELECT u.id, u.name, u.profile_picture,
+                       ap.city, ap.art_style, ap.accepts_commissions
+                FROM users u
+                LEFT JOIN artist_profiles ap ON ap.user_id = u.id
+                WHERE " . implode(' AND ', $where) . "
+                ORDER BY u.name ASC, u.id ASC
+                LIMIT ? OFFSET ?";
+        $types   .= 'ii';
+        $params[] = $limit + 1;
+        $params[] = $offset;
+
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param($types, ...$params);
+        $stmt->execute();
+        $rows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
+
+        $hasMore = count($rows) > $limit;
+        $rows    = array_slice($rows, 0, $limit);
+
+        // Artwork counts only for the artists on this page
+        $counts = [];
+        if ($rows) {
+            $ids = implode(',', array_map('intval', array_column($rows, 'id')));
+            $cr  = $conn->query("SELECT artist_id, COUNT(*) AS c FROM artworks
+                                 WHERE status = 'approved' AND artist_id IN ($ids)
+                                 GROUP BY artist_id");
+            if ($cr) while ($c = $cr->fetch_assoc()) $counts[(int)$c['artist_id']] = (int)$c['c'];
+        }
+        foreach ($rows as &$r) $r['artwork_count'] = $counts[(int)$r['id']] ?? 0;
+        unset($r);
+
+        $out = ['artists' => $rows, 'has_more' => $hasMore];
+
+        // Style dropdown options: only sent on the first request
+        if (isset($_GET['styles'])) {
+            $out['artStyles'] = [];
+            $sr = $conn->query("SELECT DISTINCT art_style FROM artist_profiles
+                                WHERE art_style IS NOT NULL AND art_style != '' ORDER BY art_style ASC");
+            if ($sr) while ($x = $sr->fetch_assoc()) $out['artStyles'][] = $x['art_style'];
+        }
+
+        echo json_encode($out);
+    } catch (Throwable $e) {
+        error_log('get_artists failed: ' . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(['artists' => [], 'has_more' => false, 'error' => 'Failed to load artists.']);
     }
-    
-    $sql .= " ORDER BY u.name ASC";
-    
-    $artistRes = $conn->query($sql);
-    $artists = [];
-    while ($row = $artistRes->fetch_assoc()) {
-        $artists[] = $row;
-    }
-    
-    $styleRes = $conn->query("SELECT DISTINCT art_style FROM artist_profiles WHERE art_style IS NOT NULL AND art_style != '' ORDER BY art_style ASC");
-    $artStyles = [];
-    while ($row = $styleRes->fetch_assoc()) {
-        $artStyles[] = $row['art_style'];
-    }
-    
-    echo json_encode(['artists' => $artists, 'artStyles' => $artStyles]);
     exit;
 }
 
@@ -856,6 +901,8 @@ tr:hover td{background:var(--grey1)}
 .order-detail-actions{grid-column:1 / -1;display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;padding-top:14px;border-top:1px solid var(--grey3)}
 .forward-btn{display:inline-flex;align-items:center;gap:6px;padding:9px 18px;background:var(--blue);color:white;border:none;border-radius:9px;font-size:12px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .15s}
 .forward-btn:hover{background:#0770c2}
+.forward-btn:active,.assign-button-modal:active{transform:scale(.95);filter:brightness(.92)}
+.forward-btn,.assign-button-modal{transition:transform .08s,filter .08s,background .15s;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 .forward-btn:disabled{background:var(--grey3);color:var(--grey4);cursor:not-allowed}
 .forward-btn svg{width:14px;height:14px}
 .save-price-btn,.save-delivery-btn{display:inline-flex;align-items:center;gap:5px;padding:8px 14px;color:white;border:none;border-radius:8px;font-size:11px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .15s}
@@ -925,8 +972,18 @@ tr:hover td{background:var(--grey1)}
 .assign-btn{background:var(--blue);color:white;border:none;padding:8px 16px;border-radius:8px;font-size:11px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-family:'DM Sans',sans-serif}
 .assign-btn:hover{background:#0770c2}
 .dash-footer{padding:20px 32px;border-top:1px solid #0C3F30;font-size:11px;color:#F6EDDE;margin-top:12px;background:#0C3F30}
-.artist-selector-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .2s}
+.artist-selector-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .12s}
 .artist-selector-overlay.open{opacity:1;pointer-events:auto}
+.artist-skel{background:var(--grey1);border-radius:12px;padding:0 0 14px;overflow:hidden}
+.artist-skel .sk-img{height:120px}
+.artist-skel .sk-line{height:11px;margin:12px 12px 0;border-radius:6px}
+.artist-skel .sk-btn{height:30px;margin:14px 12px 0;border-radius:8px}
+.artist-skel .w70{width:70%}.artist-skel .w45{width:45%}
+.artist-skel .sk-img,.artist-skel .sk-line,.artist-skel .sk-btn{background:linear-gradient(90deg,var(--grey2) 25%,var(--grey1) 50%,var(--grey2) 75%);background-size:200% 100%;animation:skShimmer 1.1s linear infinite}
+@keyframes skShimmer{from{background-position:200% 0}to{background-position:-200% 0}}
+.artist-sentinel{grid-column:1/-1;background:none;border:1px dashed var(--grey3);border-radius:10px;padding:12px;font-size:12px;color:var(--grey4);cursor:pointer;font-family:inherit}
+.artist-sentinel:hover{color:var(--black);border-color:var(--grey4)}
+@keyframes artistCardIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 .artist-selector-modal{background:var(--white);border-radius:20px;width:800px;max-width:95vw;max-height:85vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,.2)}
 .artist-selector-header{padding:20px 24px 16px;border-bottom:1px solid var(--grey2);display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;background:var(--white);z-index:1}
 .artist-selector-header h3{font-family:'Playfair Display',serif;font-size:18px;font-weight:400;color:var(--black)}
@@ -941,7 +998,7 @@ tr:hover td{background:var(--grey1)}
 .filter-clear{background:var(--grey1);border:1px solid var(--grey2);padding:6px 12px;border-radius:20px;font-size:11px;cursor:pointer;color:var(--grey5)}
 .filter-clear:hover{border-color:var(--terracotta);color:var(--terracotta)}
 .artist-grid-modal{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;padding:20px}
-.artist-card-modal{background:var(--grey1);border-radius:12px;overflow:hidden;border:2px solid transparent;transition:all .2s;position:relative}
+.artist-card-modal{content-visibility:auto;contain-intrinsic-size:auto 280px;animation:artistCardIn .28s ease both;background:var(--grey1);border-radius:12px;overflow:hidden;border:2px solid transparent;transition:all .2s;position:relative}
 .artist-card-modal:hover{transform:translateY(-2px);border-color:var(--terracotta);box-shadow:0 4px 12px rgba(0,0,0,.1)}
 .artist-card-modal.selected{border-color:var(--green);background:#E8F5EE}
 .artist-avatar-modal{width:100%;height:120px;object-fit:cover;background:var(--grey2);cursor:pointer}
@@ -1092,7 +1149,6 @@ const artistList = <?= json_encode($artistOptions, JSON_HEX_APOS | JSON_HEX_QUOT
 const validStatuses = <?= json_encode($validStatuses) ?>;
 let currentCommissionId = null;
 let messageRefreshInterval = null;
-let allArtists = [];
 let allArtStyles = [];
 let selectedArtistIdForAssignment = null;
 let budgetSaveTimer = null;
@@ -1308,19 +1364,122 @@ ${cr.status==='processing'&&!isDigital&&!cr.tracking_number?`<div style="backgro
     messageRefreshInterval=setInterval(()=>{if(currentCommissionId&&document.getElementById('detailModal').classList.contains('open'))loadMessages(currentCommissionId);else if(!document.getElementById('detailModal').classList.contains('open')){clearInterval(messageRefreshInterval);messageRefreshInterval=null;}},5000);
 }
 
-function openArtistSelector(cid){currentCommissionId=cid;const cr=commissionData.find(i=>i.id==cid);selectedArtistIdForAssignment=cr.artist_id||null;if(allArtists.length===0){fetch('commissions.php?action=get_artists').then(r=>r.json()).then(d=>{allArtists=d.artists;allArtStyles=d.artStyles||[];populateStyleFilter();renderArtistGrid();});}else{renderArtistGrid();}document.getElementById('artistSelectorModal').classList.add('open');}
-function populateStyleFilter(){const s=document.getElementById('styleFilterSelect');s.innerHTML='<option value="">All Art Styles</option>';allArtStyles.forEach(st=>{s.innerHTML+=`<option value="${esc(st)}">${esc(st)}</option>`;});}
 
-function renderArtistGrid(){const st=document.getElementById('artistSearchInput')?.value.toLowerCase()||'';const sf=document.getElementById('styleFilterSelect')?.value||'';let f=allArtists.filter(a=>a.name.toLowerCase().includes(st)||(a.city&&a.city.toLowerCase().includes(st)));if(sf)f=f.filter(a=>a.art_style&&a.art_style.toLowerCase()===sf.toLowerCase());const g=document.getElementById('artistGrid');if(!f.length){g.innerHTML='<div class="no-results">No artists found.</div>';return;}g.innerHTML=f.map(a=>{const pp=getProfileImageUrl(a.profile_picture);const isSel=selectedArtistIdForAssignment==a.id;const ac=a.artwork_count||0;return `<div class="artist-card-modal ${isSel?'selected':''}"><a href="artist-view.php?id=${a.id}" target="_blank" class="view-profile-link">${pp?`<img class="artist-avatar-modal" src="${pp}" alt="${esc(a.name)}" loading="lazy">`:`<div class="artist-avatar-placeholder-modal">${a.name.charAt(0).toUpperCase()}</div>`}</a><div class="artist-info-modal"><a href="artist-view.php?id=${a.id}" target="_blank" style="text-decoration:none;color:inherit;"><div class="artist-name-modal">${esc(a.name)}</div></a><div class="artist-city-modal">${a.city?esc(a.city):'Location not set'}</div>${a.art_style?`<div class="artist-style-modal">${esc(a.art_style)}</div>`:''}<div class="artist-stats-modal"><span>Artworks: ${ac}</span><span>${a.accepts_commissions?'Accepts':'Off'}</span></div><button class="assign-button-modal" onclick="selectArtist(${a.id})">Assign Artist</button></div></div>`;}).join('');}
+function artistCardHtml(a){const pp=getProfileImageUrl(a.profile_picture);const isSel=selectedArtistIdForAssignment==a.id;const ac=a.artwork_count||0;return `<div class="artist-card-modal ${isSel?'selected':''}"><a href="artist-view.php?id=${a.id}" target="_blank" class="view-profile-link">${pp?`<img class="artist-avatar-modal" src="${pp}" alt="${esc(a.name)}" loading="lazy" decoding="async" fetchpriority="low">`:`<div class="artist-avatar-placeholder-modal">${a.name.charAt(0).toUpperCase()}</div>`}</a><div class="artist-info-modal"><a href="artist-view.php?id=${a.id}" target="_blank" style="text-decoration:none;color:inherit;"><div class="artist-name-modal">${esc(a.name)}</div></a><div class="artist-city-modal">${a.city?esc(a.city):'Location not set'}</div>${a.art_style?`<div class="artist-style-modal">${esc(a.art_style)}</div>`:''}<div class="artist-stats-modal"><span>Artworks: ${ac}</span><span>${a.accepts_commissions?'Accepts':'Off'}</span></div><button class="assign-button-modal" onclick="selectArtist(${a.id})">Assign Artist</button></div></div>`;}
 
-function filterArtists(){renderArtistGrid();}
-function clearFilters(){document.getElementById('artistSearchInput').value='';document.getElementById('styleFilterSelect').value='';renderArtistGrid();}
+
+/* ───────── Artist selector: server-side search + paging (12 per request) ───────── */
+const ARTIST_PAGE_SIZE = 12;
+const artistState = { q: '', style: '', offset: 0, hasMore: false, loading: false, token: 0, ctrl: null, stylesLoaded: false };
+let artistFilterTimer = null;
+let artistObserver = null;
+
+function artistSkeletons(n) {
+    return Array.from({ length: n }, () => '<div class="artist-skel"><div class="sk-img"></div><div class="sk-line w70"></div><div class="sk-line w45"></div><div class="sk-btn"></div></div>').join('');
+}
+
+function populateStyleFilter() {
+    const sel = document.getElementById('styleFilterSelect');
+    sel.innerHTML = '<option value="">All Art Styles</option>' + allArtStyles.map(st => `<option value="${esc(st)}">${esc(st)}</option>`).join('');
+    sel.value = artistState.style;
+}
+
+function loadArtistPage(reset) {
+    const st = artistState, g = document.getElementById('artistGrid');
+    if (!reset && (st.loading || !st.hasMore)) return;
+
+    if (reset) {
+        if (st.ctrl) st.ctrl.abort();
+        st.offset = 0; st.hasMore = false;
+        g.innerHTML = artistSkeletons(6);
+        document.getElementById('artistSelectorModal').querySelector('.artist-selector-modal').scrollTop = 0;
+    }
+
+    const ctrl = new AbortController();
+    st.ctrl = ctrl; st.loading = true;
+    const token = ++st.token;
+
+    const p = new URLSearchParams({ action: 'get_artists', limit: ARTIST_PAGE_SIZE, offset: st.offset });
+    if (st.q) p.set('q', st.q);
+    if (st.style) p.set('style', st.style);
+    if (!st.stylesLoaded) p.set('styles', '1');
+
+    fetch('commissions.php?' + p.toString(), { signal: ctrl.signal })
+        .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+        .then(d => {
+            if (token !== st.token) return;
+            if (d.artStyles) { allArtStyles = d.artStyles; st.stylesLoaded = true; populateStyleFilter(); }
+            const list = (d.artists || []).map(a => ({ ...a, name: a.name || 'Unnamed artist' }));
+            if (reset) g.innerHTML = '';
+            const old = g.querySelector('.artist-sentinel'); if (old) old.remove();
+
+            if (reset && !list.length) { g.innerHTML = '<div class="no-results">No artists found.</div>'; st.hasMore = false; return; }
+
+            g.insertAdjacentHTML('beforeend', list.map(artistCardHtml).join(''));
+            st.offset += list.length;
+            st.hasMore = !!d.has_more;
+
+            if (st.hasMore) {
+                g.insertAdjacentHTML('beforeend', '<button type="button" class="artist-sentinel" onclick="loadArtistPage(false)">Load more artists</button>');
+                if (artistObserver) artistObserver.observe(g.querySelector('.artist-sentinel'));
+            }
+        })
+        .catch(e => {
+            if (e.name === 'AbortError') return;
+            console.error('get_artists failed:', e);
+            if (token === st.token) g.innerHTML = '<div class="no-results">Couldn\'t load artists. <button type="button" class="filter-clear" onclick="loadArtistPage(true)">Retry</button></div>';
+        })
+        .finally(() => { if (token === st.token) st.loading = false; });
+}
+
+function openArtistSelector(cid) {
+    document.getElementById('artistSelectorModal').classList.add('open'); // open instantly
+    currentCommissionId = cid;
+    const cr = commissionData.find(i => i.id == cid);
+    selectedArtistIdForAssignment = cr.artist_id || null;
+
+    if (!artistObserver && 'IntersectionObserver' in window) {
+        artistObserver = new IntersectionObserver(entries => {
+            if (entries.some(e => e.isIntersecting)) loadArtistPage(false);
+        }, { root: document.querySelector('#artistSelectorModal .artist-selector-modal'), rootMargin: '250px' });
+    }
+    artistState.q = ''; artistState.style = '';
+    document.getElementById('artistSearchInput').value = '';
+    document.getElementById('styleFilterSelect').value = '';
+    loadArtistPage(true);
+}
+
+function filterArtists() {
+    clearTimeout(artistFilterTimer);
+    artistFilterTimer = setTimeout(() => {
+        const q = document.getElementById('artistSearchInput').value.trim();
+        const style = document.getElementById('styleFilterSelect').value;
+        if (q === artistState.q && style === artistState.style) return; // nothing changed (e.g. arrow key)
+        artistState.q = q; artistState.style = style;
+        loadArtistPage(true);
+    }, 300);
+}
+
+function clearFilters() {
+    document.getElementById('artistSearchInput').value = '';
+    document.getElementById('styleFilterSelect').value = '';
+    artistState.q = ''; artistState.style = '';
+    loadArtistPage(true);
+}
+
+function closeArtistSelector() {
+    if (artistState.ctrl) artistState.ctrl.abort();
+    artistState.token++; artistState.loading = false;
+    document.getElementById('artistSelectorModal').classList.remove('open');
+    document.getElementById('artistSearchInput').value = '';
+    document.getElementById('styleFilterSelect').value = '';
+    selectedArtistIdForAssignment = null;
+}
 
 function selectArtist(aid){selectedArtistIdForAssignment=aid;const f=document.createElement('form');f.method='POST';f.style.display='none';const a1=document.createElement('input');a1.type='hidden';a1.name='action';a1.value='assign_artist';const a2=document.createElement('input');a2.type='hidden';a2.name='id';a2.value=currentCommissionId;const a3=document.createElement('input');a3.type='hidden';a3.name='artist_id';a3.value=aid;f.appendChild(a1);f.appendChild(a2);f.appendChild(a3);document.body.appendChild(f);f.submit();closeArtistSelector();}
 
 function unassignArtist(cid){if(confirm('Remove artist?')){const f=document.createElement('form');f.method='POST';f.style.display='none';const a1=document.createElement('input');a1.type='hidden';a1.name='action';a1.value='assign_artist';const a2=document.createElement('input');a2.type='hidden';a2.name='id';a2.value=cid;const a3=document.createElement('input');a3.type='hidden';a3.name='artist_id';a3.value='';f.appendChild(a1);f.appendChild(a2);f.appendChild(a3);document.body.appendChild(f);f.submit();}}
 
-function closeArtistSelector(){document.getElementById('artistSelectorModal').classList.remove('open');document.getElementById('artistSearchInput').value='';document.getElementById('styleFilterSelect').value='';selectedArtistIdForAssignment=null;}
 
 function loadMessages(oid){fetch(`commissions.php?action=get_messages&order_id=${oid}`).then(r=>r.json()).then(d=>{const c=document.getElementById(`chatMessages-${oid}`);if(!c)return;if(!d.messages||!d.messages.length){c.innerHTML='<div style="text-align:center;padding:20px;color:var(--grey4);">No messages yet.</div>';return;}let h='';d.messages.forEach(m=>{const rc=m.sender_role==='admin'?'admin':(m.sender_role==='artist'?'artist':'buyer');const t=new Date(m.created_at).toLocaleString();const img=(m.message_type==='image'&&m.attachment_path)?`<img src="../../${esc(m.attachment_path)}" alt="Attachment" style="max-width:220px;border-radius:8px;display:block;margin-bottom:${m.message?'6px':'0'};">`:'';const bubble=m.message?`<div class="message-bubble">${esc(m.message)}</div>`:'';h+=`<div class="message ${rc}" data-msg-id="${m.id}">${img}${bubble}<div class="message-meta"><span>${esc(m.sender_name_display || m.sender_name)}</span><span>·</span><span>${t}</span><button class="delete-msg" onclick="deleteMessage(${m.id},${oid})">Delete</button></div></div>`;});c.innerHTML=h;c.scrollTop=c.scrollHeight;}).catch(e=>console.error(e));}
 
