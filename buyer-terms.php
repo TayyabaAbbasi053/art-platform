@@ -339,7 +339,7 @@ img{display:block;max-width:100%;}
   <!-- 12 -->
   <div class="terms-section">
     <h2 class="terms-section-title">12. Cancellations</h2>
-    <p class="terms-text">For ready-made artwork, cancellation may be possible before the artwork is shipped. For custom artwork, cancellation may be limited after the final quote is accepted or after the artist starts work. A buyer may not be eligible for a full refund if:</p>
+    <p class="terms-text">For ready-made artwork, cancellation may be possible before payment is confirmed. Once payment is confirmed, the order moves into processing and self-service cancellation may no longer be available — the buyer should contact Art Bazaar Pakistan directly to request a cancellation at that point. For custom artwork, cancellation may be limited after the final quote is accepted or after the artist starts work. A buyer may not be eligible for a full refund if:</p>
     <ul class="terms-list">
       <li>The artist has already started the custom artwork</li>
       <li>Materials have already been purchased</li>

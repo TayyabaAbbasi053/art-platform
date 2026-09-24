@@ -296,9 +296,8 @@ img{display:block;max-width:100%;}
     <p class="terms-text">Order status may include:</p>
     <ul class="terms-list">
       <li>Pending</li>
-      <li>Confirmed</li>
+      <li>Payment Confirmed</li>
       <li>Processing</li>
-      <li>Packed</li>
       <li>Shipped</li>
       <li>Delivered</li>
       <li>Cancelled</li>

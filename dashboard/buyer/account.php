@@ -217,6 +217,7 @@ while ($row = $statsResult->fetch_assoc()) {
            o.total, o.subtotal, o.proposed_price, o.price_status,
            o.commission_description, o.commission_deadline, o.commission_reference_image,
            o.budget_min, o.budget_max, o.created_at, o.updated_at,
+           o.commission_final_approved,
            c.name AS category_name,
            ua.name AS artist_name
     FROM orders o
@@ -527,8 +528,14 @@ img{max-width:100%;display:block;}
 .comm-message-meta{font-size:10px;color:var(--muted);margin-top:3px;padding:0 4px;}
 .comm-message.buyer .comm-message-meta{text-align:right;}
 .comm-chat-input{display:flex;gap:8px;margin-top:10px;}
-.comm-chat-input input{flex:1;padding:10px 14px;border:1.5px solid var(--border);border-radius:20px;font-size:12.5px;font-family:'DM Sans',sans-serif;outline:none;background:var(--bg);color:var(--ink);}
-.comm-chat-input input:focus{border-color:var(--ink);}
+.comm-chat-input input[type="text"]{flex:1;padding:10px 14px;border:1.5px solid var(--border);border-radius:20px;font-size:12.5px;font-family:'DM Sans',sans-serif;outline:none;background:var(--bg);color:var(--ink);}
+.comm-chat-input input[type="text"]:focus{border-color:var(--ink);}
+.comm-attach-btn{cursor:pointer;display:flex;align-items:center;padding:0 4px;}
+.comm-attach-preview{display:none;align-items:center;gap:10px;margin-top:10px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:8px 12px;}
+.comm-attach-preview img{width:48px;height:48px;object-fit:cover;border-radius:6px;border:1px solid var(--border);}
+.comm-attach-preview span{font-size:11px;color:var(--muted);flex:1;}
+.comm-attach-preview button{background:none;border:none;color:var(--ink);font-size:16px;cursor:pointer;line-height:1;}
+.comm-approve-btn{font-size:11px;padding:5px 10px;border-radius:6px;background:#2E7D32;color:#fff;border:none;cursor:pointer;}
 .comm-chat-input button{background:var(--ink);color:#fff;border:none;border-radius:20px;padding:0 18px;font-size:12px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;}
 .comm-chat-input button:hover{opacity:.85;}
 .comm-chat-warning{font-size:10px;color:var(--muted);margin-top:6px;text-align:center;opacity:.7;}
@@ -816,7 +823,7 @@ img{max-width:100%;display:block;}
               </button>
               <div id="comm-chat-<?= $comm['id'] ?>" style="display:none; margin-top:12px;">
                 <div class="comm-chat-title">Commission Discussion</div>
-                <div class="comm-chat-messages" id="comm-msgs-<?= $comm['id'] ?>" data-last-id="<?= (int) ($commissionLastMsgId[$comm['id']] ?? 0) ?>">
+                <div class="comm-chat-messages" id="comm-msgs-<?= $comm['id'] ?>" data-approved="<?= !empty($comm['commission_final_approved']) ? '1' : '0' ?>" data-last-id="<?= (int) ($commissionLastMsgId[$comm['id']] ?? 0) ?>">
                   <?php if (empty($msgs)): ?>
                     <div style="text-align:center;padding:16px;color:var(--muted);font-size:12px;opacity:0.7;">No messages yet.</div>
                   <?php else: ?>
@@ -824,17 +831,35 @@ img{max-width:100%;display:block;}
                       $rc = $msg['sender_role'] === 'buyer' ? 'buyer' : ($msg['sender_role'] === 'artist' ? 'artist' : 'admin');
                     ?>
                     <div class="comm-message <?= $rc ?>" data-msg-id="<?= (int) $msg['id'] ?>">
-                      <div class="comm-message-bubble"><?= nl2br(htmlspecialchars($msg['message'])) ?></div>
+                      <?php if (($msg['message_type'] ?? 'text') === 'image' && !empty($msg['attachment_path'])): ?>
+                        <img src="../../<?= htmlspecialchars($msg['attachment_path']) ?>" alt="Attachment" loading="lazy" decoding="async" style="max-width:220px;border-radius:8px;display:block;margin-bottom:<?= $msg['message'] ? '6px' : '0' ?>;">
+                        <?php if (empty($comm['commission_final_approved'])): ?>
+                          <form method="POST" action="order-detail.php?id=<?= (int) $comm['id'] ?>" style="margin-top:6px;" onsubmit="return confirm('Approve this version as final? The artist will then prepare your final deliverable.')">
+                            <input type="hidden" name="action" value="approve_final">
+                            <input type="hidden" name="approved_message_id" value="<?= (int) $msg['id'] ?>">
+                            <button type="submit" class="comm-approve-btn">✓ Approve This Version</button>
+                          </form>
+                        <?php endif; ?>
+                      <?php endif; ?>
+                      <?php if (!empty($msg['message'])): ?><div class="comm-message-bubble"><?= nl2br(htmlspecialchars($msg['message'])) ?></div><?php endif; ?>
                       <div class="comm-message-meta"><?= htmlspecialchars($msg['sender_name']) ?> · <?= date('M j, g:i A', strtotime($msg['created_at'])) ?></div>
                     </div>
                     <?php endforeach; ?>
                   <?php endif; ?>
                 </div>
                 <div class="comm-chat-error" id="comm-chat-err-<?= $comm['id'] ?>" style="<?= ($chatError && $chatOrderId === $comm['id']) ? '' : 'display:none;' ?>"><?= htmlspecialchars($chatError && $chatOrderId === $comm['id'] ? $chatError : '') ?></div>
-                <form method="POST" class="comm-chat-input js-comm-chat-form" data-order-id="<?= $comm['id'] ?>">
+                <div class="comm-attach-preview" id="comm-attach-preview-<?= $comm['id'] ?>">
+                  <img src="" alt="">
+                  <span>Image attached</span>
+                  <button type="button" class="js-comm-attach-remove" data-order-id="<?= $comm['id'] ?>">×</button>
+                </div>
+                <form method="POST" enctype="multipart/form-data" class="comm-chat-input js-comm-chat-form" data-order-id="<?= $comm['id'] ?>">
                   <input type="hidden" name="action" value="send_commission_message">
                   <input type="hidden" name="order_id" value="<?= $comm['id'] ?>">
-                  <input type="text" name="message" placeholder="Type a message... (no phone/email/socials)" autocomplete="off" required>
+                  <label class="comm-attach-btn" title="Attach image">
+                    📎<input type="file" name="attachment" class="js-comm-attach-input" accept="image/jpeg,image/png,image/webp" style="display:none;">
+                  </label>
+                  <input type="text" name="message" placeholder="Type a message... (no phone/email/socials)" autocomplete="off">
                   <button type="submit">Send</button>
                 </form>
                 <div class="comm-chat-warning">⚠️ Contact info is automatically blocked.</div>
@@ -1123,7 +1148,22 @@ function renderCommMessage(orderId, msg){
     const wrap = document.createElement('div');
     wrap.className = 'comm-message ' + rc;
     if (typeof msg.id === 'number') wrap.setAttribute('data-msg-id', String(msg.id));
-    wrap.innerHTML = `<div class="comm-message-bubble">${escapeHtml(msg.message).replace(/\n/g, '<br>')}</div><div class="comm-message-meta">${escapeHtml(msg.sender_name)} · ${escapeHtml(msg.created_at)}</div>`;
+    let html = '';
+    if (msg.message_type === 'image' && msg.attachment_path) {
+        html += `<img src="../../${escapeHtml(msg.attachment_path)}" alt="Attachment" loading="lazy" decoding="async" style="max-width:220px;border-radius:8px;display:block;margin-bottom:${msg.message ? '6px' : '0'};">`;
+        if (msgsEl.getAttribute('data-approved') !== '1') {
+            html += `<form method="POST" action="order-detail.php?id=${orderId}" style="margin-top:6px;" onsubmit="return confirm('Approve this version as final? The artist will then prepare your final deliverable.')">
+                <input type="hidden" name="action" value="approve_final">
+                <input type="hidden" name="approved_message_id" value="${msg.id}">
+                <button type="submit" class="comm-approve-btn">✓ Approve This Version</button>
+            </form>`;
+        }
+    }
+    if (msg.message) {
+        html += `<div class="comm-message-bubble">${escapeHtml(msg.message).replace(/\n/g, '<br>')}</div>`;
+    }
+    html += `<div class="comm-message-meta">${escapeHtml(msg.sender_name)} · ${escapeHtml(msg.created_at)}</div>`;
+    wrap.innerHTML = html;
     msgsEl.appendChild(wrap);
 
     if (typeof msg.id === 'number') {
@@ -1190,8 +1230,10 @@ document.querySelectorAll('form.js-comm-chat-form').forEach(form => {
         e.preventDefault();
         const input = form.querySelector('input[name="message"]');
         const msgText = input ? input.value.trim() : '';
-        if (!msgText) return;
-        if (quickContactCheck(msgText)) {
+        const fileInput = form.querySelector('.js-comm-attach-input');
+        const hasFile = fileInput && fileInput.files && fileInput.files.length > 0;
+        if (!msgText && !hasFile) { showCommChatError(orderId, 'Please enter a message or attach an image.'); return; }
+        if (msgText && quickContactCheck(msgText)) {
             showCommChatError(orderId, 'Contact information cannot be shared here.');
             if (input) input.value = '';
             return;
@@ -1213,6 +1255,9 @@ document.querySelectorAll('form.js-comm-chat-form').forEach(form => {
                 const msgsEl = document.getElementById('comm-msgs-' + orderId);
                 if (msgsEl) msgsEl.scrollTop = msgsEl.scrollHeight;
                 if (input) input.value = '';
+                if (fileInput) fileInput.value = '';
+                const preview = document.getElementById('comm-attach-preview-' + orderId);
+                if (preview) preview.style.display = 'none';
             }
         } catch (err) {
             showCommChatError(orderId, 'Could not send message. Check your connection.');
@@ -1220,6 +1265,33 @@ document.querySelectorAll('form.js-comm-chat-form').forEach(form => {
             if (submitBtn) submitBtn.disabled = false;
             if (input) input.focus();
         }
+    });
+});
+
+// ── Commission chat image attachment preview ──
+document.querySelectorAll('.js-comm-attach-input').forEach(inp => {
+    inp.addEventListener('change', function(e){
+        const orderId = inp.closest('form').getAttribute('data-order-id');
+        const preview = document.getElementById('comm-attach-preview-' + orderId);
+        const file = e.target.files[0];
+        if (!preview) return;
+        if (!file) { preview.style.display = 'none'; return; }
+        const reader = new FileReader();
+        reader.onload = function(ev){
+            preview.querySelector('img').src = ev.target.result;
+            preview.style.display = 'flex';
+        };
+        reader.readAsDataURL(file);
+    });
+});
+document.querySelectorAll('.js-comm-attach-remove').forEach(btn => {
+    btn.addEventListener('click', function(){
+        const orderId = btn.getAttribute('data-order-id');
+        const form = document.querySelector('form.js-comm-chat-form[data-order-id="' + orderId + '"]');
+        const inp = form ? form.querySelector('.js-comm-attach-input') : null;
+        if (inp) inp.value = '';
+        const preview = document.getElementById('comm-attach-preview-' + orderId);
+        if (preview) preview.style.display = 'none';
     });
 });
 

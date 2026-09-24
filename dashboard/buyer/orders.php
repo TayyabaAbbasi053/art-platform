@@ -8,6 +8,11 @@ if (!isset($_SESSION['user_id'])) {
 }
 
  $buyerId = (int) $_SESSION['user_id'];
+ $favCount = 0;
+ $favCountStmt = $conn->prepare("SELECT COUNT(*) AS c FROM favorites f JOIN artworks a ON f.artwork_id = a.id JOIN users u ON a.artist_id = u.id JOIN categories c ON a.category_id = c.id WHERE f.user_id = ?");
+ $favCountStmt->bind_param('i', $buyerId);
+ $favCountStmt->execute();
+ $favCount = (int) ($favCountStmt->get_result()->fetch_assoc()['c'] ?? 0);
  $buyerName = $_SESSION['name'] ?? 'Buyer';
  $successMsg = $_GET['msg'] ?? '';
 
@@ -302,6 +307,11 @@ tr:hover { box-shadow: 0 4px 12px rgba(12,63,48,.06); }
     <?php if ($totalUnread > 0): ?><span class="badge" style="background:#c0392b;color:#fff;display:inline-flex;align-items:center;gap:5px;"><span class="red-dot" style="background:#fff;"></span>New</span>
     <?php elseif ($statusCounts['pending'] > 0): ?><span class="badge"><?= $statusCounts['pending'] ?></span><?php endif; ?>
   </a>
+  <a href="account.php#favorites" class="nav-item">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20.8 4.6a5.5 5.5 0 00-7.8 0L12 5.6l-1-1a5.5 5.5 0 00-7.8 7.8l1 1L12 21l7.8-7.8 1-1a5.5 5.5 0 000-7.8z"/></svg>
+    My Favorites
+    <?php if ($favCount > 0): ?><span class="badge"><?= $favCount ?></span><?php endif; ?>
+  </a>
   <div class="sidebar-section">Browse</div>
   <a href="../../index.php" class="nav-item">
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
@@ -437,6 +447,7 @@ tr:hover { box-shadow: 0 4px 12px rgba(12,63,48,.06); }
     <div class="drawer-links">
         <a href="account.php">Account Overview</a>
         <a href="orders.php">My Orders</a> 
+        <a href="account.php#favorites">My Favorites</a>
         <a href="../../index.php">Home</a>
         <a href="../../artworks.php">Artworks</a>
         <a href="../../artists.php">Artists</a>

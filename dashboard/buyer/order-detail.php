@@ -9,6 +9,11 @@ if (!isset($_SESSION['user_id'])) {
 }
 
  $buyerId = (int) $_SESSION['user_id'];
+ $favCount = 0;
+ $favCountStmt = $conn->prepare("SELECT COUNT(*) AS c FROM favorites f JOIN artworks a ON f.artwork_id = a.id JOIN users u ON a.artist_id = u.id JOIN categories c ON a.category_id = c.id WHERE f.user_id = ?");
+ $favCountStmt->bind_param('i', $buyerId);
+ $favCountStmt->execute();
+ $favCount = (int) ($favCountStmt->get_result()->fetch_assoc()['c'] ?? 0);
  $buyerName = $_SESSION['name'] ?? 'Buyer';
  $orderId = (int) ($_GET['id'] ?? 0);
 
@@ -488,6 +493,7 @@ img{max-width:100%;display:block;}
 /* HAMBURGER DRAWER */
 #nav-drawer{display:none;position:fixed;top:0;right:0;width:260px;height:100vh;background:var(--ink);z-index:200;transform:translateX(100%);transition:transform 0.3s ease;padding:24px;display:flex;flex-direction:column;border-left:1px solid var(--border);}
 #nav-drawer.open{transform:translateX(0);display:flex;}
+.badge{margin-left:auto;background:var(--sand);color:var(--ink);font-size:9px;padding:2px 7px;border-radius:20px;}
 #nav-overlay{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(12,63,48,0.4);z-index:150;backdrop-filter:blur(2px);}
 #nav-overlay.open{display:block;}
 .ham-btn{display:none;flex-direction:column;gap:5px;background:none;border:none;cursor:pointer;padding:5px;width:30px;}
@@ -535,6 +541,11 @@ img{max-width:100%;display:block;}
   <a href="orders.php" class="nav-item active">
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 7H4a2 2 0 00-2 2v6a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>
     My Orders
+  </a>
+  <a href="account.php#favorites" class="nav-item">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20.8 4.6a5.5 5.5 0 00-7.8 0L12 5.6l-1-1a5.5 5.5 0 00-7.8 7.8l1 1L12 21l7.8-7.8 1-1a5.5 5.5 0 000-7.8z"/></svg>
+    My Favorites
+    <?php if ($favCount > 0): ?><span class="badge"><?= $favCount ?></span><?php endif; ?>
   </a>
   <div class="sidebar-section">Browse</div>
   <a href="../../index.php" class="nav-item">
@@ -881,6 +892,7 @@ img{max-width:100%;display:block;}
   <div class="d-header">Menu</div>
   <a href="account.php" class="d-link">Overview</a>
   <a href="orders.php" class="d-link">My Orders</a>
+  <a href="account.php#favorites" class="d-link">My Favorites</a>
   <a href="../../index.php" class="d-link">Home</a>
   <a href="../../artworks.php" class="d-link">Artworks</a>
   <a href="../../artists.php" class="d-link">Artists</a>
