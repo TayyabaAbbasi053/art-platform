@@ -681,6 +681,7 @@ if ($params) {
         o.admin_notes, 
         o.created_at,
         o.total AS agreed_price,
+        o.proposed_price, o.price_status, o.proposed_weight_kg,
         o.tracking_number,
         o.courier,
         o.delivery_type,
@@ -750,6 +751,17 @@ function formatBudget($min, $max) {
     if ($min) return 'PKR ' . number_format($min) . '+';
     if ($max) return 'Up to PKR ' . number_format($max);
     return '-';
+}
+
+// Shows the artist's proposed price (when one exists) instead of the buyer's budget range
+function formatBudgetOrProposed($min, $max, $proposed, $priceStatus = null) {
+    if (!empty($proposed) && (float)$proposed > 0) {
+        $html = '<span title="Price proposed by artist">PKR ' . number_format((float)$proposed) . '</span>';
+        $label = $priceStatus && $priceStatus !== 'none' ? ucfirst($priceStatus) : 'Proposed';
+        $html .= '<div style="font-size:9px;font-weight:600;letter-spacing:.4px;text-transform:uppercase;color:var(--grey4);margin-top:2px;">Artist ' . htmlspecialchars($label) . '</div>';
+        return $html;
+    }
+    return formatBudget($min, $max);
 }
 
 function getProfileImageUrl($imagePath) {
@@ -1089,7 +1101,7 @@ tr:hover td{background:var(--grey1)}
             <div class="empty">No commission requests found.</div>
         <?php else: ?>
         <table>
-            <thead><tr><th>Buyer</th><th>Type</th><th>Budget</th><th>Artist</th><th class="hide-mobile">Date</th><th>Status</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Buyer</th><th>Type</th><th>Budget / Price</th><th>Artist</th><th class="hide-mobile">Date</th><th>Status</th><th>Actions</th></tr></thead>
             <tbody>
             <?php foreach ($commissions as $cr): ?>
                 <tr>
@@ -1100,7 +1112,7 @@ tr:hover td{background:var(--grey1)}
                         </div>
                     </td>
                     <td class="td-type"><?= htmlspecialchars($cr['artwork_type']) ?></td>
-                    <td class="td-budget"><?= formatBudget($cr['budget_min'], $cr['budget_max']) ?></td>
+                    <td class="td-budget"><?= formatBudgetOrProposed($cr['budget_min'], $cr['budget_max'], $cr['proposed_price'] ?? null, $cr['price_status'] ?? null) ?></td>
                     <td class="td-artist">
                         <?php if (!empty($cr['artist_name'])): ?>
                             <a href="artist-view.php?id=<?= $cr['artist_id'] ?>"><?= htmlspecialchars($cr['artist_name']) ?></a>
@@ -1214,6 +1226,9 @@ function openDetail(id){
     
     const artworkTypeLabel=cr.artwork_type||'Custom';
     const isDigital = cr.delivery_type === 'digital';
+    const hasProposed = cr.proposed_price !== null && cr.proposed_price !== undefined && parseFloat(cr.proposed_price) > 0;
+    const priceStatusRaw = (cr.price_status && cr.price_status !== 'none') ? cr.price_status : 'proposed';
+    const priceStatusLabel = priceStatusRaw.charAt(0).toUpperCase() + priceStatusRaw.slice(1);
     
     const statusToDeliveryMap = {'pending':'pending','price_proposed':'pending','confirmed':'deposit_paid','processing':'in_progress','shipped':'shipped','delivered':'delivered','cancelled':'cancelled'};
     const currentDeliveryStatus = statusToDeliveryMap[cr.status] || 'pending';
@@ -1267,6 +1282,16 @@ function openDetail(id){
         <div class="order-details-section">
             <div class="order-details-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg> Order Details</div>
             <div class="order-details-grid">
+${hasProposed ? `
+                <div class="order-detail-item">
+                    <div class="odl">Artist's Proposed Price (PKR)</div>
+                    <div class="odv" style="font-size:16px;font-weight:700;">PKR ${Number(cr.proposed_price).toLocaleString()}</div>
+                </div>
+                <div class="order-detail-item">
+                    <div class="odl">Price Status</div>
+                    <div class="odv"><span class="pill price_proposed">${esc(priceStatusLabel)}</span>${cr.proposed_weight_kg && !isDigital ? ' <span style="font-size:11px;color:var(--grey4);margin-left:6px;">Est. weight: '+parseFloat(cr.proposed_weight_kg)+' kg</span>' : ''}</div>
+                </div>
+                ` : `
                 <div class="order-detail-item">
                     <div class="odl">Estimated Minimum Budget (PKR)</div>
                     <div style="display:flex;align-items:center;">
@@ -1278,6 +1303,8 @@ function openDetail(id){
                     <div class="odl">Estimated Maximum Budget (PKR)</div>
                     <input type="number" id="budget_max_${cr.id}" value="${cr.budget_max || ''}" placeholder="e.g. 15000" min="0" step="0.01" onkeyup="triggerBudgetSave(${cr.id})" onblur="triggerBudgetSave(${cr.id})">
                 </div>
+
+                `}
                 <div class="order-detail-item">
                     <div class="odl">Preferred Deadline</div>
                     <div class="odv ${!cr.commission_deadline ? 'muted' : ''}" style="${isOverdue ? 'color:var(--terracotta);font-weight:600;' : ''}">${deadlineDisplay}${isOverdue ? ' <span style="font-size:11px;font-weight:700;">(OVERDUE)</span>' : ''}</div>
