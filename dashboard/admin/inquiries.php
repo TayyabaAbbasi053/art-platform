@@ -63,7 +63,7 @@ function sendArtistOrderEmail(mysqli $conn, int $orderId, string $orderType): st
 function sendBuyerOrderEmail(mysqli $conn, int $orderId, string $type): string {
     $stmt = $conn->prepare("
         SELECT o.order_number, o.buyer_id, o.guest_name, o.guest_email,
-               COALESCE(u.name, o.guest_name)  AS buyer_name,
+               COALESCE(NULLIF(o.guest_name, ''), u.name)  AS buyer_name,
                COALESCE(u.email, o.guest_email) AS buyer_email,
                a.title AS artwork_title
         FROM orders o
@@ -130,7 +130,7 @@ function sendBuyerOrderEmail(mysqli $conn, int $orderId, string $type): string {
 function sendDigitalArtworkEmail(mysqli $conn, int $orderId): string {
     $stmt = $conn->prepare("
         SELECT o.order_number, o.buyer_id, o.guest_name, o.guest_email,
-               COALESCE(u.name, o.guest_name)  AS buyer_name,
+               COALESCE(NULLIF(o.guest_name, ''), u.name)  AS buyer_name,
                COALESCE(u.email, o.guest_email) AS buyer_email
         FROM orders o
         LEFT JOIN users u ON o.buyer_id = u.id
@@ -514,7 +514,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_
             SELECT o.id, o.order_number, o.order_status, o.payment_method, o.total,
                    o.shipping_address, o.shipping_city, o.shipping_phone,
                    o.guest_name, o.guest_email, o.guest_phone,
-                   COALESCE(u.name, o.guest_name) AS buyer_name_resolved,
+                   COALESCE(NULLIF(o.guest_name, ''), u.name) AS buyer_name_resolved,
                    COALESCE(u.email, o.guest_email) AS buyer_email_resolved,
                    COALESCE(u.phone, o.guest_phone, o.shipping_phone) AS buyer_phone_resolved,
                    a.title AS artwork_title, a.delivery_type,
@@ -619,7 +619,7 @@ if ($search) {
  $sortMap = [
     'newest' => 'o.created_at DESC',
     'oldest' => 'o.created_at ASC',
-    'name' => 'COALESCE(u.name, o.guest_name) ASC',
+    'name' => "COALESCE(NULLIF(o.guest_name, ''), u.name) ASC",
     'amount_high' => 'o.total DESC',
     'amount_low' => 'o.total ASC',
 ];
@@ -655,7 +655,7 @@ if ($params) $stmt->bind_param($types, ...$params);
             o.courier,
             o.total AS total_price,
             o.buyer_notes AS message,
-            COALESCE(u.name, o.guest_name) AS buyer_name,
+            COALESCE(NULLIF(o.guest_name, ''), u.name) AS buyer_name,
             COALESCE(u.email, o.guest_email) AS buyer_email,
             COALESCE(u.phone, o.guest_phone, o.shipping_phone) AS buyer_phone
           FROM orders o

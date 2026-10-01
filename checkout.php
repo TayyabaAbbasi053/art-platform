@@ -346,6 +346,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_save_draft'])) {
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
     $fullName = trim($_POST['full_name'] ?? '');
+    // Name typed at checkout. Guests always get it stored; logged-in buyers only when it
+    // differs from their account name (otherwise NULL, so the account name is used).
+    $orderNameOverride = ($isGuest || strcasecmp($fullName, trim($buyerName)) !== 0) ? $fullName : null;
     $guestEmail = $isGuest ? trim($_POST['email'] ?? '') : $buyerEmail;
     $houseNo  = $isDigitalCartCheckout ? '' : trim($_POST['house_no'] ?? '');
     $street   = $isDigitalCartCheckout ? '' : trim($_POST['street'] ?? '');
@@ -447,6 +450,7 @@ if ($isCod && $finalTotal > 10000) {
                     $orderId = $existingOrder['id'];
                     $stmt = $conn->prepare("
     UPDATE orders SET 
+        guest_name = ?,
         payment_method = ?, payment_screenshot = ?, shipping_address = ?, 
         shipping_house_no = ?, shipping_street = ?, shipping_landmark = ?,
         shipping_city = ?, shipping_phone = ?, buyer_notes = ?,
@@ -454,7 +458,7 @@ if ($isCod && $finalTotal > 10000) {
         updated_at = NOW() 
     WHERE id = ?
 ");
-$stmt->bind_param('sssssssssddi', $paymentMethod, $screenshotPath, $address, $houseNo, $street, $landmark, $city, $phone, $notes, $finalShippingFee, $finalTotal, $orderId);
+$stmt->bind_param('ssssssssssddi', $orderNameOverride, $paymentMethod, $screenshotPath, $address, $houseNo, $street, $landmark, $city, $phone, $notes, $finalShippingFee, $finalTotal, $orderId);
                     $stmt->execute();
                     
                     $stmtStatusUpdate = $conn->prepare("UPDATE orders SET order_status = 'payment_review' WHERE id = ?");
@@ -476,7 +480,7 @@ $stmt->bind_param('sssssssssddi', $paymentMethod, $screenshotPath, $address, $ho
                     // Guests: buyer_id stays NULL, contact details are stored
                     // directly on the order (guest_name/guest_email/guest_phone).
                     // Logged-in buyers: buyer_id is set, guest_* columns stay NULL.
-                    $guestNameParam  = $isGuest ? $fullName : null;
+                    $guestNameParam  = $orderNameOverride;
                     $guestEmailParam = $isGuest ? $guestEmail : null;
                     $guestPhoneParam = $isGuest ? $phone : null;
 
