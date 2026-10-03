@@ -26,6 +26,39 @@ $artistId = (int) $_SESSION['user_id'];  // ← whatever comes next in the file
  $successMsg = '';
  $errorMsg   = '';
 
+// ── CSRF token (same key the edit page uses) ─────────
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+
+// ── Handle Hide / Unhide ─────────────────────────────
+// Only active <-> hidden is allowed. The status guard in the WHERE clause means
+// pending, sold and rejected artworks can never be changed through this action.
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['toggle_visibility'])) {
+    $returnStatus = in_array($_POST['return_status'] ?? '', ['all', 'active', 'sold', 'hidden'], true)
+        ? $_POST['return_status'] : 'all';
+
+    if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
+        header("Location: my-artworks.php?status=" . urlencode($returnStatus) . "&msg=badtoken");
+        exit;
+    }
+
+    $artId  = (int) ($_POST['artwork_id'] ?? 0);
+    $hide   = ($_POST['toggle_visibility'] === 'hide');
+    $fromSt = $hide ? 'active' : 'hidden';
+    $toSt   = $hide ? 'hidden' : 'active';
+
+    $stmtVis = $conn->prepare("UPDATE artworks SET status = ? WHERE id = ? AND artist_id = ? AND status = ?");
+    $stmtVis->bind_param('siis', $toSt, $artId, $artistId, $fromSt);
+    $stmtVis->execute();
+    $changed = $stmtVis->affected_rows > 0;
+    $stmtVis->close();
+
+    $visMsg = $changed ? ($hide ? 'hidden' : 'unhidden') : 'cannothide';
+    header("Location: my-artworks.php?status=" . urlencode($returnStatus) . "&msg=" . $visMsg);
+    exit;
+}
+
 // ── Handle Actions (Permanent Delete) ────────────────
 if (isset($_GET['delete'])) {
     $artId = (int) $_GET['delete'];
@@ -160,6 +193,10 @@ if (isset($_GET['msg'])) {
     if ($_GET['msg'] === 'deleted') $successMsg = 'Artwork deleted successfully.';
     if ($_GET['msg'] === 'answered') $successMsg = 'Reply posted successfully!';
     if ($_GET['msg'] === 'updated') $successMsg = 'Artwork updated successfully.';
+    if ($_GET['msg'] === 'hidden') $successMsg = 'Artwork hidden. Buyers can no longer see or buy it.';
+    if ($_GET['msg'] === 'unhidden') $successMsg = 'Artwork is live on the marketplace again.';
+    if ($_GET['msg'] === 'cannothide') $errorMsg = "That artwork can't be hidden or unhidden right now.";
+    if ($_GET['msg'] === 'badtoken') $errorMsg = 'Your session expired. Please try again.';
     if ($_GET['msg'] === 'marked_sold') $successMsg = 'Artwork marked as sold.';
     if ($_GET['msg'] === 'relisted') $successMsg = 'Artwork is back on sale.';
     if ($_GET['msg'] === 'cannotedit') $errorMsg = "That artwork can't be edited because it's already sold.";
@@ -576,6 +613,20 @@ tr:hover td { background: var(--sand); }
                                         <span class="icon-btn" style="opacity:.35;cursor:default;" title="Sold artworks can't be edited">
                                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                                         </span>
+                                    <?php endif; ?>
+                                    <?php if (in_array($art['status'], ['active', 'hidden'], true)): $isHid = $art['status'] === 'hidden'; ?>
+                                        <form method="POST" style="display:inline;margin:0;"<?= $isHid ? '' : ' onsubmit="return confirm(\'Hide this artwork? Buyers will no longer see it or be able to buy it.\')"' ?>>
+                                            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
+                                            <input type="hidden" name="artwork_id" value="<?= (int) $art['id'] ?>">
+                                            <input type="hidden" name="return_status" value="<?= htmlspecialchars($filterStatus) ?>">
+                                            <button type="submit" name="toggle_visibility" value="<?= $isHid ? 'unhide' : 'hide' ?>" class="icon-btn" title="<?= $isHid ? 'Unhide (make live again)' : 'Hide from marketplace' ?>">
+                                                <?php if ($isHid): ?>
+                                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                                                <?php else: ?>
+                                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                                <?php endif; ?>
+                                            </button>
+                                        </form>
                                     <?php endif; ?>
                                     <a href="?delete=<?= $art['id'] ?>" class="icon-btn danger" title="Delete" onclick="return confirm('Are you sure you want to permanently delete this artwork? This cannot be undone.')">
                                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>

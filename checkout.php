@@ -252,6 +252,13 @@ if ($isCommissionCheckout) {
         exit;
     }
 
+    // Hidden / pending / rejected listings are not for sale.
+    if ($artworkRow['status'] !== 'active') {
+        $_SESSION['error_msg'] = 'Sorry, this artwork is no longer available.';
+        header('Location: artworks.php');
+        exit;
+    }
+
     $price = $artworkRow['price'];
     // Per-artwork delivery_type is the source of truth here — a category
     // like Illustration/Mixed Media (or any other) can be either physical
