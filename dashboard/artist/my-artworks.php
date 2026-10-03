@@ -160,6 +160,8 @@ if (isset($_GET['msg'])) {
     if ($_GET['msg'] === 'deleted') $successMsg = 'Artwork deleted successfully.';
     if ($_GET['msg'] === 'answered') $successMsg = 'Reply posted successfully!';
     if ($_GET['msg'] === 'updated') $successMsg = 'Artwork updated successfully.';
+    if ($_GET['msg'] === 'marked_sold') $successMsg = 'Artwork marked as sold.';
+    if ($_GET['msg'] === 'relisted') $successMsg = 'Artwork is back on sale.';
     if ($_GET['msg'] === 'cannotedit') $errorMsg = "That artwork can't be edited because it's already sold.";
     if ($_GET['msg'] === 'notfound') $errorMsg = 'That artwork could not be found.';
 }
@@ -560,13 +562,13 @@ tr:hover td { background: var(--sand); }
                                 <span class="art-cat"><?= date('M j, Y', strtotime($art['created_at'])) ?></span>
                             </td>
                             <td><?= htmlspecialchars($art['category_name']) ?></td>
-                            <td class="price">PKR <?= number_format($art['price']) ?></td>
+                            <td class="price"><?= $art['price'] !== null ? 'PKR ' . number_format($art['price']) : 'Portfolio only' ?></td>
                             <td>
                                 <span class="pill <?= $art['status'] ?>"><?= ucfirst($art['status']) ?></span>
                             </td>
                             <td>
                                 <div class="actions">
-                                    <?php if ($art['status'] !== 'sold'): ?>
+                                    <?php if ($art['status'] !== 'sold' || !empty($art['is_showcase_only'])): ?>
                                         <a href="edit-artwork.php?id=<?= $art['id'] ?>" class="icon-btn" title="Edit">
                                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                                         </a>
