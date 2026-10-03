@@ -335,6 +335,7 @@ h1.htitle em{font-style:italic;color:var(--ink);}
 .trust-i svg{color:var(--ink);}
 .himg{position:relative;border-radius:0;overflow:hidden;background:#F6EDDE;}
 .himg img{width:100%;height:auto;object-fit:contain;object-position:center;}
+@media(min-width:769px){.himg{width:100%;max-width:280px;justify-self:center;}.hero>div:first-child{margin-left:64px;}}
 .himg-ph{width:100%;height:100%;display:flex;align-items:center;justify-content:center;}
 .himg-ph svg{opacity:.18;color:var(--ink);}
 .hbadge{position:absolute;bottom:14px;left:14px;background:rgba(12,63,48,.84);backdrop-filter:blur(6px);color:var(--bg);border-radius:8px;padding:9px 13px;}
@@ -415,6 +416,20 @@ h1.htitle em{font-style:italic;color:var(--ink);}
 .ar-name{font-family:'Playfair Display',serif;font-size:14.5px;font-weight:400;color:var(--ink);margin-bottom:1px;}
 .ar-style{font-size:11px;color:var(--ink);margin-bottom:1px;}
 .ar-city{font-size:10.5px;color:var(--ink);margin-bottom:11px;}
+.lb-list{display:grid;gap:9px;max-width:760px;}
+.lb-row{display:flex;align-items:center;gap:14px;background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:11px 16px;transition:box-shadow .15s;}
+.lb-row:hover{box-shadow:0 6px 20px rgba(12,63,48,.07);}
+.lb-row.top{background:var(--sand);}
+.lb-rank{font-family:'Playfair Display',serif;font-size:20px;width:30px;text-align:center;flex-shrink:0;}
+.lb-av{width:42px;height:42px;border-radius:50%;overflow:hidden;background:var(--sand);border:2px solid var(--border);flex-shrink:0;}
+.lb-av img{width:100%;height:100%;object-fit:cover;}
+.lb-info{flex:1;min-width:0;}
+.lb-name{font-family:'Playfair Display',serif;font-size:15px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.lb-sub{font-size:11px;color:var(--ink);opacity:.75;}
+.lb-stats{display:flex;gap:14px;font-size:11px;text-align:center;flex-shrink:0;}
+.lb-stats b{display:block;font-size:15px;font-weight:600;}
+.lb-note{font-size:11px;color:var(--ink);opacity:.7;margin-top:10px;}
+@media(max-width:560px){.lb-stats{display:none;}}
 .ar-btns{display:flex;gap:6px;justify-content:center;}
 .ar-btn{font-size:10.5px;padding:5px 11px;border-radius:5px;border:1px solid var(--border);background:transparent;color:var(--ink);cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .12s;}
 .ar-btn:hover{background:var(--sand);}
@@ -556,6 +571,46 @@ h1.htitle em{font-style:italic;color:var(--ink);}
   .drawer-btn-ghost:hover { border-color:var(--sand); background:rgba(246,237,222,0.08); }
   .drawer-btn-dark { font-size:13px; color:var(--ink); padding:9px 14px; border-radius:6px; background:var(--sand); text-align:center; font-weight:500; transition:background 0.12s; }
   .drawer-btn-dark:hover { background:#c4b69e; }
+}
+
+/* ─── ANIMATIONS ─── */
+@keyframes navDrop{from{opacity:0;translate:0 -100%;}to{opacity:1;translate:0 0;}}
+@keyframes inLeft{from{opacity:0;translate:-60px 0;}to{opacity:1;translate:0 0;}}
+@keyframes inRight{from{opacity:0;translate:60px 0;}to{opacity:1;translate:0 0;}}
+@keyframes inUp{from{opacity:0;translate:0 34px;}to{opacity:1;translate:0 0;}}
+@keyframes inPop{from{opacity:0;scale:.85;translate:0 16px;}to{opacity:1;scale:1;translate:0 0;}}
+@keyframes inFade{from{opacity:0;}to{opacity:1;}}
+@keyframes floaty{0%,100%{translate:0 0;}50%{translate:0 -10px;}}
+@keyframes lineGrow{from{scale:0 1;}to{scale:1 1;}}
+
+.nav{animation:navDrop .6s cubic-bezier(.22,.8,.3,1) both;}
+.hero{overflow-x:clip;}
+.hero>div:first-child>*{animation:inLeft .8s cubic-bezier(.22,.8,.3,1) both;}
+.hero>div:first-child>:nth-child(1){animation-delay:.15s;}
+.hero>div:first-child>:nth-child(2){animation-delay:.3s;}
+.hero>div:first-child>:nth-child(3){animation-delay:.45s;}
+.hero>div:first-child>.hbtns{animation:none;}
+.hbtns .btn-fill,.hbtns .btn-line{animation:inUp .6s cubic-bezier(.22,.8,.3,1) both;}
+.hbtns>:nth-child(1){animation-delay:.75s;}
+.hbtns>:nth-child(2){animation-delay:.85s;}
+.hbtns>:nth-child(3){animation-delay:.95s;}
+.hbtns>:nth-child(4){animation-delay:1.05s;}
+.himg{animation:inRight 1s cubic-bezier(.22,.8,.3,1) .3s both,floaty 6s ease-in-out 1.6s infinite;}
+
+/* scroll reveal (classes are added by JS, so nothing is hidden if JS fails) */
+.rv{opacity:0;}
+.rv.in{animation-duration:.7s;animation-timing-function:cubic-bezier(.22,.8,.3,1);animation-fill-mode:both;}
+.rv-up.in{animation-name:inUp;}
+.rv-left.in{animation-name:inLeft;}
+.rv-right.in{animation-name:inRight;}
+.rv-pop.in{animation-name:inPop;}
+.rv-fade.in{animation-name:inFade;animation-duration:1s;}
+.divhr.rv.in{animation-name:lineGrow;transform-origin:left;}
+.divhr.rv{opacity:1;}
+
+@media(prefers-reduced-motion:reduce){
+  .nav,.hero *,.himg,.rv.in{animation:none!important;}
+  .rv{opacity:1!important;}
 }
 </style>
 </head>
@@ -721,6 +776,34 @@ h1.htitle em{font-style:italic;color:var(--ink);}
     </div>
     <?php endif; ?>
   </div>
+</div></div>
+
+<div class="wrap"><hr class="divhr"></div>
+
+<!-- ARTIST LEADERBOARD -->
+<div class="wrap"><div class="sec">
+  <div class="sec-hd"><h2 class="sec-title">Top Artists This Month</h2><a href="artists.php" class="sec-lnk">View all artists</a></div>
+  <?php if (empty($leaderboard)): ?>
+    <p style="font-size:13px;padding:8px 0;">The <?= date('F') ?> leaderboard is just getting started. Upload and sell art to take the first spot!</p>
+  <?php else: ?>
+  <div class="lb-list">
+    <?php foreach ($leaderboard as $n => $a): $rank = $n + 1; $pp = getProfileUrl($a['profile_picture']); $medal = [1=>'🥇',2=>'🥈',3=>'🥉'][$rank] ?? $rank; ?>
+    <a href="artist-profile.php?id=<?= (int)$a['id'] ?>" class="lb-row<?= $rank === 1 ? ' top' : '' ?>">
+      <div class="lb-rank"><?= $medal ?></div>
+      <div class="lb-av"><?php if ($pp): ?><img src="<?= htmlspecialchars($pp) ?>" alt="" loading="lazy" decoding="async"><?php else: ?><div class="ar-av-ph"><?= strtoupper(substr($a['name'],0,1)) ?></div><?php endif; ?></div>
+      <div class="lb-info">
+        <div class="lb-name"><?= htmlspecialchars($a['name']) ?></div>
+        <div class="lb-sub"><?= htmlspecialchars(trim(($a['art_style'] ?? 'Artist') . ($a['city'] ? ' · ' . $a['city'] : ''))) ?></div>
+      </div>
+      <div class="lb-stats">
+        <div><b><?= (int)$a['sold_count'] ?></b>sold</div>
+        <div><b><?= (int)$a['upload_count'] ?></b>new</div>
+      </div>
+    </a>
+    <?php endforeach; ?>
+  </div>
+  <p class="lb-note">Ranked on artworks sold (5 pts) and new uploads (1 pt) in <?= date('F Y') ?>. Resets on the 1st.</p>
+  <?php endif; ?>
 </div></div>
 
 <div class="wrap"><hr class="divhr"></div>
@@ -1170,6 +1253,42 @@ function toggleCategories() {
   row.classList.toggle('hidden-cats');
   btn.textContent = row.classList.contains('hidden-cats') ? '+ More Categories' : '- Show Less';
 }
+</script>
+
+<script>
+// Scroll animations
+(function(){
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches || !('IntersectionObserver' in window)) return;
+  var groups = [
+    ['.sec-hd','rv-left'],
+    ['.divhr','rv-fade'],
+    ['.cat-card','rv-pop'],
+    ['.feat-aw-grid > *','rv-up'],
+    ['.ar-card','rv-right'],
+    ['.aw-card','rv-up'],
+    ['.post-card','rv-up'],
+    ['.how-card','rv-up'],
+    ['.btn-gold','rv-pop'],
+    ['.fg-foot > *','rv-up'],
+    ['.fbot','rv-fade']
+  ];
+  var io = new IntersectionObserver(function(entries){
+    entries.forEach(function(e){
+      if (e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target); }
+    });
+  }, {threshold:.12, rootMargin:'0px 0px -40px 0px'});
+  groups.forEach(function(g){
+    var counts = new Map();
+    document.querySelectorAll(g[0]).forEach(function(el){
+      if (el.classList.contains('rv') || el.closest('.hero')) return;
+      var n = counts.get(el.parentNode) || 0;
+      counts.set(el.parentNode, n + 1);
+      el.classList.add('rv', g[1]);
+      el.style.animationDelay = ((n % 5) * 80) + 'ms';
+      io.observe(el);
+    });
+  });
+})();
 </script>
 </body>
 </html>
