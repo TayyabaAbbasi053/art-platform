@@ -32,6 +32,15 @@ if (!$artist) {
 require_once __DIR__ . '/track.php';
 trackProfileVisit($conn, $artistId);
 
+// Follower count + whether the logged-in buyer already follows this artist
+ $isOwnProfile = $isLoggedIn && (int)$_SESSION['user_id'] === $artistId;
+ $followerCount = (int)$conn->query("SELECT COUNT(*) AS c FROM artist_followers WHERE artist_id = $artistId")->fetch_assoc()['c'];
+ $isFollowing = false;
+if ($isLoggedIn && !$isOwnProfile) {
+    $myId = (int)$_SESSION['user_id'];
+    $isFollowing = (bool)$conn->query("SELECT 1 FROM artist_followers WHERE buyer_id = $myId AND artist_id = $artistId")->fetch_row();
+}
+
 // Fetch artist's artworks (approved only)
  $artworks = $conn->prepare("
     SELECT a.id, a.title, a.price, a.status, a.is_showcase_only, a.description, a.medium, a.size, a.created_at,
@@ -434,6 +443,12 @@ img{max-width:100%;display:block;}
   }
   .mobile-back a svg { flex-shrink:0; }
 }
+
+.follow-btn{background:transparent;color:var(--ink);border:1.5px solid var(--ink);padding:11px 22px;border-radius:8px;font-size:14px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .15s;margin-top:8px;margin-right:8px;display:inline-flex;align-items:center;}
+.follow-btn:hover{background:var(--sand);}
+.follow-btn.following{background:var(--sand);border-color:var(--sand);}
+.follow-btn.following:hover{background:transparent;border-color:var(--ink);}
+.follow-btn:disabled{opacity:.6;cursor:default;}
 </style>
 </head>
 <body>
@@ -512,6 +527,7 @@ img{max-width:100%;display:block;}
       <div class="stat"><div class="stat-num"><?= $artworkCount ?></div><div class="stat-label">Artworks</div></div>
       <div class="stat"><div class="stat-num"><?= $availableCount ?></div><div class="stat-label">Available</div></div>
       <div class="stat"><div class="stat-num"><?= $soldCount ?></div><div class="stat-label">Sold</div></div>
+      <div class="stat"><div class="stat-num" id="followerCount"><?= $followerCount ?></div><div class="stat-label" id="followerLabel"><?= $followerCount === 1 ? 'Follower' : 'Followers' ?></div></div>
       <div class="stat">
   <?php if ($artist['avg_rating']):
       $ratingVal = (float)$artist['avg_rating'];
@@ -534,6 +550,11 @@ img{max-width:100%;display:block;}
   <?php endif; ?>
 </div>
     </div>
+      <?php if (!$isOwnProfile): ?>
+        <button type="button" class="follow-btn<?= $isFollowing ? ' following' : '' ?>" id="followBtn" data-artist="<?= (int)$artist['id'] ?>" onclick="toggleFollow(this)">
+          <span id="followBtnText"><?= $isFollowing ? 'Following' : '+ Follow' ?></span>
+        </button>
+      <?php endif; ?>
       <?php if ($artist['accepts_commissions']): ?>
         <button class="comm-btn" onclick="openCM(<?= $artist['id'] ?>, '<?= addslashes($artist['name']) ?>')">
           <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
@@ -762,6 +783,25 @@ function closeDrawer(){ navDrawer.classList.remove('open'); navOverlay.classList
 if(hamBtn) hamBtn.addEventListener('click', openDrawer);
 if(navOverlay) navOverlay.addEventListener('click', closeDrawer);
 document.querySelector('.drawer-close')?.addEventListener('click', closeDrawer);
+
+function toggleFollow(btn) {
+  btn.disabled = true;
+  var fd = new FormData();
+  fd.append('artist_id', btn.dataset.artist);
+  fd.append('action', 'toggle');
+  fetch('follow.php', { method: 'POST', body: fd, credentials: 'same-origin' })
+    .then(function (r) { return r.json().then(function (d) { return { status: r.status, d: d }; }); })
+    .then(function (res) {
+      if (res.d.login) { window.location.href = 'login.php?redirect=' + encodeURIComponent(location.pathname + location.search); return; }
+      if (!res.d.ok) { alert(res.d.error || 'Something went wrong.'); return; }
+      btn.classList.toggle('following', res.d.following);
+      document.getElementById('followBtnText').textContent = res.d.following ? 'Following' : '+ Follow';
+      document.getElementById('followerCount').textContent = res.d.count;
+      document.getElementById('followerLabel').textContent = res.d.count === 1 ? 'Follower' : 'Followers';
+    })
+    .catch(function () { alert('Network error. Please try again.'); })
+    .finally(function () { btn.disabled = false; });
+}
 
 function copyProfileLink() {
   const url = window.location.href;

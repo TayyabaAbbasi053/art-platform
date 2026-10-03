@@ -143,6 +143,16 @@ $pendingQs = $conn->query("
     ORDER BY aq.created_at DESC
 ")->fetch_all(MYSQLI_ASSOC);
 
+// ── Past answered questions (point 79) ───────────────────
+$answeredQs = $conn->query("
+    SELECT aq.id, aq.artwork_id, aq.buyer_name, aq.question, aq.answer, aq.created_at, aq.answered_at,
+           a.title AS artwork_title
+    FROM artwork_questions aq
+    JOIN artworks a ON aq.artwork_id = a.id
+    WHERE a.artist_id = $artistId AND aq.answer IS NOT NULL
+    ORDER BY COALESCE(aq.answered_at, aq.created_at) DESC
+")->fetch_all(MYSQLI_ASSOC);
+$answeredQCount = count($answeredQs);
 $pendingQCount = count($pendingQs);
 $unreadCommissionMsgs = (int)$conn->query("
     SELECT COUNT(*) FROM order_messages om
@@ -274,6 +284,16 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
 .qa-answer-form textarea:focus { border-color: var(--ink); }
 .qa-answer-form button { background: var(--ink); color: var(--bg); border: none; border-radius: 8px; padding: 8px 20px; font-size: 12px; font-family: 'DM Sans', sans-serif; cursor: pointer; font-weight: 500; }
 .qa-answer-form button:hover { opacity: .85; }
+
+.qa-tabs { display: flex; gap: 6px; padding: 12px 20px 0; border-bottom: 1px solid var(--sand); }
+.qa-tab { background: none; border: none; border-bottom: 2px solid transparent; padding: 8px 12px; font-size: 12px; font-weight: 500; font-family: 'DM Sans', sans-serif; color: var(--ink); opacity: .55; cursor: pointer; }
+.qa-tab.active { opacity: 1; border-bottom-color: var(--ink); }
+.qa-tab .n { background: var(--sand); border-radius: 20px; font-size: 10px; padding: 1px 7px; margin-left: 4px; }
+.qa-tab.active .n { background: var(--ink); color: var(--bg); }
+.qa-pane { display: none; }
+.qa-pane.active { display: block; }
+.qa-answer-box { background: var(--sand); border-radius: 8px; padding: 10px 14px; font-size: 13px; line-height: 1.55; }
+.qa-answer-box small { display: block; font-size: 10.5px; opacity: .6; margin-top: 6px; }
 .qa-empty-note { padding: 20px; font-size: 13px; opacity: .5; font-style: italic; }
 
 /* ── Messages ───────────────────────────────────────── */
@@ -520,10 +540,18 @@ tr:hover td { background: var(--sand); }
                 <?php if ($pendingQCount > 0): ?>
                     <span class="badge-count"><?= $pendingQCount ?> unanswered</span>
                 <?php endif; ?>
+                <?php if ($answeredQCount > 0): ?>
+                    <span class="badge-count" style="background:var(--sand);color:var(--ink);"><?= $answeredQCount ?> answered</span>
+                <?php endif; ?>
             </h3>
             <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="transition:transform .25s;"><polyline points="6 9 12 15 18 9"/></svg>
         </div>
         <div class="qa-panel-body <?= $pendingQCount > 0 ? 'open' : '' ?>">
+            <div class="qa-tabs">
+                <button type="button" class="qa-tab active" data-pane="qaPending" onclick="qaSwitch(this)">Unanswered<span class="n"><?= $pendingQCount ?></span></button>
+                <button type="button" class="qa-tab" data-pane="qaAnswered" onclick="qaSwitch(this)">Answered<span class="n"><?= $answeredQCount ?></span></button>
+            </div>
+            <div class="qa-pane active" id="qaPending">
             <?php if (empty($pendingQs)): ?>
                 <div class="qa-empty-note">No unanswered questions right now.</div>
             <?php else: ?>
@@ -541,6 +569,25 @@ tr:hover td { background: var(--sand); }
                 </div>
                 <?php endforeach; ?>
             <?php endif; ?>
+            </div>
+
+            <div class="qa-pane" id="qaAnswered">
+            <?php if (empty($answeredQs)): ?>
+                <div class="qa-empty-note">You haven't answered any questions yet.</div>
+            <?php else: ?>
+                <?php foreach ($answeredQs as $q): ?>
+                <div class="qa-item">
+                    <div class="qa-artwork-label">On: <?= htmlspecialchars($q['artwork_title']) ?></div>
+                    <div class="qa-question-text"><?= htmlspecialchars($q['question']) ?></div>
+                    <div class="qa-meta">from <?= htmlspecialchars($q['buyer_name']) ?> · <?= date('M j, Y', strtotime($q['created_at'])) ?></div>
+                    <div class="qa-answer-box">
+                        <?= nl2br(htmlspecialchars($q['answer'])) ?>
+                        <?php if ($q['answered_at']): ?><small>Answered <?= date('M j, Y', strtotime($q['answered_at'])) ?></small><?php endif; ?>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            <?php endif; ?>
+            </div>
         </div>
     </div>
 
@@ -715,6 +762,13 @@ function openMediaPreview(url, type) {
 function closeMediaPreview() {
     document.getElementById('mediaModal').classList.remove('open');
     document.getElementById('mediaModalBody').innerHTML = ''; // stops video/audio playback
+}
+
+function qaSwitch(btn) {
+    document.querySelectorAll('.qa-tab').forEach(function (t) { t.classList.remove('active'); });
+    document.querySelectorAll('.qa-pane').forEach(function (p) { p.classList.remove('active'); });
+    btn.classList.add('active');
+    document.getElementById(btn.dataset.pane).classList.add('active');
 }
 </script>
 

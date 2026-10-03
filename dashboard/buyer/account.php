@@ -34,6 +34,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_account'])) {
         $conn->query("UPDATE order_status_history SET changed_by_id = NULL WHERE changed_by_id = $buyerId AND changed_by_role = 'buyer'");
         $conn->query("UPDATE order_messages SET sender_id = NULL WHERE sender_id = $buyerId AND sender_role = 'buyer'");
 
+        // Follows and notifications are personal data too
+        $conn->query("DELETE FROM artist_followers WHERE buyer_id = $buyerId");
+        $conn->query("DELETE FROM notifications WHERE user_id = $buyerId");
+
         // Clear the shopping cart (personal, not a record we need to keep)
         $conn->query("DELETE FROM shopping_cart WHERE buyer_id = $buyerId");
 
@@ -248,6 +252,35 @@ foreach ($commissionOrders as $comm) {
  $cartQuery->bind_param('i', $buyerId);
  $cartQuery->execute();
  $cartCount = $cartQuery->get_result()->fetch_assoc()['count'];
+
+// ── Mark notifications as read ───────────────────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['mark_notifs_read'])) {
+    $conn->query("UPDATE notifications SET is_read = 1 WHERE user_id = $buyerId");
+    header('Location: account.php#notifications');
+    exit;
+}
+
+// ── Artists this buyer follows ───────────────────────────
+ $followedArtists = [];
+ $folQuery = $conn->prepare("
+    SELECT u.id, u.name, u.profile_picture, ap.city, ap.art_style,
+           (SELECT COUNT(*) FROM artworks a WHERE a.artist_id = u.id AND a.status = 'active') AS artwork_count
+    FROM artist_followers f
+    JOIN users u ON u.id = f.artist_id
+    LEFT JOIN artist_profiles ap ON ap.user_id = u.id
+    WHERE f.buyer_id = ?
+    ORDER BY f.id DESC
+");
+ $folQuery->bind_param('i', $buyerId);
+ $folQuery->execute();
+ $followedArtists = $folQuery->get_result()->fetch_all(MYSQLI_ASSOC);
+
+// ── Notifications (new uploads from followed artists) ────
+ $notifQuery = $conn->prepare("SELECT id, title, message, link, is_read, created_at FROM notifications WHERE user_id = ? ORDER BY id DESC LIMIT 15");
+ $notifQuery->bind_param('i', $buyerId);
+ $notifQuery->execute();
+ $notifications = $notifQuery->get_result()->fetch_all(MYSQLI_ASSOC);
+ $unreadNotifs = count(array_filter($notifications, fn($n) => !$n['is_read']));
 
 // ── Fetch favorite artworks ──────────────────────────────
  $favoriteArtworks = [];
@@ -571,6 +604,26 @@ img{max-width:100%;display:block;}
 @media(max-width:1080px){
     .stats-grid{grid-template-columns:repeat(2,1fr);}
 }
+
+/* FOLLOWING + NOTIFICATIONS */
+.fol-list{display:grid;}
+.fol-row{display:flex;align-items:center;gap:14px;padding:12px 20px;border-bottom:1px solid var(--border);}
+.fol-row:last-child{border-bottom:none;}
+.fol-av{width:44px;height:44px;border-radius:50%;overflow:hidden;background:var(--sand);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-size:18px;color:var(--ink);}
+.fol-av img{width:100%;height:100%;object-fit:cover;}
+.fol-info{flex:1;min-width:0;}
+.fol-name{font-size:14px;font-weight:500;color:var(--ink);text-decoration:none;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.fol-name:hover{text-decoration:underline;}
+.fol-sub{font-size:11px;color:var(--muted);}
+.fol-unfollow{background:transparent;border:1px solid var(--border);color:var(--ink);padding:6px 12px;border-radius:6px;font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif;transition:background .12s;flex-shrink:0;}
+.fol-unfollow:hover{background:var(--sand);}
+.notif-row{display:block;padding:12px 20px;border-bottom:1px solid var(--border);text-decoration:none;color:var(--ink);}
+.notif-row:last-child{border-bottom:none;}
+.notif-row.unread{background:var(--sand);}
+.notif-row:hover{background:var(--sand);}
+.notif-row b{display:block;font-size:13px;font-weight:600;}
+.notif-row span{font-size:12px;}
+.notif-row small{display:block;font-size:10.5px;color:var(--muted);margin-top:2px;}
 </style>
 </head>
 <body>
@@ -595,6 +648,11 @@ img{max-width:100%;display:block;}
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20.8 4.6a5.5 5.5 0 00-7.8 0L12 5.6l-1-1a5.5 5.5 0 00-7.8 7.8l1 1L12 21l7.8-7.8 1-1a5.5 5.5 0 000-7.8z"/></svg>
     My Favorites
     <?php if (!empty($favoriteArtworks)): ?><span class="badge"><?= count($favoriteArtworks) ?></span><?php endif; ?>
+  </a>
+  <a href="account.php#following" class="nav-item">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>
+    Following
+    <?php if ($unreadNotifs > 0): ?><span class="badge"><?= $unreadNotifs ?></span><?php elseif (!empty($followedArtists)): ?><span class="badge"><?= count($followedArtists) ?></span><?php endif; ?>
   </a>
   <div class="sidebar-section">Browse</div>
   <a href="../../index.php" class="nav-item">
@@ -970,6 +1028,50 @@ img{max-width:100%;display:block;}
     </div>
   </div>
 
+  <!-- NEW FROM ARTISTS YOU FOLLOW -->
+  <div class="profile-card" id="notifications">
+    <div class="card-header">
+      <span>🔔 Notifications<?php if ($unreadNotifs > 0): ?> <span style="font-size:11px;font-weight:400;color:var(--muted);">(<?= $unreadNotifs ?> new)</span><?php endif; ?></span>
+      <?php if ($unreadNotifs > 0): ?>
+        <form method="POST" style="margin:0;"><button type="submit" name="mark_notifs_read" class="btn-link">Mark all read</button></form>
+      <?php endif; ?>
+    </div>
+    <div class="card-body" style="padding:0;">
+      <?php if (empty($notifications)): ?>
+        <div class="empty">No notifications yet. Follow an artist and you'll be told when they upload new art.</div>
+      <?php else: foreach ($notifications as $n): ?>
+        <a class="notif-row<?= $n['is_read'] ? '' : ' unread' ?>" href="<?= $n['link'] ? '../../' . htmlspecialchars($n['link']) : '#' ?>">
+          <b><?= htmlspecialchars($n['title']) ?></b>
+          <span><?= htmlspecialchars($n['message']) ?></span>
+          <small><?= date('d M Y, g:i a', strtotime($n['created_at'])) ?></small>
+        </a>
+      <?php endforeach; endif; ?>
+    </div>
+  </div>
+
+  <!-- ARTISTS I FOLLOW -->
+  <div class="profile-card" id="following">
+    <div class="card-header">
+      <span>Artists I Follow</span>
+      <span id="followCountLabel" style="font-size:11px;color:var(--muted);font-weight:400;<?= empty($followedArtists) ? 'display:none;' : '' ?>"><?= count($followedArtists) ?> artist<?= count($followedArtists) !== 1 ? 's' : '' ?></span>
+    </div>
+    <div class="card-body" style="padding:0;">
+      <div class="empty" id="followEmpty" style="<?= empty($followedArtists) ? '' : 'display:none;' ?>">You're not following anyone yet. <a href="../../artists.php" style="color:var(--ink);">Discover artists →</a></div>
+      <div class="fol-list" id="followList">
+        <?php foreach ($followedArtists as $fa): $fpp = getProfileImageUrl($fa['profile_picture']); ?>
+        <div class="fol-row" id="fol-row-<?= (int)$fa['id'] ?>">
+          <div class="fol-av"><?php if ($fpp): ?><img src="<?= htmlspecialchars($fpp) ?>" alt="" loading="lazy"><?php else: ?><?= strtoupper(substr($fa['name'], 0, 1)) ?><?php endif; ?></div>
+          <div class="fol-info">
+            <a class="fol-name" href="../../artist-profile.php?id=<?= (int)$fa['id'] ?>"><?= htmlspecialchars($fa['name']) ?></a>
+            <div class="fol-sub"><?= htmlspecialchars(trim(($fa['art_style'] ?? 'Artist') . ($fa['city'] ? ' · ' . $fa['city'] : ''))) ?> · <?= (int)$fa['artwork_count'] ?> artwork<?= (int)$fa['artwork_count'] !== 1 ? 's' : '' ?></div>
+          </div>
+          <button type="button" class="fol-unfollow" onclick="unfollowArtist(<?= (int)$fa['id'] ?>, this)">Unfollow</button>
+        </div>
+        <?php endforeach; ?>
+      </div>
+    </div>
+  </div>
+
   <!-- MY FAVORITES -->
   <div class="profile-card" id="favorites">
     <div class="card-header">
@@ -1033,6 +1135,7 @@ img{max-width:100%;display:block;}
         <a href="account.php">Overview</a>
         <a href="orders.php">My Orders</a>
         <a href="account.php#favorites">My Favorites</a>
+        <a href="account.php#following">Following</a>
         <a href="../../index.php">Home</a>
         <a href="../../artworks.php">Artworks</a>
         <a href="../../artists.php">Artists</a>
@@ -1043,7 +1146,26 @@ img{max-width:100%;display:block;}
 </div>
 
 <script>
-  function openDrawer() {
+  function unfollowArtist(artistId, btn) {
+  btn.disabled = true;
+  var fd = new FormData();
+  fd.append('artist_id', artistId);
+  fd.append('action', 'unfollow');
+  fetch('../../follow.php', { method: 'POST', body: fd, credentials: 'same-origin' })
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      if (!d.ok) { alert(d.error || 'Something went wrong.'); btn.disabled = false; return; }
+      var row = document.getElementById('fol-row-' + artistId);
+      if (row) row.remove();
+      var left = document.querySelectorAll('#followList .fol-row').length;
+      var lbl = document.getElementById('followCountLabel');
+      lbl.textContent = left + ' artist' + (left !== 1 ? 's' : '');
+      if (left === 0) { lbl.style.display = 'none'; document.getElementById('followEmpty').style.display = ''; }
+    })
+    .catch(function () { alert('Network error. Please try again.'); btn.disabled = false; });
+}
+
+function openDrawer() {
     document.getElementById('nav-drawer').classList.add('open');
     document.getElementById('nav-overlay').classList.add('open');
 }
