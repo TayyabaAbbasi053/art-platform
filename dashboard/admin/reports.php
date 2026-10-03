@@ -14,6 +14,10 @@ $unreadMessageCount     = (int) ($conn->query("SELECT COUNT(*) FROM contact_mess
 
 $adminName = $_SESSION['name'] ?? 'Admin';
 
+// CSRF token for every payout / refund action on this page
+if (empty($_SESSION['csrf_token'])) $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+$csrfToken = $_SESSION['csrf_token'];
+
 // ── Is this an AJAX request? (lets us avoid a full page reload) ──
 $isAjax = (($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'XMLHttpRequest');
 function respond_ajax($ok, $extra = []) {
@@ -22,12 +26,22 @@ function respond_ajax($ok, $extra = []) {
     exit;
 }
 
+// ── Reject any POST without a valid CSRF token ───────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
+        if ($isAjax) respond_ajax(false, ['error' => 'Session expired. Please refresh the page.']);
+        header('Location: reports.php');
+        exit;
+    }
+}
+
 // ── Handle Mark as Paid (single order) ────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'mark_paid') {
     $orderId   = (int)($_POST['order_id'] ?? 0);
     $paidNotes = trim($_POST['paid_notes'] ?? '');
     $ok = false;
-    if ($orderId) {
+    $ord = $orderId ? $conn->query("SELECT order_status, payment_status FROM orders WHERE id = " . (int) $orderId)->fetch_assoc() : null;
+    if ($ord && $ord['order_status'] !== 'cancelled' && $ord['payment_status'] !== 'refunded') {
         $stmt = $conn->prepare("UPDATE orders SET artist_paid = 1, artist_paid_at = NOW(), artist_paid_notes = ? WHERE id = ?");
         $stmt->bind_param('si', $paidNotes, $orderId);
         $ok = $stmt->execute();
@@ -62,7 +76,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'mark_
     $orderId     = (int)($_POST['order_id'] ?? 0);
     $refundNotes = trim($_POST['refund_notes'] ?? '');
     $ok = false;
-    if ($orderId) {
+    $ord = $orderId ? $conn->query("SELECT order_status FROM orders WHERE id = " . (int) $orderId)->fetch_assoc() : null;
+    if ($ord && $ord['order_status'] === 'cancelled') {
         $stmt = $conn->prepare("UPDATE orders SET payment_status = 'refunded', refunded_at = NOW(), refund_notes = ? WHERE id = ?");
         $stmt->bind_param('si', $refundNotes, $orderId);
         $ok = $stmt->execute();
@@ -95,9 +110,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'unmar
 // ── Date range ─────────────────────────────────────────────────
 $dateFrom = $_GET['date_from'] ?? '';
 $dateTo   = $_GET['date_to']   ?? '';
+if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateFrom)) $dateFrom = '';
+if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateTo))   $dateTo   = '';
+$viewOwed = (($_GET['view'] ?? '') === 'owed');   // all-time list of sales still to be paid out
+$isDefaultRange = false;
 $hasReport = false;
 $reportData = [];
-$summaryTotals = ['sales'=>0,'commissions'=>0,'revenue'=>0,'total_orders'=>0,'unpaid_amount'=>0];
+$summaryTotals = ['sales'=>0,'commissions'=>0,'revenue'=>0,'total_orders'=>0,'unpaid_amount'=>0,'waiting_amount'=>0];
 
 $presets = [
     'this_month' => [date('Y-m-01'), date('Y-m-d')],
@@ -111,17 +130,34 @@ if (isset($_GET['preset']) && isset($presets[$_GET['preset']])) {
     [$dateFrom, $dateTo] = $presets[$_GET['preset']];
 }
 
-if ($dateFrom && $dateTo) {
+// Opening the page with nothing chosen shows this month instead of an empty prompt
+if (!$viewOwed && !$dateFrom && !$dateTo && !isset($_GET['preset'])) {
+    [$dateFrom, $dateTo] = $presets['this_month'];
+    $_GET['preset'] = 'this_month';
+    $isDefaultRange = true;
+}
+
+if ($viewOwed || ($dateFrom && $dateTo)) {
     $hasReport = true;
-    $dfSafe = $conn->real_escape_string($dateFrom);
-    $dtSafe = $conn->real_escape_string($dateTo);
+    if ($viewOwed) {
+        // every sale the buyer has paid for that the artist hasn't been paid for yet, any date
+        $dateCond   = '1=1';
+        $owedCond   = "AND o.payment_status='paid' AND o.artist_paid=0 AND o.order_status<>'cancelled'";
+        $cancelCond = '1=0';
+    } else {
+        $dfSafe = $conn->real_escape_string($dateFrom);
+        $dtSafe = $conn->real_escape_string($dateTo);
+        $dateCond   = "o.created_at BETWEEN '{$dfSafe} 00:00:00' AND '{$dtSafe} 23:59:59'";
+        $owedCond   = '';
+        $cancelCond = '1=1';
+    }
 
     // Collect artist IDs active in period
     $artistIdsInPeriod = [];
-    $r1 = $conn->query("SELECT DISTINCT aw.artist_id FROM orders o JOIN order_items oi ON o.id=oi.order_id AND oi.item_type='artwork' JOIN artworks aw ON oi.item_id=aw.id WHERE o.order_type='artwork' AND o.created_at BETWEEN '{$dfSafe} 00:00:00' AND '{$dtSafe} 23:59:59'");
+    $r1 = $conn->query("SELECT DISTINCT aw.artist_id FROM orders o JOIN order_items oi ON o.id=oi.order_id AND oi.item_type='artwork' JOIN artworks aw ON oi.item_id=aw.id WHERE o.order_type='artwork' AND {$dateCond} {$owedCond}");
     if ($r1) while ($row = $r1->fetch_assoc()) if ($row['artist_id']) $artistIdsInPeriod[] = $row['artist_id'];
 
-    $r2 = $conn->query("SELECT DISTINCT cr.artist_id FROM orders o JOIN commission_requests cr ON cr.order_id=o.id WHERE o.order_type='commission' AND o.created_at BETWEEN '{$dfSafe} 00:00:00' AND '{$dtSafe} 23:59:59'");
+    $r2 = $conn->query("SELECT DISTINCT cr.artist_id FROM orders o JOIN commission_requests cr ON cr.order_id=o.id WHERE o.order_type='commission' AND o.price_status='accepted' AND o.subtotal>0 AND {$dateCond} {$owedCond}");
     if ($r2) while ($row = $r2->fetch_assoc()) if ($row['artist_id']) $artistIdsInPeriod[] = $row['artist_id'];
 
     $artistIdsInPeriod = array_unique(array_filter($artistIdsInPeriod));
@@ -146,7 +182,7 @@ if ($dateFrom && $dateTo) {
                o.total AS order_total, o.subtotal, o.shipping_fee,
                o.order_status, o.payment_status, o.payment_method,
                o.artist_paid, o.artist_paid_at, o.artist_paid_notes,
-               aw.title AS artwork_title, aw.price AS artwork_price,
+               aw.title AS artwork_title, (oi.price * oi.quantity) AS artwork_price,
                COALESCE(u.name, o.guest_name) AS buyer_name
         FROM orders o
         JOIN order_items oi ON oi.order_id=o.id AND oi.item_type='artwork'
@@ -154,7 +190,7 @@ if ($dateFrom && $dateTo) {
         LEFT JOIN users u ON o.buyer_id=u.id
         WHERE o.order_type='artwork'
           AND o.order_status != 'cancelled'
-          AND o.created_at BETWEEN '{$dfSafe} 00:00:00' AND '{$dtSafe} 23:59:59'
+          AND {$dateCond} {$owedCond}
         ORDER BY o.created_at DESC");
 
     // Commission orders
@@ -170,8 +206,9 @@ if ($dateFrom && $dateTo) {
         LEFT JOIN categories cat ON o.commission_category_id=cat.id
         LEFT JOIN users u ON o.buyer_id=u.id
         WHERE o.order_type='commission'
+          AND o.price_status='accepted' AND o.subtotal > 0
           AND o.order_status != 'cancelled'
-          AND o.created_at BETWEEN '{$dfSafe} 00:00:00' AND '{$dtSafe} 23:59:59'
+          AND {$dateCond} {$owedCond}
         ORDER BY o.created_at DESC");
 
     // Cancelled orders (separate section, excluded from artist tables/totals above)
@@ -191,7 +228,7 @@ if ($dateFrom && $dateTo) {
         LEFT JOIN users art ON art.id = COALESCE(aw.artist_id, cr.artist_id)
         LEFT JOIN users u ON o.buyer_id = u.id
         WHERE o.order_status = 'cancelled'
-          AND o.created_at BETWEEN '{$dfSafe} 00:00:00' AND '{$dtSafe} 23:59:59'
+          AND {$dateCond} AND {$cancelCond}
         ORDER BY o.created_at DESC");
 
     $cancelledOrders = [];
@@ -220,6 +257,7 @@ if ($dateFrom && $dateTo) {
         $row['type']               = $type;
         $row['display_title']      = $type === 'artwork' ? ($row['artwork_title'] ?? '—') : ($row['category_name'] ?? 'Custom Request');
         $row['artwork_price_calc'] = $artPrice;
+        $row['buyer_paid']         = ($row['payment_status'] === 'paid');
 
         $structured[$aid]['orders'][] = $row;
         $rev = (float)$row['order_total'];
@@ -230,9 +268,16 @@ if ($dateFrom && $dateTo) {
         $summaryTotals['revenue']      += $rev;
         $summaryTotals['total_orders'] ++;
         if (!$row['artist_paid']) {
-    $structured[$aid]['unpaid_amount']  += $artPrice;
-    $summaryTotals['unpaid_amount']     += $artPrice;
-}
+            if ($row['buyer_paid']) {
+                // owed: the buyer has paid, the artist has not been paid yet
+                $structured[$aid]['unpaid_amount'] += $artPrice;
+                $summaryTotals['unpaid_amount']    += $artPrice;
+            } else {
+                // waiting: the buyer hasn't paid, so nothing is owed yet
+                $structured[$aid]['waiting_amount'] = ($structured[$aid]['waiting_amount'] ?? 0) + $artPrice;
+                $summaryTotals['waiting_amount']   += $artPrice;
+            }
+        }
     };
 
     if ($salesData) while ($row = $salesData->fetch_assoc()) $processRow($row, 'artwork');
@@ -241,6 +286,97 @@ if ($dateFrom && $dateTo) {
     $structured = array_filter($structured, fn($a) => count($a['orders']) > 0);
     uasort($structured, fn($a,$b) => ($b['sales_rev']+$b['comm_rev']) <=> ($a['sales_rev']+$a['comm_rev']));
     $reportData = $structured;
+}
+
+// ── Overview numbers (always shown, independent of the date range) ──────────
+// Amounts are the sale price only (shipping excluded), taken from the price
+// stored on the order item, so editing an artwork later never rewrites history.
+// "Collected" = buyer payment confirmed. "Owed" = collected but the artist has
+// not been paid. "Waiting" = buyer has not paid yet, so nothing is owed.
+$salesUnion = "
+    SELECT o.id AS oid, o.created_at, o.order_status, o.payment_status, o.artist_paid,
+           aw.artist_id AS artist_id, (oi.price * oi.quantity) AS amt
+    FROM orders o
+    JOIN order_items oi ON oi.order_id = o.id AND oi.item_type = 'artwork'
+    JOIN artworks aw ON aw.id = oi.item_id
+    WHERE o.order_type = 'artwork'
+    UNION ALL
+    SELECT o.id, o.created_at, o.order_status, o.payment_status, o.artist_paid,
+           cr.artist_id, o.subtotal
+    FROM orders o
+    JOIN commission_requests cr ON cr.order_id = o.id
+    WHERE o.order_type = 'commission' AND o.price_status = 'accepted' AND o.subtotal > 0
+";
+$monthStart = date('Y-m-01 00:00:00');
+$nextMonth  = date('Y-m-01 00:00:00', strtotime('first day of next month'));
+$overview = ['month' => 0, 'month_orders' => 0, 'total' => 0, 'total_orders' => 0, 'owed' => 0, 'owed_orders' => 0, 'waiting' => 0, 'paid_out' => 0];
+$stmtOv = $conn->prepare("
+    SELECT
+      COALESCE(SUM(CASE WHEN s.payment_status='paid' AND s.created_at >= ? AND s.created_at < ? THEN s.amt END),0) AS month_amt,
+      COUNT(DISTINCT CASE WHEN s.payment_status='paid' AND s.created_at >= ? AND s.created_at < ? THEN s.oid END) AS month_orders,
+      COALESCE(SUM(CASE WHEN s.payment_status='paid' THEN s.amt END),0) AS total_amt,
+      COUNT(DISTINCT CASE WHEN s.payment_status='paid' THEN s.oid END) AS total_orders,
+      COALESCE(SUM(CASE WHEN s.payment_status='paid' AND s.artist_paid=0 THEN s.amt END),0) AS owed_amt,
+      COUNT(DISTINCT CASE WHEN s.payment_status='paid' AND s.artist_paid=0 THEN s.oid END) AS owed_orders,
+      COALESCE(SUM(CASE WHEN s.payment_status<>'paid' AND s.artist_paid=0 THEN s.amt END),0) AS waiting_amt,
+      COALESCE(SUM(CASE WHEN s.artist_paid=1 THEN s.amt END),0) AS paid_out_amt
+    FROM ($salesUnion) s
+    WHERE s.order_status <> 'cancelled' AND COALESCE(s.payment_status,'') <> 'refunded'
+");
+if ($stmtOv) {
+    $stmtOv->bind_param('ssss', $monthStart, $nextMonth, $monthStart, $nextMonth);
+    $stmtOv->execute();
+    $ovRow = $stmtOv->get_result()->fetch_assoc();
+    $stmtOv->close();
+    if ($ovRow) {
+        $overview = [
+            'month' => (float) $ovRow['month_amt'],   'month_orders' => (int) $ovRow['month_orders'],
+            'total' => (float) $ovRow['total_amt'],   'total_orders' => (int) $ovRow['total_orders'],
+            'owed'  => (float) $ovRow['owed_amt'],    'owed_orders'  => (int) $ovRow['owed_orders'],
+            'waiting' => (float) $ovRow['waiting_amt'], 'paid_out'   => (float) $ovRow['paid_out_amt'],
+        ];
+    }
+}
+
+// Who needs to be paid, biggest amount first
+$owedByArtist = [];
+$resOwed = $conn->query("
+    SELECT s.artist_id, u.name AS artist_name, COUNT(DISTINCT s.oid) AS orders_count,
+           SUM(s.amt) AS amt, MIN(s.created_at) AS oldest
+    FROM ($salesUnion) s
+    JOIN users u ON u.id = s.artist_id
+    WHERE s.order_status <> 'cancelled' AND s.payment_status = 'paid' AND s.artist_paid = 0
+    GROUP BY s.artist_id, u.name
+    ORDER BY amt DESC
+");
+if ($resOwed) while ($row = $resOwed->fetch_assoc()) $owedByArtist[] = $row;
+
+// ── CSV download of whatever is on screen (period or owed view) ──────────────
+if (($_GET['export'] ?? '') === 'csv' && $hasReport) {
+    $csvSafe = function ($v) {
+        $v = (string) $v;
+        // stop spreadsheet apps from running a cell that starts like a formula
+        return ($v !== '' && strpos("=+-@\t\r", $v[0]) !== false) ? "'" . $v : $v;
+    };
+    $fname = $viewOwed ? 'owed-to-artists-' . date('Ymd') : 'sales-' . $dateFrom . '-to-' . $dateTo;
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="' . $fname . '.csv"');
+    $out = fopen('php://output', 'w');
+    fwrite($out, "\xEF\xBB\xBF");
+    fputcsv($out, ['Date', 'Order #', 'Type', 'Item', 'Artist', 'Buyer', 'Sale amount (PKR)', 'Order total (PKR)', 'Order status', 'Buyer payment', 'Payout status']);
+    foreach ($reportData as $d) {
+        foreach ($d['orders'] as $o) {
+            $payout = $o['artist_paid'] ? 'Paid to artist' . ($o['artist_paid_at'] ? ' ' . date('d M Y', strtotime($o['artist_paid_at'])) : '')
+                    : ($o['buyer_paid'] ? 'Owed to artist' : 'Waiting for buyer payment');
+            fputcsv($out, array_map($csvSafe, [
+                date('Y-m-d', strtotime($o['created_at'])), $o['order_number'], ucfirst($o['type']), $o['display_title'],
+                $d['profile']['name'], $o['buyer_name'], $o['artwork_price_calc'], $o['order_total'],
+                $o['order_status'], $o['payment_status'], $payout,
+            ]));
+        }
+    }
+    fclose($out);
+    exit;
 }
 
 function getStatusPill($status) {
@@ -254,6 +390,11 @@ function getStatusPill($status) {
 function paidBadge($paid, $paidAt) {
     if ($paid) { $d = $paidAt ? ' '.date('d M Y', strtotime($paidAt)) : ''; return "<span class='pill paid-pill'>&#10003; Paid$d</span>"; }
     return "<span class='pill unpaid-pill'>Unpaid</span>";
+}
+function payoutBadge($paid, $paidAt, $buyerPaid) {
+    if ($paid) return paidBadge($paid, $paidAt);
+    if ($buyerPaid) return "<span class='pill owed-pill'>Owed to artist</span>";
+    return "<span class='pill waiting-pill'>Waiting for buyer</span>";
 }
 function refundBadge($paymentStatus, $refundedAt) {
     if ($paymentStatus === 'refunded') {
@@ -427,6 +568,18 @@ tr.is-paid{opacity:.55;}
 .prompt-state .p-title{font-family:'Playfair Display',serif;font-size:22px;font-weight:400;margin-bottom:8px;}
 .prompt-state .p-sub{font-size:12px;opacity:.7;}
 
+/* Overview + owed panel */
+.overview-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:10px;}
+.paid-out-line{font-size:12px;opacity:.8;margin-bottom:24px;}
+.owed-panel{background:var(--card);border:1px solid var(--border);border-radius:14px;margin-bottom:28px;overflow:hidden;}
+.owed-panel .op-head{padding:16px 24px;background:var(--sand);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;}
+.owed-panel .op-head h3{font-family:'Playfair Display',serif;font-size:18px;font-weight:400;}
+.owed-panel .op-empty{padding:22px 24px;font-size:12.5px;opacity:.75;}
+.owed-pill{background:var(--sand);color:var(--ink);border:1px solid var(--ink);}
+.waiting-pill{background:var(--bg);color:var(--ink);border:1px dashed var(--ink);}
+.export-bar{display:flex;justify-content:flex-end;margin-bottom:14px;}
+.btn-link{text-decoration:none;display:inline-block;}
+.pay-warn{display:none;color:#c0392b;font-weight:600;opacity:1 !important;}
 @media(max-width:768px){
     :root{--sidebar:0px;}
     .sidebar{display:none;}
@@ -436,6 +589,7 @@ tr.is-paid{opacity:.55;}
     .artist-header{flex-direction:column;gap:14px;}
     .artist-stats{width:100%;justify-content:space-between;text-align:left;align-items:flex-start;}
     .summary-strip{grid-template-columns:1fr 1fr;}
+    .overview-strip{grid-template-columns:1fr 1fr;}
     .grand-footer{grid-template-columns:1fr 1fr;}
 }
 </style>
@@ -478,6 +632,60 @@ tr.is-paid{opacity:.55;}
 <div class="alert alert-success">&#10003; Order marked as refunded successfully.</div>
 <?php endif; ?>
 
+<!-- Overview: always visible, not affected by the date range below -->
+<div class="overview-strip">
+    <div class="summary-card">
+        <div class="s-label">This month</div>
+        <div class="s-value" style="font-size:24px">PKR <?= number_format($overview['month']) ?></div>
+        <div class="s-sub"><?= date('F Y') ?> &middot; <?= $overview['month_orders'] ?> paid sale<?= $overview['month_orders'] !== 1 ? 's' : '' ?></div>
+    </div>
+    <div class="summary-card">
+        <div class="s-label">Total collected</div>
+        <div class="s-value" style="font-size:24px">PKR <?= number_format($overview['total']) ?></div>
+        <div class="s-sub">All time &middot; <?= $overview['total_orders'] ?> paid sale<?= $overview['total_orders'] !== 1 ? 's' : '' ?></div>
+    </div>
+    <div class="summary-card highlight">
+        <div class="s-label">Owed to artists</div>
+        <div class="s-value" style="font-size:24px">PKR <?= number_format($overview['owed']) ?></div>
+        <div class="s-sub">Buyer paid &middot; <?= $overview['owed_orders'] ?> sale<?= $overview['owed_orders'] !== 1 ? 's' : '' ?> to pay out</div>
+    </div>
+    <div class="summary-card">
+        <div class="s-label">Waiting for buyers</div>
+        <div class="s-value" style="font-size:24px">PKR <?= number_format($overview['waiting']) ?></div>
+        <div class="s-sub">Not owed until the buyer pays</div>
+    </div>
+</div>
+<p class="paid-out-line">Already paid out to artists: <strong>PKR <?= number_format($overview['paid_out']) ?></strong> &middot; Amounts are sale prices only, shipping excluded.</p>
+
+<div class="owed-panel">
+    <div class="op-head">
+        <h3>Who needs to be paid</h3>
+        <?php if (!empty($owedByArtist)): ?>
+        <a href="?view=owed" class="btn btn-primary btn-sm btn-link">Review all owed sales</a>
+        <?php endif; ?>
+    </div>
+    <?php if (empty($owedByArtist)): ?>
+        <div class="op-empty">&#10003; Nothing owed right now. Every sale the buyer has paid for has been paid out to the artist.</div>
+    <?php else: ?>
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>Artist</th><th>Sales to pay</th><th>Amount owed</th><th>Oldest unpaid sale</th><th></th></tr></thead>
+            <tbody>
+            <?php foreach ($owedByArtist as $oa): ?>
+                <tr>
+                    <td style="font-weight:500"><?= htmlspecialchars($oa['artist_name']) ?></td>
+                    <td><?= (int) $oa['orders_count'] ?></td>
+                    <td class="amount">PKR <?= number_format($oa['amt']) ?></td>
+                    <td><?= date('d M Y', strtotime($oa['oldest'])) ?></td>
+                    <td><a href="?view=owed#artist-<?= (int) $oa['artist_id'] ?>" class="btn btn-sm btn-pay btn-link">Review &amp; pay</a></td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+    <?php endif; ?>
+</div>
+
 <!-- Filter Card -->
 <div class="filter-card">
     <h3>Set Report Period</h3>
@@ -487,11 +695,13 @@ tr.is-paid{opacity:.55;}
             <div class="filter-group"><label>From</label><input type="date" name="date_from" value="<?= htmlspecialchars($dateFrom) ?>"></div>
             <div class="filter-group"><label>To</label><input type="date" name="date_to" value="<?= htmlspecialchars($dateTo) ?>"></div>
             <div class="filter-group"><button type="submit" class="btn btn-primary">Generate Report</button></div>
-            <?php if ($hasReport): ?>
+            <?php if ($hasReport && !$isDefaultRange): ?>
             <div class="filter-group"><a href="reports.php" class="btn btn-clear">Clear</a></div>
             <?php endif; ?>
         </div>
-        <?php if ($hasReport): ?>
+        <?php if ($hasReport && $viewOwed): ?>
+        <div class="period-info" style="margin:12px 0 0;opacity:.75;">Showing <strong>every sale the buyer has paid for that hasn't been paid out yet</strong>, from any date.</div>
+        <?php elseif ($hasReport): ?>
         <div class="period-info" style="margin:12px 0 0;opacity:.75;">Showing <strong><?= date('d M Y', strtotime($dateFrom)) ?></strong> &rarr; <strong><?= date('d M Y', strtotime($dateTo)) ?></strong></div>
         <?php endif; ?>
         <div class="presets">
@@ -501,9 +711,14 @@ tr.is-paid{opacity:.55;}
             foreach (['last_7'=>'Last 7 days','last_30'=>'Last 30 days','this_month'=>'This month','last_month'=>'Last month','this_year'=>'This year'] as $key=>$label): ?>
             <a href="?preset=<?= $key ?>" class="preset-btn <?= $activePreset===$key?'active':'' ?>"><?= $label ?></a>
             <?php endforeach; ?>
+            <a href="?view=owed" class="preset-btn <?= $viewOwed ? 'active' : '' ?>">Owed to artists (all time)</a>
         </div>
     </form>
 </div>
+
+<?php if ($hasReport && !empty($reportData)): ?>
+<div class="export-bar"><a href="?<?= htmlspecialchars(http_build_query(array_merge($_GET, ['export' => 'csv']))) ?>" class="btn btn-clear btn-link">&#8681; Download CSV</a></div>
+<?php endif; ?>
 
 <?php if ($hasReport): ?>
 
@@ -522,28 +737,29 @@ tr.is-paid{opacity:.55;}
     <div class="summary-card">
         <div class="s-label">Total Revenue</div>
         <div class="s-value" style="font-size:22px">PKR <?= number_format($summaryTotals['revenue']) ?></div>
-        <div class="s-sub">Sales + commissions</div>
+        <div class="s-sub">Order totals incl. shipping</div>
     </div>
     <div class="summary-card highlight">
-        <div class="s-label">Unpaid to Artists</div>
+        <div class="s-label">Owed to Artists</div>
         <div class="s-value" style="font-size:22px">PKR <?= number_format($summaryTotals['unpaid_amount']) ?></div>
-        <div class="s-sub">Pending payouts</div>
+        <div class="s-sub"><?= $summaryTotals['waiting_amount'] > 0 ? 'Buyer paid. Plus PKR ' . number_format($summaryTotals['waiting_amount']) . ' waiting for buyers' : 'Buyer paid, payout pending' ?></div>
     </div>
 </div>
 
 <?php if (empty($reportData)): ?>
-<div class="prompt-state"><div class="p-title">No activity in this period</div><div class="p-sub">No sales or commissions were recorded.</div></div>
+<div class="prompt-state"><div class="p-title"><?= $viewOwed ? 'Nothing owed right now' : 'No activity in this period' ?></div><div class="p-sub"><?= $viewOwed ? 'Every sale the buyer has paid for has been paid out.' : 'No sales or commissions were recorded.' ?></div></div>
 <?php else: ?>
 
 <?php foreach ($reportData as $aid => $data):
     $p      = $data['profile'];
     $tRev   = $data['sales_rev'] + $data['comm_rev'];
     $unpaid = $data['unpaid_amount'];
+    $waitingAmt = $data['waiting_amount'] ?? 0;
     $artOrders  = array_filter($data['orders'], fn($o) => $o['type']==='artwork');
     $commOrders = array_filter($data['orders'], fn($o) => $o['type']==='commission');
 ?>
 
-<div class="artist-section">
+<div class="artist-section" id="artist-<?= (int) $aid ?>">
 
     <!-- Artist Header -->
     <div class="artist-header">
@@ -565,7 +781,7 @@ tr.is-paid{opacity:.55;}
             <div class="stat-item"><span class="stat-label">Comm.</span><span class="stat-val"><?= $data['comm_count'] ?></span></div>
             <div class="stat-item"><span class="stat-label">Revenue</span><span class="stat-val">PKR <?= number_format($tRev) ?></span></div>
             <?php if ($unpaid > 0): ?>
-            <div class="stat-item"><span class="stat-label">Unpaid</span><span class="stat-val unpaid-stat">PKR <?= number_format($unpaid) ?></span></div>
+            <div class="stat-item"><span class="stat-label">Owed</span><span class="stat-val unpaid-stat">PKR <?= number_format($unpaid) ?></span></div>
             <?php endif; ?>
         </div>
     </div>
@@ -595,6 +811,7 @@ tr.is-paid{opacity:.55;}
                 data-order-num="<?= addslashes(htmlspecialchars($o['order_number'])) ?>"
                 data-item="<?= addslashes(htmlspecialchars($o['display_title'])) ?>"
                 data-artist="<?= addslashes(htmlspecialchars($p['name'])) ?>"
+                data-buyer-paid="<?= $o['buyer_paid'] ? '1' : '0' ?>"
                 data-art-price="<?= $o['artwork_price_calc'] ?>"
                 data-order-total="<?= $o['order_total'] ?>">
                 <td style="white-space:nowrap"><?= date('d M Y', strtotime($o['created_at'])) ?></td>
@@ -605,7 +822,7 @@ tr.is-paid{opacity:.55;}
 <td class="amount">PKR <?= number_format($o['order_total']) ?></td>
                 <td><?= getStatusPill($o['order_status']) ?></td>
                 <td><?= getStatusPill($o['payment_status']) ?></td>
-                <td class="paid-cell"><?= paidBadge($o['artist_paid'], $o['artist_paid_at']) ?></td>
+                <td class="paid-cell"><?= payoutBadge($o['artist_paid'], $o['artist_paid_at'], $o['buyer_paid']) ?></td>
                 <td class="action-cell">
                     <?php if (!$o['artist_paid']): ?>
                     <button class="btn btn-sm btn-pay" onclick="openPayModal(
@@ -614,7 +831,8 @@ tr.is-paid{opacity:.55;}
                         '<?= addslashes(htmlspecialchars($o['display_title'])) ?>',
                         '<?= addslashes(htmlspecialchars($p['name'])) ?>',
                         <?= $o['artwork_price_calc'] ?>,
-                        <?= $o['order_total'] ?>
+                        <?= $o['order_total'] ?>,
+                        <?= $o['buyer_paid'] ? 'true' : 'false' ?>
                     )">Mark Paid</button>
                     <?php else: ?>
                     <span class="row-done">Done<?= $o['artist_paid_notes'] ? ' &bull; '.htmlspecialchars(substr($o['artist_paid_notes'],0,30)) : '' ?><button type="button" class="btn-undo" onclick="undoAction('unmark_paid', <?= $o['order_id'] ?>, this)">Undo</button></span>
@@ -635,8 +853,11 @@ tr.is-paid{opacity:.55;}
         <span>Total revenue for <strong><?= htmlspecialchars($p['name']) ?></strong>: PKR <?= number_format($tRev) ?></span>
         <?php if ($unpaid > 0): ?>
         <span class="unpaid-warn">&#9888; Still owed to artist: PKR <?= number_format($unpaid) ?></span>
-        <?php else: ?>
+        <?php elseif ($waitingAmt == 0): ?>
         <span style="opacity:.65">&#10003; All orders paid out</span>
+        <?php endif; ?>
+        <?php if ($waitingAmt > 0): ?>
+        <span style="opacity:.65">Waiting for buyer payment: PKR <?= number_format($waitingAmt) ?></span>
         <?php endif; ?>
     </div>
 
@@ -749,9 +970,11 @@ tr.is-paid{opacity:.55;}
                 <span class="od-label">Artwork Price</span><span class="od-val" id="md-art-price">—</span>
 <span class="od-label">Total Order Price</span><span class="od-val" id="md-shipping">—</span>
             </div>
+            <p class="pay-warn" id="md-warn">&#9888; The buyer hasn't paid for this order yet. Only mark it paid if you are sure.</p>
 
             <form method="POST">
                 <input type="hidden" name="action" value="mark_paid">
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken) ?>">
                 <input type="hidden" name="order_id" id="modal-order-id" value="">
                 <input type="hidden" name="date_from" value="<?= htmlspecialchars($dateFrom) ?>">
                 <input type="hidden" name="date_to"   value="<?= htmlspecialchars($dateTo) ?>">
@@ -785,6 +1008,7 @@ tr.is-paid{opacity:.55;}
 
             <form method="POST">
                 <input type="hidden" name="action" value="mark_refunded">
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken) ?>">
                 <input type="hidden" name="order_id" id="refund-order-id" value="">
                 <input type="hidden" name="date_from" value="<?= htmlspecialchars($dateFrom) ?>">
                 <input type="hidden" name="date_to"   value="<?= htmlspecialchars($dateTo) ?>">
@@ -801,6 +1025,7 @@ tr.is-paid{opacity:.55;}
 
 <div class="toast-wrap" id="toast-wrap"></div>
 <script>
+const CSRF_TOKEN = <?= json_encode($csrfToken) ?>;
 // ── Toast: gives feedback for every action without ever reloading the page ──
 function showToast(msg, isErr) {
     const wrap = document.getElementById('toast-wrap');
@@ -813,7 +1038,7 @@ function showToast(msg, isErr) {
 
 // ── Shared helper: POST an action via fetch so the whole page never reloads ──
 function postAction(payload) {
-    const body = new URLSearchParams(payload);
+    const body = new URLSearchParams(Object.assign({ csrf_token: CSRF_TOKEN }, payload));
     return fetch('reports.php', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' },
@@ -833,7 +1058,8 @@ document.addEventListener('keydown', e => {
 });
 
 /* ---------- Mark Paid ---------- */
-function openPayModal(orderId, orderNum, itemTitle, artistName, artPrice, orderTotal) {
+function openPayModal(orderId, orderNum, itemTitle, artistName, artPrice, orderTotal, buyerPaid = true) {
+    document.getElementById('md-warn').style.display = buyerPaid ? 'none' : 'block';
     document.getElementById('modal-order-id').value     = orderId;
     document.getElementById('md-order-num').textContent = orderNum;
     document.getElementById('md-artist').textContent    = artistName;
@@ -905,8 +1131,8 @@ function undoAction(action, orderId, btnEl) {
             row.classList.remove('row-busy', 'is-paid');
             const d = row.dataset;
             if (isPaid) {
-                row.querySelector('.paid-cell').innerHTML = `<span class='pill unpaid-pill'>Unpaid</span>`;
-                row.querySelector('.action-cell').innerHTML = `<button class="btn btn-sm btn-pay" onclick="openPayModal(${orderId}, '${d.orderNum}', '${d.item}', '${d.artist}', ${d.artPrice}, ${d.orderTotal})">Mark Paid</button>`;
+                row.querySelector('.paid-cell').innerHTML = d.buyerPaid === '1' ? `<span class='pill owed-pill'>Owed to artist</span>` : `<span class='pill waiting-pill'>Waiting for buyer</span>`;
+                row.querySelector('.action-cell').innerHTML = `<button class="btn btn-sm btn-pay" onclick="openPayModal(${orderId}, '${d.orderNum}', '${d.item}', '${d.artist}', ${d.artPrice}, ${d.orderTotal}, ${d.buyerPaid === '1'})">Mark Paid</button>`;
             } else {
                 row.querySelector('.refund-cell').innerHTML = `<span class='pill unrefunded-pill'>Not Refunded</span>`;
                 row.querySelector('.action-cell').innerHTML = `<button class="btn btn-sm btn-refund" onclick="openRefundModal(${orderId}, '${d.orderNum}', '${d.item}', '${d.buyer}', ${d.orderTotal})">Mark Refunded</button>`;
