@@ -26,8 +26,87 @@ $artistId = (int) $_SESSION['user_id'];  // ← whatever comes next in the file
  $artistId   = (int) $_SESSION['user_id'];
  $artistName = $_SESSION['name'] ?? 'Artist';
 
+// ── Account deletion safeguards ─────────────────────────────
+if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = bin2hex(random_bytes(32)); }
+
+/**
+ * Reasons this artist can't delete their profile right now (empty array = free to delete).
+ *  - active orders / commissions (anything past 'pending' that isn't delivered/completed/cancelled)
+ *  - money owed: delivered orders whose payout hasn't been sent, or an unpaid monthly platform fee
+ */
+function artistDeletionBlockers(mysqli $conn, int $artistId): array
+{
+    $blockers = [];
+    $done = "'pending','delivered','completed','cancelled','rejected'";
+
+    $activeArt = (int)$conn->query("
+        SELECT COUNT(DISTINCT o.id) FROM orders o
+        JOIN order_items oi ON oi.order_id = o.id AND oi.item_type = 'artwork'
+        JOIN artworks a ON a.id = oi.item_id
+        WHERE a.artist_id = $artistId AND o.order_type = 'artwork' AND o.order_status NOT IN ($done)
+    ")->fetch_row()[0];
+    $activeComm = (int)$conn->query("
+        SELECT COUNT(DISTINCT o.id) FROM orders o
+        JOIN commission_requests cr ON cr.order_id = o.id
+        WHERE cr.artist_id = $artistId AND o.order_type = 'commission' AND o.order_status NOT IN ($done)
+    ")->fetch_row()[0];
+    $active = $activeArt + $activeComm;
+    if ($active > 0) {
+        $blockers[] = "You have $active active order" . ($active !== 1 ? 's' : '') . " or commission" . ($active !== 1 ? 's' : '') . " in progress. Finish or cancel " . ($active !== 1 ? 'them' : 'it') . " first.";
+    }
+
+    $unpaidPayouts = (int)$conn->query("
+        SELECT COUNT(*) FROM (
+            SELECT o.id FROM orders o
+            JOIN order_items oi ON oi.order_id = o.id AND oi.item_type = 'artwork'
+            JOIN artworks a ON a.id = oi.item_id
+            WHERE a.artist_id = $artistId AND o.order_type = 'artwork'
+              AND o.order_status IN ('delivered','completed') AND (o.artist_paid IS NULL OR o.artist_paid = 0)
+            UNION
+            SELECT o.id FROM orders o
+            JOIN commission_requests cr ON cr.order_id = o.id
+            WHERE cr.artist_id = $artistId AND o.order_type = 'commission'
+              AND o.order_status IN ('delivered','completed') AND (o.artist_paid IS NULL OR o.artist_paid = 0)
+        ) t
+    ")->fetch_row()[0];
+    if ($unpaidPayouts > 0) {
+        $blockers[] = "You are still owed a payout on $unpaidPayouts delivered order" . ($unpaidPayouts !== 1 ? 's' : '') . ". Wait until you've been paid.";
+    }
+
+    try {
+        $unpaidFees = (int)$conn->query("SELECT COUNT(*) FROM artist_payments WHERE artist_id = $artistId AND status = 'unpaid'")->fetch_row()[0];
+        if ($unpaidFees > 0) {
+            $blockers[] = "Your monthly artist fee is unpaid. Please settle it before deleting your profile.";
+        }
+    } catch (Throwable $e) { /* artist_payments not available - ignore */ }
+
+    return $blockers;
+}
+
+ $deleteBlockers = artistDeletionBlockers($conn, $artistId);
+ $deleteFormError = '';
+
 // ── Handle account deletion ─────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_account'])) {
+    // 1) CSRF
+    if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
+        $deleteFormError = 'Your session expired. Please refresh the page and try again.';
+    }
+    // 2) Must type the account name exactly (ignoring case / extra spaces)
+    if ($deleteFormError === '') {
+        $realName = (string)($conn->query("SELECT name FROM users WHERE id = $artistId")->fetch_row()[0] ?? '');
+        $norm = fn($t) => mb_strtolower(preg_replace('/\s+/u', ' ', trim((string)$t)));
+        if ($realName === '' || $norm($_POST['confirm_name'] ?? '') !== $norm($realName)) {
+            $deleteFormError = 'The name you typed does not match your account name. Nothing was deleted.';
+        }
+    }
+    // 3) Blocked while an order is active or money is owed (re-checked server-side)
+    if ($deleteFormError === '' && !empty($deleteBlockers)) {
+        $deleteFormError = 'Your profile can\'t be deleted right now. See the reasons in the Danger Zone below.';
+    }
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_account']) && $deleteFormError === '') {
     $conn->begin_transaction();
     try {
         // Delete images for all of this artist's artworks
@@ -423,7 +502,7 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font-family
 .banner-close:hover { opacity: 1; color: var(--ink); }
 
 /* ── Stat cards ──────────────────────────────────────── */
-.stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 32px; }
+.stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 32px; }
 .stat-card {
     background: var(--card); border: 1px solid var(--border); border-radius: 14px;
     padding: 22px 24px; position: relative; overflow: hidden; transition: box-shadow .2s;
@@ -660,6 +739,10 @@ tr:hover td { background: var(--sand); color: var(--ink); }
             <span class="badge amber">!</span>
         <?php endif; ?>
     </a>
+    <a href="#danger-zone" class="nav-item" style="color:#E8786C;" onclick="document.getElementById('danger-zone').scrollIntoView({behavior:'smooth',block:'center'});return false;">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
+        Delete Profile
+    </a>
 
     <div class="sidebar-bottom">
         <a href="../../logout.php" class="signout-btn">
@@ -773,14 +856,6 @@ tr:hover td { background: var(--sand); color: var(--ink); }
             <div class="sub">
                 <span><?= $stats['new_commissions'] ?></span> new
             </div>
-        </div>
-        <div class="stat-card danger" onclick="openDeleteModal()" style="cursor:pointer;">
-            <div class="corner-icon">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
-            </div>
-            <div class="label">Delete Profile</div>
-            <div class="value" style="font-size:16px;font-family:'DM Sans',sans-serif;font-weight:600;">Permanently</div>
-            <div class="sub">Deletes account &amp; data</div>
         </div>
     </div>
 
@@ -1010,6 +1085,31 @@ tr:hover td { background: var(--sand); color: var(--ink); }
         <?php endif; ?>
     </div>
 
+    <!-- ── Danger Zone ────────────────────────────── -->
+    <div class="section-header" style="margin-top:36px;">
+        <span class="section-title" style="color:#C0392B;">Danger Zone</span>
+    </div>
+    <div class="card" id="danger-zone" style="border-color:#C0392B;padding:20px 24px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+            <div style="flex:1;min-width:220px;">
+                <div style="font-weight:600;font-size:14px;margin-bottom:4px;">Delete profile</div>
+                <div style="font-size:12.5px;color:var(--muted);line-height:1.6;">Permanently deletes your account, artworks and profile data. Order history your buyers need is kept. This can't be undone.</div>
+            </div>
+            <button type="button" onclick="openDeleteModal()" <?= !empty($deleteBlockers) ? 'disabled' : '' ?> style="background:#C0392B;color:#fff;border:none;border-radius:8px;padding:10px 20px;font-size:13px;font-weight:500;font-family:'DM Sans',sans-serif;cursor:<?= !empty($deleteBlockers) ? 'not-allowed' : 'pointer' ?>;opacity:<?= !empty($deleteBlockers) ? '.45' : '1' ?>;">Delete profile…</button>
+        </div>
+        <?php if (!empty($deleteBlockers)): ?>
+        <div style="margin-top:14px;background:#FBEAE8;border-radius:8px;padding:12px 16px;font-size:12.5px;line-height:1.7;color:#8f2a1f;">
+            <strong>You can't delete your profile yet:</strong>
+            <ul style="margin:6px 0 0 18px;">
+                <?php foreach ($deleteBlockers as $b): ?><li><?= htmlspecialchars($b) ?></li><?php endforeach; ?>
+            </ul>
+        </div>
+        <?php endif; ?>
+        <?php if ($deleteFormError !== '' && empty($_POST['__modal_open'])): ?>
+        <div style="margin-top:14px;background:#C0392B;color:#fff;border-radius:8px;padding:10px 16px;font-size:12.5px;"><?= htmlspecialchars($deleteFormError) ?></div>
+        <?php endif; ?>
+    </div>
+
 </div><!-- /content -->
 
 <div class="dash-footer">
@@ -1040,6 +1140,7 @@ tr:hover td { background: var(--sand); color: var(--ink); }
     <?php if ($stats['unread_order_msgs'] == 0 && $stats['new_orders'] > 0): ?><span style="background:var(--sand);color:var(--ink);font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;margin-left:6px;"><?= $stats['new_orders'] ?></span><?php endif; ?>
 </a>
         <a href="profile.php">Profile</a>
+        <a href="#danger-zone" style="color:#E8786C;" onclick="closeDrawer();document.getElementById('danger-zone').scrollIntoView({behavior:'smooth',block:'center'});return false;">Delete Profile</a>
     </div>
     <div class="drawer-actions">
         <a href="../../cart.php">Cart</a>
@@ -1054,24 +1155,36 @@ tr:hover td { background: var(--sand); color: var(--ink); }
 <?php endif; ?>
 
 <!-- Delete Account Confirmation Modal -->
+<?php if (empty($deleteBlockers)): ?>
 <div id="delete-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:500;align-items:center;justify-content:center;">
-    <div style="background:var(--card);border-radius:14px;max-width:380px;width:90%;padding:28px;text-align:center;box-shadow:0 12px 40px rgba(0,0,0,.2);">
+    <div style="background:var(--card);border-radius:14px;max-width:400px;width:90%;padding:28px;text-align:center;box-shadow:0 12px 40px rgba(0,0,0,.2);">
         <div style="width:52px;height:52px;background:#FBEAE8;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#C0392B" stroke-width="1.8"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
         </div>
         <h3 style="font-family:'Playfair Display',serif;font-size:19px;color:var(--ink);margin-bottom:8px;">Delete your profile?</h3>
-        <p style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:22px;">
+        <p style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:16px;">
             This will permanently delete your account, artworks, and profile data. <strong>This action cannot be undone.</strong>
         </p>
-        <div style="display:flex;gap:10px;justify-content:center;">
-            <button onclick="closeDeleteModal()" style="flex:1;padding:10px 16px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--ink);font-size:13px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;">No, keep it</button>
-            <form method="POST" style="flex:1;margin:0;">
-                <input type="hidden" name="delete_account" value="1">
-                <button type="submit" style="width:100%;padding:10px 16px;border-radius:8px;border:none;background:#C0392B;color:#fff;font-size:13px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;">Yes, delete</button>
-            </form>
-        </div>
+        <?php
+          $__realName = (string)($conn->query("SELECT name FROM users WHERE id = $artistId")->fetch_row()[0] ?? $artistName);
+        ?>
+        <form method="POST" style="margin:0;" id="deleteForm">
+            <input type="hidden" name="delete_account" value="1">
+            <input type="hidden" name="__modal_open" value="1">
+            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
+            <label style="display:block;font-size:12px;color:var(--ink);text-align:left;margin-bottom:6px;">To confirm, type your account name: <strong><?= htmlspecialchars($__realName) ?></strong></label>
+            <input type="text" name="confirm_name" id="confirmName" autocomplete="off" placeholder="Type your name here" data-expected="<?= htmlspecialchars($__realName) ?>" oninput="checkDeleteName()" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--ink);margin-bottom:12px;">
+            <?php if ($deleteFormError !== '' && !empty($_POST['__modal_open'])): ?>
+                <div style="background:#FBEAE8;color:#8f2a1f;border-radius:8px;padding:8px 12px;font-size:12px;margin-bottom:12px;text-align:left;"><?= htmlspecialchars($deleteFormError) ?></div>
+            <?php endif; ?>
+            <div style="display:flex;gap:10px;justify-content:center;">
+                <button type="button" onclick="closeDeleteModal()" style="flex:1;padding:10px 16px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--ink);font-size:13px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;">No, keep it</button>
+                <button type="submit" id="deleteSubmit" disabled style="flex:1;padding:10px 16px;border-radius:8px;border:none;background:#C0392B;color:#fff;font-size:13px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;opacity:.45;">Yes, delete</button>
+            </div>
+        </form>
     </div>
 </div>
+<?php endif; ?>
 
 <script>
 function openDrawer() {
@@ -1083,8 +1196,21 @@ function closeDrawer() {
     document.getElementById('nav-overlay').classList.remove('open');
 }
 function openDeleteModal() {
-    document.getElementById('delete-overlay').style.display = 'flex';
+    var o = document.getElementById('delete-overlay');
+    if (!o) return;
+    o.style.display = 'flex';
+    var i = document.getElementById('confirmName'); if (i) { i.focus(); checkDeleteName(); }
 }
+function checkDeleteName() {
+    var i = document.getElementById('confirmName'), b = document.getElementById('deleteSubmit');
+    if (!i || !b) return;
+    var norm = function (t) { return (t || '').replace(/\s+/g, ' ').trim().toLowerCase(); };
+    var ok = norm(i.value) !== '' && norm(i.value) === norm(i.dataset.expected);
+    b.disabled = !ok; b.style.opacity = ok ? '1' : '.45';
+}
+<?php if ($deleteFormError !== '' && !empty($_POST['__modal_open']) && empty($deleteBlockers)): ?>
+document.addEventListener('DOMContentLoaded', function () { openDeleteModal(); });
+<?php endif; ?>
 function closeDeleteModal() {
     document.getElementById('delete-overlay').style.display = 'none';
 }
