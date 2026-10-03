@@ -269,6 +269,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $weight_kg = 1.00;
     }
 
+    // ── Per-licence pricing (digital listings only) ──────────────────
+    // Each licence the artist switches on carries its own price. The
+    // artworks.price column keeps the LOWEST enabled price, so listings,
+    // sorting and "From PKR x" displays keep working without changes.
+    $licenseCatalog = [
+        'personal'   => 'Personal Use',
+        'commercial' => 'Commercial Use',
+        'exclusive'  => 'Extended/Exclusive',
+    ];
+    $licensePrices = [];   // [licence label => price]
+    $licenseError  = '';
+    if ($isDigitalItem && !$isShowcaseOnly) {
+        foreach ($licenseCatalog as $key => $label) {
+            if (empty($_POST['license_enabled'][$key])) continue;
+            $raw = $_POST['license_price'][$key] ?? '';
+            $p   = is_numeric($raw) ? round((float) $raw, 2) : 0;
+            if ($p <= 0 || $p > 99999999) {
+                $licenseError = 'Please enter a valid price for the ' . $label . ' licence.';
+                break;
+            }
+            $licensePrices[$label] = $p;
+        }
+        if ($licenseError === '' && empty($licensePrices)) {
+            $licenseError = 'Please offer at least one licence type and set its price.';
+        }
+        if ($licenseError === '') {
+            asort($licensePrices);
+            $licenseType = array_key_first($licensePrices); // cheapest licence = the listing's default
+            $price       = reset($licensePrices);
+        }
+    }
+
     // Validation: Check if the 'images' input actually has files
     $hasFiles = isset($_FILES['images']) && isset($_FILES['images']['name'][0]) && $_FILES['images']['name'][0] !== '';
     $imageCount = $hasFiles ? count($_FILES['images']['name']) : 0;
@@ -286,7 +318,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $sizeUnitRegex = $isDigitalItem ? $digitalSizeUnitRegex : $physicalSizeUnitRegex;
     $sizeMissingUnit = $size !== '' && !preg_match($sizeUnitRegex, $size);
 
-    if ($title === '' || (!$isShowcaseOnly && $price <= 0) || $categoryId === 0 || !$hasFiles) {
+    if ($title === '' || (!$isShowcaseOnly && !$isDigitalItem && $price <= 0) || $categoryId === 0 || !$hasFiles) {
         $errorMsg = $isDigitalItem
             ? 'Please fill in all required fields and add at least one public preview image (step 1).'
             : 'Please fill in all required fields and upload at least one image.';
@@ -304,8 +336,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $errorMsg = 'Invalid digital file type. Allowed: ZIP, PSD, AI, PNG, JPG, PDF, GIF, MP4, MOV, WebM, MP3, WAV, M4A.';
     } elseif ($isDigitalItem && $_FILES['digital_file']['size'] > 300 * 1024 * 1024) {
         $errorMsg = 'Digital file must be under 300MB.';
-    } elseif ($isDigitalItem && $licenseType === '') {
-        $errorMsg = 'Please select a license type for this digital artwork.';
+    } elseif ($isDigitalItem && $licenseError !== '') {
+        $errorMsg = $licenseError;
     } else {
         
         // 1. Insert Artwork
@@ -364,6 +396,32 @@ if (!$stmt) {
                 } else {
                     $conn->rollback();
                     $errorMsg = 'Failed to save digital artwork file. Please try again.';
+                    goto skip_image_loop;
+                }
+            }
+
+            // 1c. Save one price row per licence the artist offers
+            if ($isDigitalItem && !empty($licensePrices)) {
+                $licSaved = false;
+                $stmtLic = $conn->prepare("INSERT INTO artwork_license_prices (artwork_id, license_type, price) VALUES (?, ?, ?)");
+                if ($stmtLic) {
+                    $licSaved = true;
+                    foreach ($licensePrices as $licLabel => $licPrice) {
+                        $stmtLic->bind_param('isd', $artworkId, $licLabel, $licPrice);
+                        if (!$stmtLic->execute()) {
+                            error_log('Licence price insert failed: ' . $stmtLic->error);
+                            $licSaved = false;
+                            break;
+                        }
+                    }
+                    $stmtLic->close();
+                } else {
+                    error_log('Failed to prepare licence price insert: ' . $conn->error);
+                }
+                if (!$licSaved) {
+                    $conn->rollback();
+                    if (!empty($digitalDest)) @unlink($digitalDest);
+                    $errorMsg = 'Could not save the licence prices. Please try again.';
                     goto skip_image_loop;
                 }
             }
@@ -1047,6 +1105,26 @@ img, video { max-width: 100%; }
     .protect-preview { position: static; box-shadow: none; }
     .protect-preview-box { height: 60vh; }
 }
+
+/* ── Per-licence pricing (digital only) ──────────────── */
+.license-block { margin-top: 4px; }
+.license-heading { font-size: 10.5px; letter-spacing: .7px; text-transform: uppercase; color: var(--ink); font-weight: 500; margin-bottom: 8px; }
+.license-list { display: flex; flex-direction: column; gap: 12px; }
+.license-row { display: grid; grid-template-columns: 1fr 190px; gap: 16px; align-items: center; padding: 14px 16px; border: 1.5px solid var(--sand); border-radius: 12px; background: var(--bg); transition: border-color .15s, background .15s; }
+.license-row.on { border-color: var(--ink); background: var(--sand); }
+.license-check { display: flex; align-items: flex-start; gap: 12px; cursor: pointer; min-width: 0; }
+.license-check input { flex-shrink: 0; width: 18px; height: 18px; margin-top: 2px; accent-color: var(--ink); }
+.license-title { display: block; font-size: 13px; font-weight: 600; color: var(--ink); }
+.license-desc { display: block; font-size: 11.5px; line-height: 1.5; color: var(--ink); opacity: .8; margin-top: 2px; }
+.license-price-wrap { position: relative; min-width: 0; }
+.license-price-wrap .cur { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); font-size: 12px; font-weight: 500; color: var(--ink); opacity: .7; pointer-events: none; }
+.license-price-wrap .field-input { padding-left: 48px; }
+.license-price-wrap .field-input:disabled { opacity: .4; cursor: not-allowed; }
+.license-check input:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+@media (max-width: 768px) {
+    .license-row { grid-template-columns: 1fr; gap: 10px; padding: 14px; }
+    .license-check input { width: 22px; height: 22px; }
+}
 </style>
 </head>
 <body>
@@ -1323,15 +1401,52 @@ img, video { max-width: 100%; }
                     <p class="hint-text">Max 300MB. Allowed: ZIP, PSD, AI, PNG, JPG, PDF, GIF, MP4, MOV, WebM, MP3, WAV, M4A.</p>
                 </div>
 
-                <div class="field-group">
-                    <label for="licenseInput">Licensing <span>*</span></label>
-                    <select name="license_type" id="licenseInput" class="field-input">
-                        <option value="">Select a license...</option>
-                        <option value="Personal Use">Personal Use — buyer can use it for themselves, not resell or use commercially</option>
-                        <option value="Commercial Use">Commercial Use — buyer can use it for business/commercial purposes</option>
-                        <option value="Extended/Exclusive">Extended / Exclusive — buyer gets full or exclusive rights</option>
-                    </select>
-                    <p class="hint-text">Tell buyers what they're allowed to do with the file after purchase. Shown on the listing.</p>
+                <div class="license-block" id="licenseBlock">
+                    <div class="license-heading">Licences &amp; prices <span>*</span></div>
+                    <div class="license-list">
+                        <div class="license-row on" data-key="personal">
+                            <label class="license-check">
+                                <input type="checkbox" class="license-toggle" name="license_enabled[personal]" value="1" checked>
+                                <span>
+                                    <span class="license-title">Personal Use</span>
+                                    <span class="license-desc">Buyer can use it for themselves, not resell or use commercially.</span>
+                                </span>
+                            </label>
+                            <div class="license-price-wrap">
+                                <span class="cur">PKR</span>
+                                <input type="number" class="field-input license-price" name="license_price[personal]" min="1" step="1" inputmode="numeric" placeholder="e.g. 1500" aria-label="Personal Use price in PKR">
+                            </div>
+                        </div>
+                        <div class="license-row" data-key="commercial">
+                            <label class="license-check">
+                                <input type="checkbox" class="license-toggle" name="license_enabled[commercial]" value="1">
+                                <span>
+                                    <span class="license-title">Commercial Use</span>
+                                    <span class="license-desc">Buyer can use it for business / commercial purposes.</span>
+                                </span>
+                            </label>
+                            <div class="license-price-wrap">
+                                <span class="cur">PKR</span>
+                                <input type="number" class="field-input license-price" name="license_price[commercial]" min="1" step="1" inputmode="numeric" placeholder="e.g. 5000" aria-label="Commercial Use price in PKR">
+                            </div>
+                        </div>
+                        <div class="license-row" data-key="exclusive">
+                            <label class="license-check">
+                                <input type="checkbox" class="license-toggle" name="license_enabled[exclusive]" value="1">
+                                <span>
+                                    <span class="license-title">Extended / Exclusive</span>
+                                    <span class="license-desc">Buyer gets full or exclusive rights.</span>
+                                </span>
+                            </label>
+                            <div class="license-price-wrap">
+                                <span class="cur">PKR</span>
+                                <input type="number" class="field-input license-price" name="license_price[exclusive]" min="1" step="1" inputmode="numeric" placeholder="e.g. 25000" aria-label="Extended / Exclusive price in PKR">
+                            </div>
+                        </div>
+                    </div>
+                    <p class="field-error-text" id="licenseError">Turn on at least one licence and set its price.</p>
+                    <p class="hint-text" id="licenseTip" style="display:none;">Tip: a broader licence usually costs more than a narrower one. Check your prices are in the order you intend.</p>
+                    <p class="hint-text">Switch on each licence you want to sell and give it its own price. Buyers choose one licence when they buy, and the listing shows "From" your lowest price.</p>
                 </div>
             </div>
 
@@ -1367,8 +1482,11 @@ img, video { max-width: 100%; }
                     <p class="field-error-text" id="sizeError">Please include a unit with the size (e.g. "24 x 36 inches", "1920 x 1080 px", "15 MB").</p>
                 </div>
                 <div class="field-group">
-                    <label>Price (PKR) <span id="priceRequiredMark">*</span></label>
-                    <input type="number" name="price" id="priceInput" class="field-input" placeholder="e.g. 25000" min="1" required>
+                    <div id="singlePriceBlock">
+                        <label>Price (PKR) <span id="priceRequiredMark">*</span></label>
+                        <input type="number" name="price" id="priceInput" class="field-input" placeholder="e.g. 25000" min="1" required>
+                    </div>
+                    <p class="hint-text" id="licensePriceNote" style="display:none;margin-top:0;margin-bottom:6px;">Digital artworks are priced per licence. Set each licence's price in step 2 above.</p>
                     <label class="checkbox-row">
                         <input type="checkbox" name="is_showcase_only" id="showcaseCheckbox" value="1">
                         This piece was already sold elsewhere — show as portfolio only (no price, not purchasable)
@@ -1600,7 +1718,14 @@ const digitalFileInput = document.getElementById('digitalFileInput');
 const digitalFileSummary = document.getElementById('digitalFileSummary');
 const useAsPreviewBox = document.getElementById('useAsPreviewBox');
 const useAsPreviewBtn = document.getElementById('useAsPreviewBtn');
-const licenseInput = document.getElementById('licenseInput');
+const showcaseCheckbox = document.getElementById('showcaseCheckbox');
+const priceInput = document.getElementById('priceInput');
+const singlePriceBlock = document.getElementById('singlePriceBlock');
+const licensePriceNote = document.getElementById('licensePriceNote');
+const licenseBlock = document.getElementById('licenseBlock');
+const licenseRows = Array.from(document.querySelectorAll('.license-row'));
+const licenseError = document.getElementById('licenseError');
+const licenseTip = document.getElementById('licenseTip');
 const deliveryTypeRadios = document.querySelectorAll('input[name="delivery_type"]');
 const weightGroup = document.getElementById('weightGroup');
 const weightInput = document.getElementById('weightInput');
@@ -2203,7 +2328,7 @@ function updateDigitalFileVisibility() {
     // Step 2 (final file + license) only exists for digital listings.
     digitalFileGroup.style.display = isDigital ? 'block' : 'none';
     digitalFileInput.required = isDigital;
-    if (licenseInput) licenseInput.required = isDigital;
+    updatePricingUI(); // physical = one price, digital = a price per licence
 
     // Make the two-step relationship explicit for digital listings.
     flowExplainer.style.display = isDigital ? 'grid' : 'none';
@@ -2279,6 +2404,60 @@ function updateDigitalFileVisibility() {
     updateUseAsPreviewBox();
 }
 
+// ── Pricing: one price (physical) vs. a price per licence (digital) ──────
+function enabledLicenses() {
+    return licenseRows
+        .filter(row => row.querySelector('.license-toggle').checked)
+        .map(row => ({ key: row.dataset.key, price: parseFloat(row.querySelector('.license-price').value) }));
+}
+
+function updateLicenseTip() {
+    // Gentle, non-blocking nudge if a broader licence is priced below a narrower one.
+    // Rows are in order: personal, commercial, exclusive.
+    const priced = enabledLicenses().filter(l => l.price > 0);
+    let misordered = false;
+    for (let i = 1; i < priced.length; i++) {
+        if (priced[i].price < priced[i - 1].price) misordered = true;
+    }
+    licenseTip.style.display = misordered ? 'block' : 'none';
+    if (enabledLicenses().length > 0) licenseError.classList.remove('show');
+}
+
+function updatePricingUI() {
+    const isDigital = isDigitalSelected();
+    const showcase = showcaseCheckbox.checked;
+    const perLicence = isDigital && !showcase;
+
+    // Single price: physical listings only. Showcase pieces have no price at all.
+    singlePriceBlock.style.display = (isDigital || showcase) ? 'none' : 'block';
+    priceInput.disabled = isDigital || showcase;
+    priceInput.required = !isDigital && !showcase;
+
+    // Per-licence prices: digital listings that are actually for sale.
+    licensePriceNote.style.display = perLicence ? 'block' : 'none';
+    licenseBlock.style.display = perLicence ? 'block' : 'none';
+    licenseRows.forEach(row => {
+        const check = row.querySelector('.license-toggle');
+        const price = row.querySelector('.license-price');
+        row.classList.toggle('on', check.checked);
+        // Disabled inputs aren't submitted, so switched-off licences are simply left out.
+        price.disabled = !perLicence || !check.checked;
+        price.required = perLicence && check.checked;
+    });
+    updateLicenseTip();
+}
+
+licenseRows.forEach(row => {
+    const check = row.querySelector('.license-toggle');
+    const price = row.querySelector('.license-price');
+    check.addEventListener('change', () => {
+        updatePricingUI();
+        if (check.checked) price.focus();
+    });
+    price.addEventListener('input', updateLicenseTip);
+});
+showcaseCheckbox.addEventListener('change', updatePricingUI);
+
 // ── Protection controls ──────────────────────────────────────────────────
 function onProtectionChange() {
     wmControls.style.display = wmEnabled.checked ? 'flex' : 'none';
@@ -2323,6 +2502,14 @@ uploadForm.addEventListener('submit', function (e) {
         e.preventDefault();
         sizeInput.focus();
         sizeInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+    }
+
+    // Digital listings need at least one licence switched on.
+    if (isDigitalSelected() && !showcaseCheckbox.checked && enabledLicenses().length === 0) {
+        e.preventDefault();
+        licenseError.classList.add('show');
+        licenseBlock.scrollIntoView({ behavior: 'smooth', block: 'center' });
         return;
     }
 
