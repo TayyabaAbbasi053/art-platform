@@ -190,7 +190,7 @@ while ($row = $ro->fetch_assoc()) {
 $payoutOrders = [];
 
 $poArt = $conn->query("
-    SELECT DISTINCT o.id, o.order_number, o.order_status, o.artist_paid, o.artist_paid_at, o.created_at, 'artwork' AS order_type
+    SELECT DISTINCT o.id, o.order_number, o.order_status, o.payment_method, o.payment_status, o.artist_paid, o.artist_paid_at, o.created_at, 'artwork' AS order_type
     FROM orders o
     JOIN order_items oi ON o.id = oi.order_id
     JOIN artworks a ON oi.item_id = a.id AND oi.item_type = 'artwork'
@@ -200,7 +200,7 @@ $poArt = $conn->query("
 while ($row = $poArt->fetch_assoc()) $payoutOrders[] = $row;
 
 $poComm = $conn->query("
-    SELECT o.id, o.order_number, o.order_status, o.artist_paid, o.artist_paid_at, o.created_at, 'commission' AS order_type
+    SELECT o.id, o.order_number, o.order_status, o.payment_method, o.payment_status, o.artist_paid, o.artist_paid_at, o.created_at, 'commission' AS order_type
     FROM orders o
     JOIN commission_requests cr ON cr.order_id = o.id
     WHERE cr.artist_id = $artistId AND o.order_type = 'commission'
@@ -211,13 +211,44 @@ while ($row = $poComm->fetch_assoc()) $payoutOrders[] = $row;
 usort($payoutOrders, fn($a, $b) => strtotime($b['created_at']) <=> strtotime($a['created_at']));
 
 function payoutStatusLabel($order) {
-    if ($order['order_status'] === 'cancelled') {
-        return ['label' => 'Cancelled', 'class' => 'cancelled'];
+    $st    = $order['order_status'] ?? '';
+    $isCod = ($order['payment_method'] ?? '') === 'cod';
+
+    // 1. Cancelled — nothing will be paid out
+    if ($st === 'cancelled') {
+        return ['label' => 'Cancelled — no payout', 'class' => 'cancelled'];
     }
-    if ($order['artist_paid']) {
-        return ['label' => 'Paid', 'class' => 'paid'];
+
+    // 2. Already paid out to the artist — show the date
+    if (!empty($order['artist_paid'])) {
+        $label = 'Paid';
+        if (!empty($order['artist_paid_at'])) {
+            $ts    = strtotime($order['artist_paid_at']);
+            $fmt   = date('Y', $ts) === date('Y') ? 'j M' : 'j M Y';
+            $label = 'Paid on ' . date($fmt, $ts);
+        }
+        return ['label' => $label, 'class' => 'paid'];
     }
-    return ['label' => 'Not paid yet', 'class' => 'unpaid'];
+
+    // 3. Buyer hasn't completed payment yet
+    if ($st === 'payment_review') {
+        return ['label' => 'Buyer paid — admin verifying', 'class' => 'waiting'];
+    }
+    if ($st === 'pending') {
+        return $isCod
+            ? ['label' => 'Cash on delivery — payout after delivery', 'class' => 'waiting']
+            : ['label' => 'Waiting for buyer payment', 'class' => 'waiting'];
+    }
+
+    // 4. Order finished, payout is the only thing left
+    if (in_array($st, ['delivered', 'completed'], true)) {
+        return ['label' => 'Delivered — payout coming soon', 'class' => 'unpaid'];
+    }
+
+    // 5. Order is in progress (payment confirmed / processing / shipped / assigned…)
+    return $isCod
+        ? ['label' => 'Cash on delivery — payout after delivery', 'class' => 'waiting']
+        : ['label' => 'In progress — payout after delivery', 'class' => 'waiting'];
 }
 
  $today = date('l, d F Y');
@@ -480,6 +511,7 @@ tr:hover td { background: var(--sand); color: var(--ink); }
 .pill.paid       { background: var(--ink); color: var(--bg); }
 .pill.unpaid     { background: var(--sand); color: var(--ink); }
 .pill.payout-cancelled { background: #F4F4F4; color: #888; }
+.pill.waiting    { background: transparent; color: var(--ink); border: 1px dashed var(--ink); text-transform: none; letter-spacing: 0; font-size: 10.5px; }
 
 /* Payout list section */
 .payout-list { margin-bottom: 28px; }
