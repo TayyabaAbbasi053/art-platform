@@ -28,6 +28,10 @@ if (!$artist) {
     exit;
 }
 
+// Count this profile visit for the artist's dashboard (once per visitor per day)
+require_once __DIR__ . '/track.php';
+trackProfileVisit($conn, $artistId);
+
 // Fetch artist's artworks (approved only)
  $artworks = $conn->prepare("
     SELECT a.id, a.title, a.price, a.status, a.is_showcase_only, a.description, a.medium, a.size, a.created_at,

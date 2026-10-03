@@ -35,6 +35,10 @@ if (!$artwork) {
     exit;
 }
 
+// Count this view for the artist's dashboard (once per visitor per day)
+require_once __DIR__ . '/track.php';
+trackArtworkView($conn, $artworkId);
+
 // Fetch all images for this artwork
  $images = $conn->prepare("
     SELECT image_path, is_cover, media_type FROM artwork_images 

@@ -578,6 +578,19 @@ tr:hover td { background: var(--sand); color: var(--ink); }
 .red-dot{border-radius:50%;display:inline-block;animation:pulse-dot 1.5s infinite;}
 @keyframes pulse-dot{0%{box-shadow:0 0 0 0 rgba(192,57,43,.5);}70%{box-shadow:0 0 0 5px rgba(192,57,43,0);}100%{box-shadow:0 0 0 0 rgba(192,57,43,0);}}
 
+
+/* ── Your Reach (point 71) ───────────────────────────── */
+.reach-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 20px; }
+.reach-card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 18px 20px; text-decoration: none; display: block; }
+.reach-card .label { font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--ink); font-weight: 500; margin-bottom: 10px; }
+.reach-card .value { font-family: 'Playfair Display', serif; font-size: 32px; color: var(--ink); line-height: 1; }
+.reach-card .sub { font-size: 11px; color: var(--muted); margin-top: 6px; }
+.reach-card .sub b { color: var(--ink); font-weight: 600; }
+.reach-note { font-size: 11px; color: var(--muted); margin: -8px 0 28px; }
+.reach-table { margin-bottom: 28px; }
+.reach-table td.num, .reach-table th.num { text-align: right; }
+@media (max-width: 900px) { .reach-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 480px) { .reach-grid { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
@@ -770,6 +783,104 @@ tr:hover td { background: var(--sand); color: var(--ink); }
             <div class="sub">Deletes account &amp; data</div>
         </div>
     </div>
+
+    <!-- ── Your Reach (views, favourites, questions, profile visits) ── -->
+    <?php
+    function reachNum($conn, $sql) {
+        try { $r = $conn->query($sql); return $r ? (int)$r->fetch_row()[0] : 0; }
+        catch (Throwable $e) { return 0; }
+    }
+    $reach = [
+        'views_total' => reachNum($conn, "SELECT COUNT(*) FROM artwork_views v JOIN artworks a ON v.artwork_id=a.id WHERE a.artist_id=$artistId"),
+        'views_30'    => reachNum($conn, "SELECT COUNT(*) FROM artwork_views v JOIN artworks a ON v.artwork_id=a.id WHERE a.artist_id=$artistId AND v.view_date >= CURDATE() - INTERVAL 30 DAY"),
+        'favs_total'  => reachNum($conn, "SELECT COUNT(*) FROM favorites f JOIN artworks a ON f.artwork_id=a.id WHERE a.artist_id=$artistId"),
+        'favs_30'     => reachNum($conn, "SELECT COUNT(*) FROM favorites f JOIN artworks a ON f.artwork_id=a.id WHERE a.artist_id=$artistId AND f.created_at >= NOW() - INTERVAL 30 DAY"),
+        'q_total'     => reachNum($conn, "SELECT COUNT(*) FROM artwork_questions aq JOIN artworks a ON aq.artwork_id=a.id WHERE a.artist_id=$artistId"),
+        'visits_total'=> reachNum($conn, "SELECT COUNT(*) FROM profile_visits WHERE artist_id=$artistId"),
+        'visits_30'   => reachNum($conn, "SELECT COUNT(*) FROM profile_visits WHERE artist_id=$artistId AND visit_date >= CURDATE() - INTERVAL 30 DAY"),
+    ];
+    $topArtworks = [];
+    try {
+        $tq = $conn->query("
+            SELECT a.id, a.title,
+                   (SELECT COUNT(*) FROM artwork_views v WHERE v.artwork_id = a.id) AS views,
+                   (SELECT COUNT(*) FROM favorites f WHERE f.artwork_id = a.id) AS favs,
+                   (SELECT COUNT(*) FROM artwork_questions aq WHERE aq.artwork_id = a.id) AS qs
+            FROM artworks a
+            WHERE a.artist_id = $artistId
+            ORDER BY views DESC, favs DESC, qs DESC, a.id DESC
+            LIMIT 5
+        ");
+        if ($tq) while ($r = $tq->fetch_assoc()) $topArtworks[] = $r;
+    } catch (Throwable $e) {
+        // tracking tables not created yet — fall back to favourites/questions only
+        try {
+            $tq = $conn->query("
+                SELECT a.id, a.title, 0 AS views,
+                       (SELECT COUNT(*) FROM favorites f WHERE f.artwork_id = a.id) AS favs,
+                       (SELECT COUNT(*) FROM artwork_questions aq WHERE aq.artwork_id = a.id) AS qs
+                FROM artworks a WHERE a.artist_id = $artistId
+                ORDER BY favs DESC, qs DESC, a.id DESC LIMIT 5
+            ");
+            if ($tq) while ($r = $tq->fetch_assoc()) $topArtworks[] = $r;
+        } catch (Throwable $e2) {}
+    }
+    ?>
+    <div class="section-header">
+        <span class="section-title">Your Reach</span>
+    </div>
+    <div class="reach-grid">
+        <div class="reach-card">
+            <div class="label">Artwork Views</div>
+            <div class="value"><?= number_format($reach['views_total']) ?></div>
+            <div class="sub"><b><?= number_format($reach['views_30']) ?></b> in the last 30 days</div>
+        </div>
+        <div class="reach-card">
+            <div class="label">Favourites</div>
+            <div class="value"><?= number_format($reach['favs_total']) ?></div>
+            <div class="sub"><b><?= number_format($reach['favs_30']) ?></b> in the last 30 days</div>
+        </div>
+        <a class="reach-card" href="my-artworks.php">
+            <div class="label">Questions</div>
+            <div class="value"><?= number_format($reach['q_total']) ?></div>
+            <div class="sub"><b><?= (int)$stats['pending_questions'] ?></b> waiting for your answer</div>
+        </a>
+        <div class="reach-card">
+            <div class="label">Profile Visits</div>
+            <div class="value"><?= number_format($reach['visits_total']) ?></div>
+            <div class="sub"><b><?= number_format($reach['visits_30']) ?></b> in the last 30 days</div>
+        </div>
+    </div>
+    <div class="reach-note">Each person is counted once per day. Your own visits are not counted.</div>
+
+    <?php if (!empty($topArtworks)): ?>
+    <div class="card reach-table">
+        <div class="card-head">
+            <span class="card-title">Your top artworks</span>
+            <a href="my-artworks.php" class="section-link">View all &rarr;</a>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Artwork</th>
+                    <th class="num">Views</th>
+                    <th class="num">Favourites</th>
+                    <th class="num">Questions</th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php foreach ($topArtworks as $ta): ?>
+                <tr>
+                    <td class="td-title"><?= htmlspecialchars($ta['title']) ?></td>
+                    <td class="num"><?= (int)$ta['views'] ?></td>
+                    <td class="num"><?= (int)$ta['favs'] ?></td>
+                    <td class="num"><?= (int)$ta['qs'] ?></td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+    <?php endif; ?>
 
     <!-- ── Quick Actions ──────────────────────────── -->
     <div class="section-header">
